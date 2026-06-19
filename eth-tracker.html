@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-<title>ETH 15min Tracker</title>
+<title>Crypto 15min Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
@@ -25,293 +25,198 @@
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
   html, body {
-    margin: 0;
-    padding: 0;
-    background: var(--bg);
-    color: var(--text);
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
-
-  body {
-    max-width: 393px;
-    margin: 0 auto;
-    padding: 16px 14px 40px;
-    min-height: 100vh;
-  }
+  body { max-width: 393px; margin: 0 auto; padding: 14px 14px 40px; min-height: 100vh; }
 
   .mono { font-family: "Roboto Mono", monospace; }
 
   h1 {
-    font-size: 18px;
-    font-weight: 700;
-    margin: 0 0 14px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    letter-spacing: 0.5px;
+    font-size: 17px; font-weight: 700; margin: 0 0 12px;
+    display: flex; align-items: center; gap: 8px; letter-spacing: .5px;
   }
   h1 .dot {
     width: 9px; height: 9px; border-radius: 50%;
-    background: var(--green);
-    box-shadow: 0 0 8px var(--green);
-    animation: livepulse 2s infinite;
+    background: var(--green); box-shadow: 0 0 8px var(--green); animation: livepulse 2s infinite;
   }
   @keyframes livepulse { 0%,100%{opacity:1;} 50%{opacity:.35;} }
 
   .card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 16px;
-    margin-bottom: 14px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 16px; margin-bottom: 14px;
+  }
+  .label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin-bottom: 8px;
   }
 
-  .label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--muted);
-    margin-bottom: 6px;
+  /* ----- Coin switcher ----- */
+  .seg { display: flex; gap: 8px; margin-bottom: 14px; }
+  .seg button {
+    flex: 1; min-height: 44px; border-radius: 10px;
+    background: var(--panel); color: var(--muted);
+    border: 1px solid var(--border); font-family: "Roboto Mono", monospace;
+    font-weight: 700; font-size: 14px; letter-spacing: 1px; cursor: pointer;
+    transition: all .15s;
   }
+  .seg button.active { background: var(--panel-2); color: var(--text); border-color: #3a3a3a; }
+  .seg button:active { transform: scale(.96); }
 
   /* ----- Price ----- */
-  .price {
-    font-size: 40px;
-    font-weight: 700;
-    line-height: 1.05;
-    transition: color .2s;
-  }
+  .price { font-size: 40px; font-weight: 700; line-height: 1.05; transition: color .2s; }
   .price.flash { animation: flashUpdate .6s ease; }
   @keyframes flashUpdate {
-    0% { transform: scale(1); }
-    35% { transform: scale(1.06); opacity: .65; }
-    100% { transform: scale(1); }
+    0% { transform: scale(1); } 35% { transform: scale(1.06); opacity:.65; } 100% { transform: scale(1); }
   }
-  .priceRow {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    margin-top: 2px;
-  }
-  .change {
-    font-size: 16px;
-    font-weight: 700;
-  }
-  .change.up { color: var(--green); }
-  .change.down { color: var(--red); }
-  .updated {
-    font-size: 11px;
-    color: var(--muted);
-    margin-top: 8px;
-  }
+  .priceRow { display: flex; align-items: baseline; justify-content: space-between; margin-top: 2px; }
+  .change { font-size: 16px; font-weight: 700; }
+  .change.up { color: var(--green); } .change.down { color: var(--red); }
+  .updated { font-size: 11px; color: var(--muted); margin-top: 8px; display:flex; justify-content:space-between; }
   .err { color: var(--red); }
+  .srcTag { color: #555; }
 
   /* ----- Timer ----- */
   .timerCard { text-align: center; }
-  .timer {
-    font-size: 56px;
-    font-weight: 700;
-    line-height: 1;
-    letter-spacing: 2px;
-  }
+  .timer { font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: 2px; }
   .timer.warn { color: var(--red); animation: warnpulse 1s infinite; }
   @keyframes warnpulse { 0%,100%{ transform: scale(1); opacity:1; } 50%{ transform: scale(1.05); opacity:.6; } }
   .timerSub { font-size: 11px; color: var(--muted); margin-top: 6px; letter-spacing: 1px; }
 
-  /* ----- Selects ----- */
-  .field { margin-bottom: 12px; }
-  select {
-    width: 100%;
-    min-height: 48px;
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0 14px;
-    font-size: 15px;
-    font-family: inherit;
-    appearance: none;
-    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='3'><path d='M6 9l6 6 6-6'/></svg>");
-    background-repeat: no-repeat;
-    background-position: right 14px center;
-  }
-
   /* ----- Recommendation ----- */
-  .reco {
-    text-align: center;
-    border-radius: 12px;
-    padding: 14px;
-    margin-top: 4px;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-  }
-  .reco .dir { font-size: 30px; font-weight: 700; letter-spacing: 1px; }
+  .reco { text-align: center; border-radius: 12px; padding: 16px; background: var(--panel-2); border: 1px solid var(--border); }
+  .reco .dir { font-size: 34px; font-weight: 700; letter-spacing: 1px; }
   .reco .conf { font-size: 13px; margin-top: 4px; color: var(--muted); }
-  .reco.over { border-color: var(--green); }
-  .reco.over .dir { color: var(--green); }
-  .reco.under { border-color: var(--red); }
-  .reco.under .dir { color: var(--red); }
-  .reco.skip { border-color: var(--amber); }
-  .reco.skip .dir { color: var(--amber); font-size: 24px; }
+  .reco .tally { font-size: 13px; margin-top: 8px; font-family: "Roboto Mono", monospace; color: var(--text); }
+  .reco.over { border-color: var(--green); } .reco.over .dir { color: var(--green); }
+  .reco.under { border-color: var(--red); } .reco.under .dir { color: var(--red); }
+  .reco.skip { border-color: var(--amber); } .reco.skip .dir { color: var(--amber); font-size: 26px; }
+
+  .meter { height: 8px; border-radius: 5px; background: #2a2a2a; margin-top: 12px; overflow: hidden; display: flex; }
+  .meter .mbull { background: var(--green); height: 100%; transition: width .4s; }
+  .meter .mbear { background: var(--red); height: 100%; transition: width .4s; }
+
+  /* ----- Indicators ----- */
+  .ind { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 0; border-bottom: 1px solid var(--border); }
+  .ind:last-child { border-bottom: none; }
+  .ind .iname { font-size: 13px; font-weight: 600; }
+  .ind .isub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .ind .right { display: flex; align-items: center; gap: 10px; }
+  .ind .ival { font-size: 14px; font-weight: 700; font-family: "Roboto Mono", monospace; }
+  .chip { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 6px; letter-spacing: .5px; min-width: 58px; text-align: center; }
+  .chip.bull { background: rgba(0,200,83,.15); color: var(--green); }
+  .chip.bear { background: rgba(255,23,68,.15); color: var(--red); }
+  .chip.neu  { background: rgba(255,171,0,.13); color: var(--amber); }
+  .chip.info { background: #232323; color: var(--muted); }
 
   /* ----- Bet ----- */
   .betInput {
-    width: 100%;
-    min-height: 48px;
-    background: var(--panel-2);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 0 14px;
-    font-size: 20px;
-    font-weight: 700;
-    font-family: "Roboto Mono", monospace;
-    margin-bottom: 12px;
+    width: 100%; min-height: 48px; background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 10px; padding: 0 14px;
+    font-size: 20px; font-weight: 700; font-family: "Roboto Mono", monospace; margin-bottom: 12px;
   }
   .betBtns { display: flex; gap: 10px; }
   .btn {
-    flex: 1;
-    min-height: 56px;
-    border: none;
-    border-radius: 12px;
-    font-size: 18px;
-    font-weight: 700;
-    font-family: inherit;
-    color: #fff;
-    letter-spacing: 1px;
-    cursor: pointer;
-    transition: transform .08s, opacity .2s;
+    flex: 1; min-height: 56px; border: none; border-radius: 12px;
+    font-size: 18px; font-weight: 700; font-family: inherit; color: #fff;
+    letter-spacing: 1px; cursor: pointer; transition: transform .08s, opacity .2s;
   }
   .btn:active { transform: scale(.95); opacity: .85; }
-  .btn.over { background: var(--green); }
-  .btn.under { background: var(--red); }
-  .btn.win { background: var(--green); }
-  .btn.loss { background: var(--red); }
+  .btn.over { background: var(--green); } .btn.under { background: var(--red); }
+  .btn.win { background: var(--green); } .btn.loss { background: var(--red); }
   .btn:disabled { opacity: .3; cursor: not-allowed; }
 
-  .pending {
-    margin-top: 12px;
-    padding: 12px;
-    border-radius: 10px;
-    background: var(--panel-2);
-    border: 1px dashed var(--border);
-    font-size: 13px;
-    text-align: center;
-  }
+  .pending { margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--panel-2); border: 1px dashed var(--border); font-size: 13px; text-align: center; transition: border-color .3s; }
   .pending .big { font-weight: 700; font-size: 15px; }
   .resultBtns { display: flex; gap: 10px; margin-top: 10px; }
   .hidden { display: none !important; }
 
   /* ----- Scoreboard ----- */
-  .scoreGrid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-  }
-  .stat {
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px 6px;
-    text-align: center;
-  }
+  .scoreGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 6px; text-align: center; }
   .stat .v { font-size: 20px; font-weight: 700; }
   .stat .k { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; margin-top: 3px; }
-  .pos { color: var(--green); }
-  .neg { color: var(--red); }
+  .pos { color: var(--green); } .neg { color: var(--red); }
 
   /* ----- History ----- */
   .history { max-height: 320px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .hrow {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 4px 10px;
-    align-items: center;
-    padding: 10px 12px;
-    border-radius: 10px;
-    margin-bottom: 8px;
-    font-size: 13px;
-    border-left: 3px solid var(--border);
-    background: var(--panel-2);
+    display: grid; grid-template-columns: auto 1fr auto; gap: 4px 10px; align-items: center;
+    padding: 10px 12px; border-radius: 10px; margin-bottom: 8px; font-size: 13px;
+    border-left: 3px solid var(--border); background: var(--panel-2);
   }
   .hrow.w { border-left-color: var(--green); background: rgba(0,200,83,.08); }
   .hrow.l { border-left-color: var(--red); background: rgba(255,23,68,.08); }
   .hrow .htime { font-size: 12px; color: var(--muted); }
   .hrow .hpred { font-weight: 700; }
-  .hrow .hpred.over { color: var(--green); }
-  .hrow .hpred.under { color: var(--red); }
+  .hrow .hpred.over { color: var(--green); } .hrow .hpred.under { color: var(--red); }
   .hrow .hres { font-weight: 700; text-align: right; }
-  .hrow .hres.w { color: var(--green); }
-  .hrow .hres.l { color: var(--red); }
+  .hrow .hres.w { color: var(--green); } .hrow .hres.l { color: var(--red); }
   .hrow .hmeta { grid-column: 1 / -1; font-size: 11px; color: var(--muted); }
   .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 20px 0; }
 
-  .footnote { text-align:center; font-size:10px; color:#555; margin-top:18px; }
+  .footnote { text-align:center; font-size:10px; color:#555; margin-top:18px; line-height:1.5; }
 </style>
 </head>
 <body>
 
-  <h1><span class="dot"></span> ETH · 15MIN TRACKER</h1>
+  <h1><span class="dot"></span> <span id="title">CRYPTO · 15MIN TRACKER</span></h1>
+
+  <!-- COIN SWITCHER -->
+  <div class="seg" id="coinSeg">
+    <button data-coin="ETH" class="active">ETH</button>
+    <button data-coin="BTC">BTC</button>
+    <button data-coin="SOL">SOL</button>
+  </div>
 
   <!-- PRICE -->
   <div class="card">
-    <div class="label">Ethereum / USD</div>
+    <div class="label" id="priceLabel">Ethereum / USD</div>
     <div id="price" class="price mono">—</div>
     <div class="priceRow">
       <span id="change" class="change mono">—</span>
-      <span id="updated" class="updated mono">Loading…</span>
+    </div>
+    <div class="updated">
+      <span id="updated" class="mono">Loading…</span>
+      <span id="srcTag" class="srcTag mono"></span>
     </div>
   </div>
 
   <!-- TIMER -->
   <div class="card timerCard">
-    <div class="label">Round ends in</div>
+    <div class="label">Next 15-min round closes in</div>
     <div id="timer" class="timer mono">--:--</div>
-    <div id="timerSub" class="timerSub">Next close at :00 / :15 / :30 / :45</div>
+    <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
   </div>
 
-  <!-- PREDICTION ENGINE -->
+  <!-- RECOMMENDATION -->
   <div class="card">
-    <div class="label">Indicators</div>
-    <div class="field">
-      <select id="rsi">
-        <option value="0" selected>RSI — Select…</option>
-        <option value="1">RSI: Above 50 (Bullish)</option>
-        <option value="-1">RSI: Below 50 (Bearish)</option>
-        <option value="0n">RSI: At 50 (Neutral)</option>
-      </select>
-    </div>
-    <div class="field">
-      <select id="macd">
-        <option value="0" selected>MACD — Select…</option>
-        <option value="1">MACD: Green Bars (Bullish)</option>
-        <option value="-1">MACD: Red Bars (Bearish)</option>
-        <option value="0n">MACD: Neutral</option>
-      </select>
-    </div>
-    <div class="field">
-      <select id="ema">
-        <option value="0" selected>Price vs EMA — Select…</option>
-        <option value="1">Price: Above Orange Line</option>
-        <option value="-1">Price: Below Orange Line</option>
-        <option value="0n">Price: At Line</option>
-      </select>
-    </div>
+    <div class="label">Auto Pick — Next 15 Min</div>
     <div id="reco" class="reco skip">
-      <div class="dir" id="recoDir">SET INDICATORS</div>
-      <div class="conf" id="recoConf">Choose RSI, MACD &amp; EMA above</div>
+      <div class="dir" id="recoDir">ANALYZING…</div>
+      <div class="conf" id="recoConf">Loading live indicators</div>
+      <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
+      <div class="tally" id="recoTally">—</div>
+    </div>
+  </div>
+
+  <!-- INDICATORS -->
+  <div class="card">
+    <div class="label">Live Indicators · 15m candles</div>
+    <div id="indicators">
+      <div class="empty">Loading indicators…</div>
     </div>
   </div>
 
   <!-- BET LOGGER -->
   <div class="card">
-    <div class="label">Place Bet</div>
+    <div class="label">Log Your Bet</div>
     <input id="betAmount" class="betInput mono" type="number" inputmode="decimal" placeholder="$ amount" min="0" step="1" value="10" />
     <div class="betBtns">
       <button class="btn over" id="betOver">OVER</button>
       <button class="btn under" id="betUnder">UNDER</button>
     </div>
-
     <div id="pending" class="pending hidden">
       <div>Open bet: <span class="big" id="pendingText">—</span></div>
       <div class="resultBtns">
@@ -338,286 +243,475 @@
   <!-- HISTORY -->
   <div class="card">
     <div class="label">Round History (last 10)</div>
-    <div id="history" class="history">
-      <div class="empty">No rounds played yet.</div>
-    </div>
+    <div id="history" class="history"><div class="empty">No rounds played yet.</div></div>
   </div>
 
-  <div class="footnote">For tracking only — not financial advice.</div>
+  <div class="footnote">
+    Indicators are computed from live 15-minute candles (Coinbase, CoinGecko fallback).<br>
+    For tracking only — not financial advice.
+  </div>
 
 <script>
 (function () {
   "use strict";
 
-  // ---------- State ----------
-  var state = {
-    lastPrice: null,
-    pendingBet: null,   // { side, amount, reco, roundTime }
-    rounds: [],         // history { time, side, amount, result, pnl }
-    wins: 0,
-    losses: 0,
-    pnl: 0
+  // ===================================================================
+  //  Config
+  // ===================================================================
+  var COINS = {
+    ETH: { name: "Ethereum", cgId: "ethereum", cbProduct: "ETH-USD" },
+    BTC: { name: "Bitcoin",  cgId: "bitcoin",  cbProduct: "BTC-USD" },
+    SOL: { name: "Solana",   cgId: "solana",   cbProduct: "SOL-USD" }
   };
 
-  // ---------- Elements ----------
+  var state = {
+    coin: "ETH",
+    pendingBet: null,
+    rounds: [],
+    wins: 0, losses: 0, pnl: 0,
+    lastReco: "No recommendation",
+    reqId: 0            // guards against stale async responses when switching coins
+  };
+
   var $ = function (id) { return document.getElementById(id); };
-  var elPrice = $("price"), elChange = $("change"), elUpdated = $("updated");
-  var elTimer = $("timer"), elTimerSub = $("timerSub");
-  var elRsi = $("rsi"), elMacd = $("macd"), elEma = $("ema");
-  var elReco = $("reco"), elRecoDir = $("recoDir"), elRecoConf = $("recoConf");
-  var elBetAmount = $("betAmount"), elBetOver = $("betOver"), elBetUnder = $("betUnder");
-  var elPending = $("pending"), elPendingText = $("pendingText"), elMarkWin = $("markWin"), elMarkLoss = $("markLoss");
-  var elHistory = $("history");
-
-  // ---------- Price fetch ----------
-  var API = "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_change=true";
-
-  function fmtMoney(n) {
-    return "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function pad(n){ return n < 10 ? "0" + n : "" + n; }
+  function fmtMoney(n){
+    var d = n < 1 ? 4 : 2;
+    return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
   }
 
-  function fetchPrice() {
-    fetch(API, { cache: "no-store" })
-      .then(function (r) {
-        if (!r.ok) throw new Error("HTTP " + r.status);
-        return r.json();
-      })
-      .then(function (data) {
-        if (!data || !data.ethereum || typeof data.ethereum.usd !== "number") {
-          throw new Error("bad payload");
-        }
-        var eth = data.ethereum;
-        var price = eth.usd;
-        var change = eth.usd_24h_change;
+  // ===================================================================
+  //  Indicator math (all close-price based)
+  // ===================================================================
+  function emaSeries(vals, p) {
+    var k = 2 / (p + 1), out = [], prev = null;
+    for (var i = 0; i < vals.length; i++) {
+      if (i < p - 1) { out.push(null); continue; }
+      if (i === p - 1) {
+        var s = 0; for (var j = 0; j < p; j++) s += vals[j];
+        prev = s / p; out.push(prev); continue;
+      }
+      prev = vals[i] * k + prev * (1 - k);
+      out.push(prev);
+    }
+    return out;
+  }
+  function lastVal(arr){ for (var i = arr.length - 1; i >= 0; i--) if (arr[i] != null) return arr[i]; return null; }
 
-        elPrice.classList.remove("err");
-        elPrice.textContent = fmtMoney(price);
-        // flash animation
-        elPrice.classList.remove("flash");
-        void elPrice.offsetWidth; // reflow to restart animation
-        elPrice.classList.add("flash");
+  function rsi(vals, p) {
+    if (vals.length < p + 1) return null;
+    var gains = 0, losses = 0, i, d;
+    for (i = 1; i <= p; i++) { d = vals[i] - vals[i - 1]; if (d >= 0) gains += d; else losses -= d; }
+    var ag = gains / p, al = losses / p;
+    for (i = p + 1; i < vals.length; i++) {
+      d = vals[i] - vals[i - 1];
+      ag = (ag * (p - 1) + (d > 0 ? d : 0)) / p;
+      al = (al * (p - 1) + (d < 0 ? -d : 0)) / p;
+    }
+    if (al === 0) return 100;
+    return 100 - 100 / (1 + ag / al);
+  }
 
-        if (typeof change === "number") {
-          var up = change >= 0;
-          elChange.textContent = (up ? "▲ " : "▼ ") + Math.abs(change).toFixed(2) + "%  (24h)";
-          elChange.className = "change mono " + (up ? "up" : "down");
-        }
+  function macd(vals) {
+    var e12 = emaSeries(vals, 12), e26 = emaSeries(vals, 26), line = [], i;
+    for (i = 0; i < vals.length; i++) line.push((e12[i] != null && e26[i] != null) ? e12[i] - e26[i] : null);
+    var start = -1; for (i = 0; i < line.length; i++) if (line[i] != null) { start = i; break; }
+    if (start < 0) return { hist: null, prevHist: null, macd: null };
+    var compact = line.slice(start);
+    var sig = emaSeries(compact, 9);
+    var signal = new Array(start).fill(null).concat(sig);
+    var L = vals.length - 1;
+    var hist = (line[L] != null && signal[L] != null) ? line[L] - signal[L] : null;
+    var pHist = (line[L-1] != null && signal[L-1] != null) ? line[L-1] - signal[L-1] : null;
+    return { hist: hist, prevHist: pHist, macd: line[L] };
+  }
 
-        state.lastPrice = price;
-        var t = new Date();
-        elUpdated.classList.remove("err");
-        elUpdated.textContent = "Updated " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
-      })
-      .catch(function () {
-        elPrice.textContent = "Price unavailable";
-        elPrice.classList.add("err");
-        elUpdated.textContent = "Retrying in 30s…";
-        elUpdated.classList.add("err");
+  function bollPctB(vals, p) {
+    p = p || 20;
+    if (vals.length < p) return null;
+    var slice = vals.slice(-p), mean = 0, i;
+    for (i = 0; i < p; i++) mean += slice[i]; mean /= p;
+    var v = 0; for (i = 0; i < p; i++) v += (slice[i]-mean)*(slice[i]-mean); v /= p;
+    var sd = Math.sqrt(v), upper = mean + 2*sd, lower = mean - 2*sd, price = vals[vals.length-1];
+    if (upper === lower) return 0.5;
+    return (price - lower) / (upper - lower);
+  }
+
+  function roc(vals, n) {
+    if (vals.length <= n) return null;
+    var a = vals[vals.length - 1 - n], b = vals[vals.length - 1];
+    return a ? (b - a) / a * 100 : null;
+  }
+
+  // ===================================================================
+  //  Data loading  (Coinbase primary, CoinGecko fallback)
+  // ===================================================================
+  function loadCoinbaseCandles(coin) {
+    var url = "https://api.exchange.coinbase.com/products/" + COINS[coin].cbProduct + "/candles?granularity=900";
+    return fetch(url, { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("cb " + r.status);
+      return r.json();
+    }).then(function (rows) {
+      if (!Array.isArray(rows) || rows.length < 30) throw new Error("cb empty");
+      // rows: [time, low, high, open, close, volume] newest-first
+      var out = rows.map(function (x) {
+        return { t: x[0]*1000, l: x[1], h: x[2], o: x[3], c: x[4], v: x[5] };
       });
+      out.sort(function (a,b){ return a.t - b.t; });   // oldest-first
+      return { src: "Coinbase", candles: out };
+    });
   }
 
-  // ---------- Timer (synced to :00/:15/:30/:45) ----------
-  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  function loadGeckoCandles(coin) {
+    var url = "https://api.coingecko.com/api/v3/coins/" + COINS[coin].cgId + "/market_chart?vs_currency=usd&days=1";
+    return fetch(url, { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("cg " + r.status);
+      return r.json();
+    }).then(function (data) {
+      var prices = data && data.prices;
+      if (!Array.isArray(prices) || prices.length < 30) throw new Error("cg empty");
+      var vols = (data.total_volumes || []);
+      // resample ~5min prices into 15-min OHLC buckets
+      var buckets = {};
+      prices.forEach(function (p, idx) {
+        var key = Math.floor(p[0] / 900000);
+        var b = buckets[key];
+        var price = p[1];
+        if (!b) buckets[key] = b = { t: key*900000, o: price, h: price, l: price, c: price, v: 0 };
+        b.c = price; if (price > b.h) b.h = price; if (price < b.l) b.l = price;
+        if (vols[idx]) b.v = vols[idx][1];
+      });
+      var out = Object.keys(buckets).map(function (k){ return buckets[k]; });
+      out.sort(function (a,b){ return a.t - b.t; });
+      return { src: "CoinGecko", candles: out };
+    });
+  }
 
+  function loadCandles(coin) {
+    return loadCoinbaseCandles(coin).catch(function () { return loadGeckoCandles(coin); });
+  }
+
+  // ===================================================================
+  //  Build indicator readouts + recommendation
+  // ===================================================================
+  function analyze(candles) {
+    var closes = candles.map(function (c){ return c.c; });
+    var L = closes.length - 1;
+    var price = closes[L];
+
+    var ema9  = lastVal(emaSeries(closes, 9));
+    var ema21 = lastVal(emaSeries(closes, 21));
+    var ema50 = closes.length >= 50 ? lastVal(emaSeries(closes, 50)) : null;
+    var rsiV  = rsi(closes, 14);
+    var mac   = macd(closes);
+    var pB    = bollPctB(closes, 20);
+    var rocV  = roc(closes, 4);   // 4 x 15m = 1h momentum
+
+    var volLast = candles[L].v;
+    var volAvg = 0, n = Math.min(20, candles.length);
+    for (var i = candles.length - n; i < candles.length; i++) volAvg += candles[i].v;
+    volAvg /= n;
+    var volRatio = volAvg ? volLast / volAvg : 1;
+    var lastUp = candles[L].c >= candles[L].o;
+
+    var list = [];
+
+    // RSI
+    (function () {
+      var sig = 0, txt = "Neutral";
+      if (rsiV != null) {
+        if (rsiV >= 70) { sig = 0; txt = "Overbought"; }
+        else if (rsiV <= 30) { sig = 0; txt = "Oversold"; }
+        else if (rsiV > 55) { sig = 1; txt = "Bullish"; }
+        else if (rsiV < 45) { sig = -1; txt = "Bearish"; }
+      }
+      list.push({ name: "RSI (14)", sub: "Momentum oscillator", val: rsiV != null ? rsiV.toFixed(1) : "—", vote: rsiV != null ? sig : null, chip: txt });
+    })();
+
+    // MACD
+    (function () {
+      var sig = 0, txt = "Neutral";
+      if (mac.hist != null) {
+        if (mac.hist > 0) { sig = 1; txt = mac.prevHist != null && mac.hist > mac.prevHist ? "Green ▲" : "Green"; }
+        else if (mac.hist < 0) { sig = -1; txt = mac.prevHist != null && mac.hist < mac.prevHist ? "Red ▼" : "Red"; }
+      }
+      list.push({ name: "MACD (12,26,9)", sub: "Histogram", val: mac.hist != null ? (mac.hist >= 0 ? "+" : "") + mac.hist.toFixed(2) : "—", vote: mac.hist != null ? sig : null, chip: txt });
+    })();
+
+    // EMA 9 vs 21 trend
+    (function () {
+      var ok = ema9 != null && ema21 != null, sig = ok ? (ema9 > ema21 ? 1 : -1) : null;
+      list.push({ name: "EMA 9 / 21", sub: "Short-term trend", val: ok ? (ema9 > ema21 ? "9>21" : "9<21") : "—", vote: sig, chip: ok ? (ema9 > ema21 ? "Uptrend" : "Downtrend") : "—" });
+    })();
+
+    // Price vs EMA21 (the "orange line")
+    (function () {
+      var ok = ema21 != null, sig = ok ? (price > ema21 ? 1 : -1) : null;
+      list.push({ name: "Price vs EMA 21", sub: "Orange line", val: ok ? fmtMoney(ema21) : "—", vote: sig, chip: ok ? (price > ema21 ? "Above" : "Below") : "—" });
+    })();
+
+    // Price vs EMA50
+    (function () {
+      var ok = ema50 != null, sig = ok ? (price > ema50 ? 1 : -1) : null;
+      list.push({ name: "Price vs EMA 50", sub: "Mid-term trend", val: ok ? fmtMoney(ema50) : "—", vote: sig, chip: ok ? (price > ema50 ? "Above" : "Below") : "—" });
+    })();
+
+    // Momentum (1h ROC)
+    (function () {
+      var sig = 0, txt = "Flat";
+      if (rocV != null) {
+        if (rocV > 0.1) { sig = 1; txt = "Rising"; }
+        else if (rocV < -0.1) { sig = -1; txt = "Falling"; }
+      }
+      list.push({ name: "Momentum 1h", sub: "Rate of change", val: rocV != null ? (rocV >= 0 ? "+" : "") + rocV.toFixed(2) + "%" : "—", vote: rocV != null ? sig : null, chip: txt });
+    })();
+
+    // Bollinger %B
+    (function () {
+      var sig = 0, txt = "Mid-band";
+      if (pB != null) {
+        if (pB > 0.85) { sig = 0; txt = "Upper / hot"; }
+        else if (pB > 0.5) { sig = 1; txt = "Upper half"; }
+        else if (pB < 0.15) { sig = 0; txt = "Lower / cold"; }
+        else if (pB < 0.5) { sig = -1; txt = "Lower half"; }
+      }
+      list.push({ name: "Bollinger %B", sub: "20-period band", val: pB != null ? pB.toFixed(2) : "—", vote: pB != null ? sig : null, chip: txt });
+    })();
+
+    // Volume (informational, no vote)
+    list.push({
+      name: "Volume", sub: "vs 20-bar avg",
+      val: (volRatio).toFixed(2) + "×",
+      vote: null,
+      chip: volRatio >= 1.2 ? (lastUp ? "High buy" : "High sell") : "Normal",
+      forceChip: volRatio >= 1.2 ? (lastUp ? "bull" : "bear") : "info"
+    });
+
+    return { price: price, list: list };
+  }
+
+  function buildReco(list) {
+    var bull = 0, bear = 0, total = 0;
+    list.forEach(function (x) {
+      if (x.vote == null) return;
+      total++;
+      if (x.vote > 0) bull++; else if (x.vote < 0) bear++;
+    });
+    var net = bull - bear, mag = Math.abs(net);
+    if (net === 0) return { dir: "SKIP", cls: "skip", conf: "No clear edge — signals are split", bull: bull, bear: bear, total: total };
+    var dir = net > 0 ? "OVER" : "UNDER";
+    var conf;
+    if (mag >= 4) conf = "High Confidence";
+    else if (mag >= 2) conf = "Medium Confidence";
+    else conf = "Low Confidence — consider skipping";
+    return { dir: dir, cls: net > 0 ? "over" : "under", conf: conf, bull: bull, bear: bear, total: total };
+  }
+
+  // ===================================================================
+  //  Rendering
+  // ===================================================================
+  var elPrice = $("price"), elChange = $("change"), elUpdated = $("updated"), elSrc = $("srcTag");
+
+  function flash(el){ el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
+
+  function renderPrice(price, change24) {
+    elPrice.classList.remove("err");
+    elPrice.textContent = fmtMoney(price);
+    flash(elPrice);
+    if (typeof change24 === "number" && isFinite(change24)) {
+      var up = change24 >= 0;
+      elChange.textContent = (up ? "▲ " : "▼ ") + Math.abs(change24).toFixed(2) + "%  (24h)";
+      elChange.className = "change mono " + (up ? "up" : "down");
+    }
+  }
+
+  function renderIndicators(list) {
+    var html = "";
+    list.forEach(function (x) {
+      var chipCls = x.forceChip || (x.vote == null ? "info" : x.vote > 0 ? "bull" : x.vote < 0 ? "bear" : "neu");
+      html +=
+        '<div class="ind">' +
+          '<div><div class="iname">' + x.name + '</div><div class="isub">' + x.sub + '</div></div>' +
+          '<div class="right">' +
+            '<span class="ival">' + x.val + '</span>' +
+            '<span class="chip ' + chipCls + '">' + x.chip + '</span>' +
+          '</div>' +
+        '</div>';
+    });
+    $("indicators").innerHTML = html;
+  }
+
+  function renderReco(reco) {
+    var el = $("reco");
+    el.className = "reco " + reco.cls;
+    $("recoDir").textContent = reco.dir === "OVER" ? "🟢 OVER" : reco.dir === "UNDER" ? "🔴 UNDER" : "⏸ SKIP";
+    $("recoConf").textContent = reco.conf;
+    $("recoTally").textContent = reco.bull + "▲   " + reco.bear + "▼   of " + reco.total + " indicators";
+    var denom = reco.total || 1;
+    $("mBull").style.width = (reco.bull / denom * 100) + "%";
+    $("mBear").style.width = (reco.bear / denom * 100) + "%";
+    state.lastReco = reco.dir === "SKIP" ? "SKIP" : (reco.dir + " · " + reco.conf.split("—")[0].trim());
+  }
+
+  // ===================================================================
+  //  Master refresh
+  // ===================================================================
+  function refresh() {
+    var myReq = ++state.reqId;
+    var coin = state.coin;
+    loadCandles(coin).then(function (res) {
+      if (myReq !== state.reqId) return;           // a newer request superseded this one
+      var candles = res.candles;
+      var a = analyze(candles);
+
+      // 24h change from candles (96 x 15m = 24h)
+      var change24 = null;
+      var closes = candles.map(function (c){ return c.c; });
+      var backIdx = closes.length - 1 - 96;
+      if (backIdx >= 0 && closes[backIdx]) change24 = (a.price - closes[backIdx]) / closes[backIdx] * 100;
+
+      renderPrice(a.price, change24);
+      renderIndicators(a.list);
+      renderReco(buildReco(a.list));
+
+      var t = new Date();
+      elUpdated.classList.remove("err");
+      elUpdated.textContent = "Updated " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
+      elSrc.textContent = res.src + " · 15m";
+    }).catch(function () {
+      if (myReq !== state.reqId) return;
+      elPrice.textContent = "Price unavailable";
+      elPrice.classList.add("err");
+      elUpdated.textContent = "Data unavailable — retrying…";
+      elUpdated.classList.add("err");
+      $("indicators").innerHTML = '<div class="empty err">Could not load market data.</div>';
+      $("recoDir").textContent = "—";
+      $("recoConf").textContent = "Waiting for data";
+    });
+  }
+
+  // ===================================================================
+  //  Timer (synced to :00 / :15 / :30 / :45)
+  // ===================================================================
   function nextBoundary(now) {
     var d = new Date(now.getTime());
-    var m = d.getMinutes();
-    var nextM = (Math.floor(m / 15) + 1) * 15;
-    d.setMinutes(nextM, 0, 0);
+    d.setMinutes((Math.floor(d.getMinutes() / 15) + 1) * 15, 0, 0);
     return d;
   }
-
   var currentRoundEnd = nextBoundary(new Date());
+  var elTimer = $("timer"), elTimerSub = $("timerSub");
 
   function tickTimer() {
     var now = new Date();
     if (now >= currentRoundEnd) {
-      // round closed
       currentRoundEnd = nextBoundary(now);
+      refresh();   // new round → pull fresh candles + recompute the pick
     }
     var remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
-    var mm = Math.floor(remaining / 60);
-    var ss = remaining % 60;
-    elTimer.textContent = pad(mm) + ":" + pad(ss);
-
-    if (remaining <= 120) {
-      elTimer.classList.add("warn");
-    } else {
-      elTimer.classList.remove("warn");
-    }
-
-    elTimerSub.textContent = "Round closes at " +
-      pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes());
+    elTimer.textContent = pad(Math.floor(remaining / 60)) + ":" + pad(remaining % 60);
+    elTimer.classList.toggle("warn", remaining <= 120);
+    elTimerSub.textContent = "Round closes at " + pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes());
   }
 
-  // ---------- Prediction engine ----------
-  function readIndicator(sel) {
-    var v = sel.value;
-    if (v === "1") return 1;
-    if (v === "-1") return -1;
-    if (v === "0n") return 0;   // explicitly neutral
-    return null;                // not selected
-  }
+  // ===================================================================
+  //  Bet logger
+  // ===================================================================
+  var elBetAmount = $("betAmount"), elBetOver = $("betOver"), elBetUnder = $("betUnder");
+  var elPending = $("pending"), elPendingText = $("pendingText");
 
-  function updateReco() {
-    var vals = [readIndicator(elRsi), readIndicator(elMacd), readIndicator(elEma)];
-    var chosen = vals.filter(function (v) { return v !== null; });
-
-    if (chosen.length < 3) {
-      setReco("skip", "SET INDICATORS", "Choose RSI, MACD & EMA above");
-      return;
-    }
-
-    var bull = chosen.filter(function (v) { return v === 1; }).length;
-    var bear = chosen.filter(function (v) { return v === -1; }).length;
-
-    var dir, agree;
-    if (bull > bear) { dir = "over"; agree = bull; }
-    else if (bear > bull) { dir = "under"; agree = bear; }
-    else {
-      // tie / all neutral
-      setReco("skip", "SKIP", "Mixed signals — no edge");
-      return;
-    }
-
-    if (agree === 3) {
-      setReco(dir, dir === "over" ? "🟢 OVER" : "🔴 UNDER", "High Confidence — all 3 agree");
-    } else if (agree === 2) {
-      setReco(dir, dir === "over" ? "🟢 OVER" : "🔴 UNDER", "Medium Confidence — 2 agree");
-    } else {
-      setReco("skip", "SKIP", "Low Confidence — only 1 signal");
-    }
-  }
-
-  function setReco(cls, dir, conf) {
-    elReco.className = "reco " + cls;
-    elRecoDir.textContent = dir;
-    elRecoConf.textContent = conf;
-  }
-
-  function currentRecoLabel() {
-    var d = elRecoDir.textContent;
-    if (d.indexOf("OVER") >= 0) return "OVER (" + elRecoConf.textContent.split("—")[0].trim() + ")";
-    if (d.indexOf("UNDER") >= 0) return "UNDER (" + elRecoConf.textContent.split("—")[0].trim() + ")";
-    return "No recommendation";
-  }
-
-  // ---------- Bet logger ----------
   function placeBet(side) {
-    if (state.pendingBet) {
-      flashPending();
-      return;
-    }
+    if (state.pendingBet) { flashPending(); return; }
     var amount = parseFloat(elBetAmount.value);
-    if (isNaN(amount) || amount <= 0) {
-      elBetAmount.focus();
-      return;
-    }
+    if (isNaN(amount) || amount <= 0) { elBetAmount.focus(); return; }
     state.pendingBet = {
-      side: side,
-      amount: amount,
-      reco: currentRecoLabel(),
+      coin: state.coin, side: side, amount: amount, reco: state.lastReco,
       roundTime: pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes())
     };
     renderPending();
   }
-
-  function flashPending() {
-    elPending.classList.remove("flash");
-    void elPending.offsetWidth;
-    elPending.style.borderColor = "var(--amber)";
-    setTimeout(function () { elPending.style.borderColor = ""; }, 400);
-  }
+  function flashPending(){ elPending.style.borderColor = "var(--amber)"; setTimeout(function(){ elPending.style.borderColor = ""; }, 400); }
 
   function renderPending() {
     var b = state.pendingBet;
-    if (!b) {
-      elPending.classList.add("hidden");
-      elBetOver.disabled = false;
-      elBetUnder.disabled = false;
-      return;
-    }
+    elBetOver.disabled = !!b; elBetUnder.disabled = !!b;
+    if (!b) { elPending.classList.add("hidden"); return; }
     elPending.classList.remove("hidden");
-    elBetOver.disabled = true;
-    elBetUnder.disabled = true;
-    elPendingText.textContent = b.side + " · " + fmtMoney(b.amount) + " · @ " + b.roundTime;
+    elPendingText.textContent = b.coin + " " + b.side + " · " + fmtMoney(b.amount) + " · @ " + b.roundTime;
     elPendingText.style.color = b.side === "OVER" ? "var(--green)" : "var(--red)";
   }
 
   function resolveBet(won) {
-    var b = state.pendingBet;
-    if (!b) return;
-    // Simple even-money payout model: win = +stake, loss = -stake
+    var b = state.pendingBet; if (!b) return;
     var pnl = won ? b.amount : -b.amount;
     state.pnl += pnl;
     if (won) state.wins++; else state.losses++;
-
-    state.rounds.unshift({
-      time: b.roundTime,
-      side: b.side,
-      amount: b.amount,
-      result: won ? "W" : "L",
-      pnl: pnl,
-      reco: b.reco
-    });
+    state.rounds.unshift({ coin: b.coin, time: b.roundTime, side: b.side, amount: b.amount, result: won ? "W" : "L", pnl: pnl });
     if (state.rounds.length > 10) state.rounds.pop();
-
     state.pendingBet = null;
-    renderPending();
-    renderScore();
-    renderHistory();
+    renderPending(); renderScore(); renderHistory();
   }
 
-  // ---------- Renderers ----------
   function renderScore() {
     var played = state.wins + state.losses;
     $("sRounds").textContent = played;
     $("sWins").textContent = state.wins;
     $("sLosses").textContent = state.losses;
-    $("sWinRate").textContent = played ? Math.round((state.wins / played) * 100) + "%" : "0%";
+    $("sWinRate").textContent = played ? Math.round(state.wins / played * 100) + "%" : "0%";
     var pnlEl = $("sPnl");
     pnlEl.textContent = (state.pnl < 0 ? "-$" : "$") + Math.abs(state.pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     pnlEl.className = "v mono " + (state.pnl > 0 ? "pos" : state.pnl < 0 ? "neg" : "");
   }
 
   function renderHistory() {
-    if (!state.rounds.length) {
-      elHistory.innerHTML = '<div class="empty">No rounds played yet.</div>';
-      return;
-    }
+    if (!state.rounds.length) { $("history").innerHTML = '<div class="empty">No rounds played yet.</div>'; return; }
     var html = "";
-    for (var i = 0; i < state.rounds.length; i++) {
-      var r = state.rounds[i];
+    state.rounds.forEach(function (r) {
       var w = r.result === "W";
       var pnlStr = (r.pnl < 0 ? "-$" : "+$") + Math.abs(r.pnl).toFixed(2);
       html +=
         '<div class="hrow ' + (w ? "w" : "l") + '">' +
           '<span class="htime mono">' + r.time + '</span>' +
-          '<span class="hpred ' + (r.side === "OVER" ? "over" : "under") + '">' + r.side + '</span>' +
+          '<span class="hpred ' + (r.side === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.side + '</span>' +
           '<span class="hres ' + (w ? "w" : "l") + '">' + (w ? "WIN" : "LOSS") + '</span>' +
           '<span class="hmeta mono">Bet ' + fmtMoney(r.amount) + ' · ' + pnlStr + '</span>' +
         '</div>';
-    }
-    elHistory.innerHTML = html;
+    });
+    $("history").innerHTML = html;
   }
 
-  // ---------- Wire up ----------
-  elRsi.addEventListener("change", updateReco);
-  elMacd.addEventListener("change", updateReco);
-  elEma.addEventListener("change", updateReco);
+  // ===================================================================
+  //  Coin switching
+  // ===================================================================
+  function setCoin(coin) {
+    if (!COINS[coin]) return;
+    state.coin = coin;
+    $("title").textContent = coin + " · 15MIN TRACKER";
+    $("priceLabel").textContent = COINS[coin].name + " / USD";
+    Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) {
+      b.classList.toggle("active", b.getAttribute("data-coin") === coin);
+    });
+    elPrice.textContent = "—"; elChange.textContent = "—";
+    $("indicators").innerHTML = '<div class="empty">Loading indicators…</div>';
+    $("recoDir").textContent = "ANALYZING…"; $("recoConf").textContent = "Loading live indicators";
+    refresh();
+  }
+
+  // ===================================================================
+  //  Wire up + init
+  // ===================================================================
+  document.querySelectorAll("#coinSeg button").forEach(function (b) {
+    b.addEventListener("click", function () { setCoin(b.getAttribute("data-coin")); });
+  });
   elBetOver.addEventListener("click", function () { placeBet("OVER"); });
   elBetUnder.addEventListener("click", function () { placeBet("UNDER"); });
-  elMarkWin.addEventListener("click", function () { resolveBet(true); });
-  elMarkLoss.addEventListener("click", function () { resolveBet(false); });
+  $("markWin").addEventListener("click", function () { resolveBet(true); });
+  $("markLoss").addEventListener("click", function () { resolveBet(false); });
 
-  // ---------- Init ----------
-  updateReco();
-  renderScore();
-  renderHistory();
+  renderScore(); renderHistory();
   tickTimer();
-  fetchPrice();
+  refresh();
   setInterval(tickTimer, 1000);
-  setInterval(fetchPrice, 30000);
+  setInterval(refresh, 30000);
 })();
 </script>
 </body>
