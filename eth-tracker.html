@@ -162,6 +162,7 @@
   .hrow .hres.w { color: var(--green); } .hrow .hres.l { color: var(--red); }
   .hrow .hmeta { grid-column: 1 / -1; font-size: 12px; color: var(--label-3); }
   .empty { text-align: center; color: var(--label-3); font-size: 14px; padding: 24px 0; }
+  .accNote { font-size: 12px; color: var(--label-3); margin-top: 14px; text-align: center; }
 
   .footnote { text-align: center; font-size: 11px; color: var(--label-3); margin-top: 8px; line-height: 1.6; }
 </style>
@@ -242,48 +243,28 @@
 
   </div>
 
-  <!-- BET LOGGER -->
+  <!-- ACCURACY -->
   <div class="module">
-  <div class="sec">Log Your Bet</div>
-  <div class="card">
-    <input id="betAmount" class="betInput mono" type="number" inputmode="decimal" placeholder="$ amount" min="0" step="1" value="10" />
-    <div class="betBtns">
-      <button class="btn over" id="betOver">OVER</button>
-      <button class="btn under" id="betUnder">UNDER</button>
-    </div>
-    <div id="pending" class="pending hidden">
-      <div>Open bet · <span class="big" id="pendingText">—</span></div>
-      <div class="resultBtns">
-        <button class="btn win" id="markWin">WIN</button>
-        <button class="btn loss" id="markLoss">LOSS</button>
-      </div>
-    </div>
-  </div>
-
-  </div>
-
-  <!-- SCOREBOARD -->
-  <div class="module">
-  <div class="sec">Scoreboard</div>
+  <div class="sec">Pick Accuracy <span class="tiny">· auto-graded</span></div>
   <div class="card">
     <div class="scoreGrid">
-      <div class="stat"><div class="v mono" id="sRounds">0</div><div class="k">Rounds</div></div>
-      <div class="stat"><div class="v mono pos" id="sWins">0</div><div class="k">Wins</div></div>
-      <div class="stat"><div class="v mono neg" id="sLosses">0</div><div class="k">Losses</div></div>
+      <div class="stat"><div class="v mono" id="sGraded">0</div><div class="k">Rounds</div></div>
+      <div class="stat"><div class="v mono pos" id="sCorrect">0</div><div class="k">Correct</div></div>
+      <div class="stat"><div class="v mono" id="sStreak">0</div><div class="k">Streak</div></div>
     </div>
-    <div class="scoreGrid" style="margin-top:10px; grid-template-columns: repeat(2,1fr);">
-      <div class="stat"><div class="v mono" id="sWinRate">0%</div><div class="k">Win Rate</div></div>
-      <div class="stat"><div class="v mono" id="sPnl">$0.00</div><div class="k">Total P&amp;L</div></div>
+    <div class="scoreGrid" style="margin-top:10px; grid-template-columns: 1fr;">
+      <div class="stat"><div class="v mono" id="sHitRate">—</div><div class="k">Hit Rate</div></div>
     </div>
+    <div class="accNote" id="accNote">Grading begins at the next 15-min close.</div>
   </div>
 
   </div>
 
   <!-- HISTORY -->
   <div class="module">
-  <div class="sec">Round History <span class="tiny">· last 10</span></div>
+  <div class="sec">Recent Rounds <span class="tiny">· last 10</span></div>
   <div class="card">
-    <div id="history" class="history"><div class="empty">No rounds played yet.</div></div>
+    <div id="history" class="history"><div class="empty">No graded rounds yet.</div></div>
   </div>
 
   </div>
@@ -304,7 +285,7 @@
     SOL: { name: "Solana",   pair: "SOL · USD", sym: "◎", cgId: "solana",   cbProduct: "SOL-USD" }
   };
 
-  var state = { coin: "ETH", pendingBet: null, rounds: [], wins: 0, losses: 0, pnl: 0, lastReco: "No recommendation", reqId: 0 };
+  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", pendingRound: null, reqId: 0 };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -468,6 +449,7 @@
     $("mBull").style.width = (reco.bull / denom * 100) + "%";
     $("mBear").style.width = (reco.bear / denom * 100) + "%";
     state.lastReco = reco.dir === "SKIP" ? "SKIP" : (reco.dir + " · " + reco.conf.split("—")[0].trim());
+    state.lastRecoDir = reco.dir;
   }
 
   function refresh() {
@@ -477,7 +459,9 @@
       var candles = res.candles, a = analyze(candles);
       var change24 = null, closes = candles.map(function (c){ return c.c; }), backIdx = closes.length - 1 - 96;
       if (backIdx >= 0 && closes[backIdx]) change24 = (a.price - closes[backIdx]) / closes[backIdx] * 100;
+      state.lastPrice = a.price;
       renderPrice(a.price, change24); renderIndicators(a.list); renderReco(buildReco(a.list));
+      if (!state.pendingRound) openRound(true);
       var t = new Date();
       elUpdated.classList.remove("err");
       elUpdated.textContent = "Updated " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
@@ -497,7 +481,12 @@
   var elTimer = $("timer"), elTimerSub = $("timerSub"), elTimerBar = $("timerBar");
   function tickTimer() {
     var now = new Date();
-    if (now >= currentRoundEnd) { currentRoundEnd = nextBoundary(now); refresh(); }
+    if (now >= currentRoundEnd) {
+      gradeRound();
+      currentRoundEnd = nextBoundary(now);
+      openRound(false);
+      refresh();
+    }
     var remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
     elTimer.textContent = pad(Math.floor(remaining / 60)) + ":" + pad(remaining % 60);
     var warn = remaining <= 120;
@@ -507,47 +496,60 @@
     elTimerSub.textContent = "Round closes at " + pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes());
   }
 
-  // ---------- Bet logger ----------
-  var elBetAmount = $("betAmount"), elBetOver = $("betOver"), elBetUnder = $("betUnder"), elPending = $("pending"), elPendingText = $("pendingText");
-  function placeBet(side) {
-    if (state.pendingBet) { elPending.style.outlineColor = "var(--orange)"; setTimeout(function(){ elPending.style.outlineColor = "transparent"; }, 400); return; }
-    var amount = parseFloat(elBetAmount.value);
-    if (isNaN(amount) || amount <= 0) { elBetAmount.focus(); return; }
-    state.pendingBet = { coin: state.coin, side: side, amount: amount, reco: state.lastReco, roundTime: pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes()) };
-    renderPending();
+  // ---------- Pick accuracy tracker ----------
+  function roundLabel(d) { return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+
+  function openRound(partial) {
+    state.pendingRound = {
+      coin: state.coin,
+      openPrice: state.lastPrice,
+      pickDir: state.lastRecoDir || "SKIP",
+      endLabel: roundLabel(currentRoundEnd),
+      partial: !!partial
+    };
   }
-  function renderPending() {
-    var b = state.pendingBet; elBetOver.disabled = !!b; elBetUnder.disabled = !!b;
-    if (!b) { elPending.classList.add("hidden"); return; }
-    elPending.classList.remove("hidden");
-    elPendingText.textContent = b.coin + " " + b.side + " · " + fmtMoney(b.amount) + " · @ " + b.roundTime;
-    elPendingText.style.color = b.side === "OVER" ? "var(--green)" : "var(--red)";
+
+  function gradeRound() {
+    var pr = state.pendingRound;
+    state.pendingRound = null;
+    if (!pr || pr.partial) return;                                   // mid-session / coin-switch rounds aren't graded
+    if (pr.openPrice == null || state.lastPrice == null) return;
+    if (pr.pickDir !== "OVER" && pr.pickDir !== "UNDER") return;     // SKIP picks aren't graded
+    var close = state.lastPrice;
+    var actual = close > pr.openPrice ? "OVER" : close < pr.openPrice ? "UNDER" : "FLAT";
+    if (actual === "FLAT") return;                                   // no movement — push, ignore
+    state.rounds.unshift({
+      coin: pr.coin, time: pr.endLabel, pick: pr.pickDir, actual: actual,
+      correct: actual === pr.pickDir, pct: (close - pr.openPrice) / pr.openPrice * 100
+    });
+    if (state.rounds.length > 50) state.rounds.pop();
+    saveRounds(); renderAccuracy(); renderRounds();
   }
-  function resolveBet(won) {
-    var b = state.pendingBet; if (!b) return;
-    var pnl = won ? b.amount : -b.amount; state.pnl += pnl;
-    if (won) state.wins++; else state.losses++;
-    state.rounds.unshift({ coin: b.coin, time: b.roundTime, side: b.side, amount: b.amount, result: won ? "W" : "L", pnl: pnl });
-    if (state.rounds.length > 10) state.rounds.pop();
-    state.pendingBet = null; renderPending(); renderScore(); renderHistory();
+
+  function saveRounds() { try { localStorage.setItem("pickTracker_v1", JSON.stringify(state.rounds)); } catch (e) {} }
+  function loadRounds() { try { var s = localStorage.getItem("pickTracker_v1"); if (s) state.rounds = JSON.parse(s) || []; } catch (e) {} }
+
+  function renderAccuracy() {
+    var graded = state.rounds.length, correct = 0, streak = 0, i;
+    for (i = 0; i < graded; i++) if (state.rounds[i].correct) correct++;
+    for (i = 0; i < graded; i++) { if (state.rounds[i].correct) streak++; else break; }
+    $("sGraded").textContent = graded;
+    $("sCorrect").textContent = correct;
+    $("sStreak").textContent = streak;
+    $("sHitRate").textContent = graded ? Math.round(correct / graded * 100) + "%" : "—";
+    $("sHitRate").className = "v mono " + (graded ? (correct / graded >= 0.5 ? "pos" : "neg") : "");
+    $("accNote").textContent = graded ? (correct + " of " + graded + " auto-picks correct") : "Grading begins at the next 15-min close.";
   }
-  function renderScore() {
-    var played = state.wins + state.losses;
-    $("sRounds").textContent = played; $("sWins").textContent = state.wins; $("sLosses").textContent = state.losses;
-    $("sWinRate").textContent = played ? Math.round(state.wins / played * 100) + "%" : "0%";
-    var pnlEl = $("sPnl");
-    pnlEl.textContent = (state.pnl < 0 ? "-$" : "$") + Math.abs(state.pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    pnlEl.className = "v mono " + (state.pnl > 0 ? "pos" : state.pnl < 0 ? "neg" : "");
-  }
-  function renderHistory() {
-    if (!state.rounds.length) { $("history").innerHTML = '<div class="empty">No rounds played yet.</div>'; return; }
+
+  function renderRounds() {
+    if (!state.rounds.length) { $("history").innerHTML = '<div class="empty">No graded rounds yet.</div>'; return; }
     var html = "";
-    state.rounds.forEach(function (r) {
-      var w = r.result === "W", pnlStr = (r.pnl < 0 ? "-$" : "+$") + Math.abs(r.pnl).toFixed(2);
-      html += '<div class="hrow ' + (w ? "w" : "l") + '"><span class="htime mono">' + r.time + '</span>' +
-        '<span class="hpred ' + (r.side === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.side + '</span>' +
-        '<span class="hres ' + (w ? "w" : "l") + '">' + (w ? "WIN" : "LOSS") + '</span>' +
-        '<span class="hmeta mono">Bet ' + fmtMoney(r.amount) + ' · ' + pnlStr + '</span></div>';
+    state.rounds.slice(0, 10).forEach(function (r) {
+      var ok = r.correct, moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
+      html += '<div class="hrow ' + (ok ? "w" : "l") + '"><span class="htime mono">' + r.time + '</span>' +
+        '<span class="hpred ' + (r.pick === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.pick + '</span>' +
+        '<span class="hres ' + (ok ? "w" : "l") + '">' + (ok ? "✓" : "✗") + '</span>' +
+        '<span class="hmeta mono">Actual ' + r.actual + ' · ' + moveStr + '</span></div>';
     });
     $("history").innerHTML = html;
   }
@@ -556,6 +558,7 @@
   function setCoin(coin) {
     if (!COINS[coin]) return;
     state.coin = coin;
+    state.pendingRound = null;
     $("coinBadge").textContent = COINS[coin].sym;
     $("coinName").textContent = COINS[coin].name;
     $("priceLabel").textContent = COINS[coin].pair;
@@ -570,12 +573,8 @@
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) {
     b.addEventListener("click", function () { setCoin(b.getAttribute("data-coin")); });
   });
-  elBetOver.addEventListener("click", function () { placeBet("OVER"); });
-  elBetUnder.addEventListener("click", function () { placeBet("UNDER"); });
-  $("markWin").addEventListener("click", function () { resolveBet(true); });
-  $("markLoss").addEventListener("click", function () { resolveBet(false); });
-
-  renderScore(); renderHistory(); tickTimer(); refresh();
+  loadRounds();
+  renderAccuracy(); renderRounds(); tickTimer(); refresh();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
 })();
 </script>
