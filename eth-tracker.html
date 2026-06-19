@@ -34,8 +34,8 @@
     -webkit-font-smoothing: antialiased; letter-spacing: -0.01em;
   }
   body {
-    max-width: 393px; margin: 0 auto;
-    padding: max(14px, env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+    max-width: 1400px; margin: 0 auto;
+    padding: max(14px, env(safe-area-inset-top)) clamp(16px, 3.5vw, 44px) calc(40px + env(safe-area-inset-bottom));
     min-height: 100vh;
   }
 
@@ -66,6 +66,17 @@
 
   /* ---------- Card ---------- */
   .card { background: var(--surface); border-radius: 18px; padding: 18px; margin-bottom: 24px; }
+
+  /* ---------- Responsive dashboard layout ---------- */
+  .module { break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid; }
+  @media (min-width: 760px) {
+    .seg { max-width: 540px; }
+    .grid { column-count: 2; column-gap: 18px; }
+  }
+  @media (min-width: 1180px) {
+    .grid { column-count: 3; }
+    .price { font-size: 50px; }
+  }
 
   /* ---------- Hero / price ---------- */
   .heroTop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
@@ -168,7 +179,10 @@
     <button data-coin="SOL"><span class="sym">◎</span> SOL</button>
   </div>
 
+  <main class="grid">
+
   <!-- HERO PRICE -->
+  <div class="module">
   <div class="card hero">
     <div class="heroTop">
       <div class="coinInfo">
@@ -187,7 +201,10 @@
     </div>
   </div>
 
+  </div>
+
   <!-- TIMER -->
+  <div class="module">
   <div class="card timerCard">
     <div class="timerLabel">Next round closes in</div>
     <div id="timer" class="timer mono">--:--</div>
@@ -195,7 +212,10 @@
     <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
   </div>
 
+  </div>
+
   <!-- RECOMMENDATION -->
+  <div class="module">
   <div class="sec">Auto Pick · Next 15 Min</div>
   <div class="card">
     <div id="reco" class="reco skip">
@@ -206,13 +226,19 @@
     </div>
   </div>
 
+  </div>
+
   <!-- INDICATORS -->
+  <div class="module">
   <div class="sec">Live Indicators <span class="tiny">· 15m candles</span></div>
   <div class="card">
     <div id="indicators"><div class="empty">Loading indicators…</div></div>
   </div>
 
+  </div>
+
   <!-- BET LOGGER -->
+  <div class="module">
   <div class="sec">Log Your Bet</div>
   <div class="card">
     <input id="betAmount" class="betInput mono" type="number" inputmode="decimal" placeholder="$ amount" min="0" step="1" value="10" />
@@ -229,7 +255,10 @@
     </div>
   </div>
 
+  </div>
+
   <!-- SCOREBOARD -->
+  <div class="module">
   <div class="sec">Scoreboard</div>
   <div class="card">
     <div class="scoreGrid">
@@ -243,11 +272,17 @@
     </div>
   </div>
 
+  </div>
+
   <!-- HISTORY -->
+  <div class="module">
   <div class="sec">Round History <span class="tiny">· last 10</span></div>
   <div class="card">
     <div id="history" class="history"><div class="empty">No rounds played yet.</div></div>
   </div>
+
+  </div>
+  </main>
 
   <div class="footnote">
     Indicators computed live from 15-minute candles (Coinbase · CoinGecko fallback).<br>
