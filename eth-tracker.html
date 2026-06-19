@@ -93,6 +93,8 @@
   @keyframes flashUpdate { 0%{opacity:1;} 40%{opacity:.45;} 100%{opacity:1;} }
   .updated { font-size: 12px; color: var(--label-3); margin-top: 14px; display: flex; justify-content: space-between; }
   .err { color: var(--red); }
+  .roundStatus { font-size: 13px; color: var(--label-2); margin-top: 9px; font-weight: 600; }
+  .roundStatus .o { color: var(--green); } .roundStatus .u { color: var(--red); }
 
   /* ---------- Timer ---------- */
   .timerCard { text-align: center; }
@@ -197,6 +199,7 @@
       <span id="change" class="changePill mono">—</span>
     </div>
     <div id="price" class="price mono">—</div>
+    <div id="roundStatus" class="roundStatus mono">Waiting for round open…</div>
     <div class="updated">
       <span id="updated" class="mono">Loading…</span>
       <span id="srcTag" class="mono"></span>
@@ -271,8 +274,8 @@
   </main>
 
   <div class="footnote">
-    Indicators computed live from 15-minute candles (Coinbase · CoinGecko fallback).<br>
-    For tracking only — not financial advice.
+    Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
+    Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.
   </div>
 
 <script>
@@ -285,7 +288,7 @@
     SOL: { name: "Solana",   pair: "SOL · USD", sym: "◎", cgId: "solana",   cbProduct: "SOL-USD" }
   };
 
-  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", pendingRound: null, reqId: 0 };
+  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", pendingRound: null, reqId: 0, candles: null, wsLive: false };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -423,13 +426,16 @@
   var elPrice = $("price"), elChange = $("change"), elUpdated = $("updated"), elSrc = $("srcTag");
   function flash(el){ el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
 
-  function renderPrice(price, change24) {
-    elPrice.classList.remove("err"); elPrice.textContent = fmtMoney(price); flash(elPrice);
+  function renderChange(change24) {
     if (typeof change24 === "number" && isFinite(change24)) {
       var up = change24 >= 0;
       elChange.textContent = (up ? "↑ " : "↓ ") + Math.abs(change24).toFixed(2) + "%";
       elChange.className = "changePill mono " + (up ? "up" : "down");
     }
+  }
+  function renderPrice(price, change24) {
+    elPrice.classList.remove("err"); elPrice.textContent = fmtMoney(price); flash(elPrice);
+    renderChange(change24);
   }
   function renderIndicators(list) {
     var html = "";
@@ -459,20 +465,92 @@
       var candles = res.candles, a = analyze(candles);
       var change24 = null, closes = candles.map(function (c){ return c.c; }), backIdx = closes.length - 1 - 96;
       if (backIdx >= 0 && closes[backIdx]) change24 = (a.price - closes[backIdx]) / closes[backIdx] * 100;
-      state.lastPrice = a.price;
-      renderPrice(a.price, change24); renderIndicators(a.list); renderReco(buildReco(a.list));
+      state.candles = candles;
+      if (state.wsLive) {
+        renderChange(change24);
+      } else {
+        state.lastPrice = a.price;
+        renderPrice(a.price, change24);
+        var t = new Date();
+        elUpdated.classList.remove("err");
+        elUpdated.textContent = "Updated " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
+        elSrc.textContent = res.src + " · 15m";
+      }
+      renderIndicators(a.list); renderReco(buildReco(a.list));
       if (!state.pendingRound) openRound(true);
-      var t = new Date();
-      elUpdated.classList.remove("err");
-      elUpdated.textContent = "Updated " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
-      elSrc.textContent = res.src + " · 15m";
+      updateRoundStatus();
     }).catch(function () {
       if (myReq !== state.reqId) return;
+      if (state.wsLive) return;   // keep the live price/indicators on screen if REST hiccups
       elPrice.textContent = "Price unavailable"; elPrice.classList.add("err");
       elUpdated.textContent = "Data unavailable — retrying…"; elUpdated.classList.add("err");
       $("indicators").innerHTML = '<div class="empty err">Could not load market data.</div>';
       $("recoDir").textContent = "—"; $("recoConf").textContent = "Waiting for data";
     });
+  }
+
+  // ---------- Real-time price (Coinbase WebSocket) ----------
+  var ws = null, wsCoin = null, recomputePending = false;
+
+  function connectWS() {
+    closeWS();
+    wsCoin = state.coin;
+    var product = COINS[state.coin].cbProduct;
+    try { ws = new WebSocket("wss://ws-feed.exchange.coinbase.com"); }
+    catch (e) { return; }
+    ws.onopen = function () {
+      try { ws.send(JSON.stringify({ type: "subscribe", product_ids: [product], channels: ["ticker"] })); } catch (e) {}
+    };
+    ws.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.type === "ticker" && m.product_id === product && m.price) onLivePrice(parseFloat(m.price));
+    };
+    ws.onerror = function () { try { ws.close(); } catch (e) {} };
+    ws.onclose = function () {
+      state.wsLive = false;
+      if (wsCoin === state.coin) setTimeout(connectWS, 2000);   // auto-reconnect while on this coin
+    };
+  }
+  function closeWS() { if (ws) { try { ws.onclose = null; ws.close(); } catch (e) {} ws = null; } }
+
+  function onLivePrice(price) {
+    state.wsLive = true;
+    state.lastPrice = price;
+    elPrice.classList.remove("err");
+    elPrice.textContent = fmtMoney(price);    // every tick (sub-second) — cheap text update
+    updateRoundStatus();
+    scheduleRecompute();
+  }
+
+  // Fold the live price into the forming 15-min candle and recompute indicators — throttled to 1/sec.
+  function scheduleRecompute() {
+    if (recomputePending) return;
+    recomputePending = true;
+    setTimeout(function () {
+      recomputePending = false;
+      if (!state.candles || !state.candles.length || state.lastPrice == null) return;
+      var c = state.candles, last = c[c.length - 1], p = state.lastPrice;
+      last.c = p; if (p > last.h) last.h = p; if (p < last.l) last.l = p;
+      var a = analyze(c);
+      renderIndicators(a.list); renderReco(buildReco(a.list));
+      var t = new Date();
+      elUpdated.classList.remove("err");
+      elUpdated.textContent = "Live · " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
+      elSrc.textContent = "Coinbase · live";
+    }, 1000);
+  }
+
+  // Live "Price to beat" / Over-Under status vs the strike captured at round open.
+  function updateRoundStatus() {
+    var el = $("roundStatus");
+    var strike = state.pendingRound ? state.pendingRound.openPrice : null;
+    if (strike == null || state.lastPrice == null) { el.textContent = "Waiting for round open…"; return; }
+    var d = state.lastPrice - strike, pct = strike ? d / strike * 100 : 0;
+    var side = d > 0 ? "OVER" : d < 0 ? "UNDER" : "FLAT";
+    var cls = d > 0 ? "o" : d < 0 ? "u" : "";
+    var arrow = d > 0 ? "▲" : d < 0 ? "▼" : "•";
+    el.innerHTML = "Beat " + fmtMoney(strike) + " · " + arrow + " " + (d >= 0 ? "+" : "−") + fmtMoney(Math.abs(d)) +
+      " (" + (pct >= 0 ? "+" : "") + pct.toFixed(3) + "%) · <span class=\"" + cls + "\">" + side + "</span>";
   }
 
   // ---------- Timer ----------
@@ -566,6 +644,9 @@
     elPrice.textContent = "—"; elChange.textContent = "—"; elChange.className = "changePill mono";
     $("indicators").innerHTML = '<div class="empty">Loading indicators…</div>';
     $("recoDir").textContent = "Analyzing…"; $("recoConf").textContent = "Loading live indicators"; $("reco").className = "reco skip";
+    state.candles = null; state.wsLive = false;
+    $("roundStatus").textContent = "Waiting for round open…";
+    connectWS();
     refresh();
   }
 
@@ -574,7 +655,7 @@
     b.addEventListener("click", function () { setCoin(b.getAttribute("data-coin")); });
   });
   loadRounds();
-  renderAccuracy(); renderRounds(); tickTimer(); refresh();
+  renderAccuracy(); renderRounds(); tickTimer(); refresh(); connectWS();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
 })();
 </script>
