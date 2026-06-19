@@ -166,6 +166,34 @@
   .empty { text-align: center; color: var(--label-3); font-size: 14px; padding: 24px 0; }
   .accNote { font-size: 12px; color: var(--label-3); margin-top: 14px; text-align: center; }
 
+  /* ---------- Help / info sheet ---------- */
+  .ihelp { display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:50%; background:var(--surface-3); color:var(--label-2); font-size:11px; font-weight:700; margin-left:7px; cursor:pointer; border:none; vertical-align:middle; padding:0; }
+  .ihelp:active { opacity:.6; }
+  .ind { cursor: pointer; }
+  #infoSheet { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; justify-content:center; z-index:50; }
+  #infoSheet.open { display:flex; }
+  .infoCard { background:var(--surface); border:1px solid var(--border); border-radius:20px 20px 0 0; width:100%; max-width:393px; padding:22px 18px calc(26px + env(safe-area-inset-bottom)); }
+  @media (min-width:520px){ #infoSheet{ align-items:center; } .infoCard{ border-radius:20px; } }
+  .infoCard h3 { font-size:17px; margin:0 0 10px; }
+  .infoCard p { font-size:14px; line-height:1.55; color:var(--label-2); margin:0 0 16px; }
+  .infoCard .closeBtn { width:100%; min-height:48px; border:none; border-radius:12px; background:var(--surface-2); color:var(--label); font-size:15px; font-weight:600; }
+
+  /* ---------- AI Co-Pilot ---------- */
+  .aiRow { display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:.5px solid var(--separator); font-size:14px; }
+  .aiRow:last-child { border-bottom:none; }
+  .aiRow .k { color:var(--label-2); }
+  .aiRow .v { font-weight:700; font-family:"Roboto Mono",monospace; }
+  .aiVerdict { font-size:24px; font-weight:800; text-align:center; padding:4px 0 2px; }
+  .aiVerdict.over{ color:var(--green); } .aiVerdict.under{ color:var(--red); } .aiVerdict.skip{ color:var(--orange); }
+  .aiRationale { font-size:13px; color:var(--label-2); line-height:1.55; margin-top:12px; }
+  .aiEdge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:7px; }
+  .aiEdge.with { background:rgba(255,159,10,.15); color:var(--orange); }
+  .aiEdge.against { background:rgba(48,209,88,.15); color:var(--green); }
+  .settingsInput { width:100%; min-height:44px; background:var(--surface-2); color:var(--label); border:1px solid var(--border-2); border-radius:10px; padding:0 12px; font-size:13px; font-family:"Roboto Mono",monospace; margin-bottom:10px; }
+  .aiBtn { width:100%; min-height:46px; border:none; border-radius:12px; background:var(--blue); color:#fff; font-size:15px; font-weight:700; cursor:pointer; }
+  .aiBtn:active{ opacity:.85; } .aiBtn:disabled{ opacity:.45; }
+  .aiMuted { font-size:12.5px; color:var(--label-3); line-height:1.55; margin-bottom:12px; }
+
   .footnote { text-align: center; font-size: 11px; color: var(--label-3); margin-top: 8px; line-height: 1.6; }
 </style>
 </head>
@@ -221,7 +249,7 @@
 
   <!-- RECOMMENDATION -->
   <div class="module">
-  <div class="sec">Auto Pick · Next 15 Min</div>
+  <div class="sec">Auto Pick · Next 15 Min <button class="ihelp" data-info="autopick">?</button></div>
   <div class="card">
     <div id="reco" class="reco skip">
       <div class="dir" id="recoDir">Analyzing…</div>
@@ -237,9 +265,20 @@
 
   <main class="grid">
 
+  <!-- AI CO-PILOT -->
+  <div class="module">
+  <div class="sec">AI Co-Pilot <button class="ihelp" data-info="ai">?</button></div>
+  <div class="card">
+    <div class="aiMuted" id="aiIntro">Optional. Connects to your own Cloudflare Worker, which pulls the live <b>Kalshi crowd odds</b> (the market behind Coinbase) and asks <b>Claude</b> to weigh your indicators + your 7-day track record against the crowd — and flag when your read disagrees with it.</div>
+    <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button id="aiRun" class="aiBtn">Save &amp; Get AI Read</button>
+    <div id="aiResult" class="hidden" style="margin-top:14px;"></div>
+  </div>
+  </div>
+
   <!-- INDICATORS -->
   <div class="module">
-  <div class="sec">Live Indicators <span class="tiny">· 15m candles</span></div>
+  <div class="sec">Live Indicators <span class="tiny">· 15m candles</span> <button class="ihelp" data-info="indicators">?</button></div>
   <div class="card">
     <div id="indicators"><div class="empty">Loading indicators…</div></div>
   </div>
@@ -248,7 +287,7 @@
 
   <!-- ACCURACY -->
   <div class="module">
-  <div class="sec">Pick Accuracy <span class="tiny">· auto-graded</span></div>
+  <div class="sec">Pick Accuracy <span class="tiny">· auto-graded</span> <button class="ihelp" data-info="accuracy">?</button></div>
   <div class="card">
     <div class="scoreGrid">
       <div class="stat"><div class="v mono" id="sGraded">0</div><div class="k">Rounds</div></div>
@@ -273,6 +312,8 @@
   </div>
   </main>
 
+  <div id="infoSheet"><div class="infoCard"><h3 id="infoTitle">—</h3><p id="infoText">—</p><button class="closeBtn" id="infoClose">Got it</button></div></div>
+
   <div class="footnote">
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.
@@ -288,7 +329,7 @@
     SOL: { name: "Solana",   pair: "SOL · USD", sym: "◎", cgId: "solana",   cbProduct: "SOL-USD" }
   };
 
-  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", pendingRound: null, reqId: 0, candles: null, wsLive: false };
+  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -441,7 +482,7 @@
     var html = "";
     list.forEach(function (x) {
       var chipCls = x.forceChip || (x.vote == null ? "info" : x.vote > 0 ? "bull" : x.vote < 0 ? "bear" : "neu");
-      html += '<div class="ind"><div class="leftcol"><div class="iname">' + x.name + '</div><div class="isub">' + x.sub + '</div></div>' +
+      html += '<div class="ind" data-info="' + x.name + '"><div class="leftcol"><div class="iname">' + x.name + ' <span style="color:var(--label-3);font-size:11px">&#9432;</span></div><div class="isub">' + x.sub + '</div></div>' +
         '<div class="right"><span class="ival mono">' + x.val + '</span><span class="chip ' + chipCls + '">' + x.chip + '</span></div></div>';
     });
     $("indicators").innerHTML = html;
@@ -463,6 +504,7 @@
     loadCandles(coin).then(function (res) {
       if (myReq !== state.reqId) return;
       var candles = res.candles, a = analyze(candles);
+      state.lastList = a.list;
       var change24 = null, closes = candles.map(function (c){ return c.c; }), backIdx = closes.length - 1 - 96;
       if (backIdx >= 0 && closes[backIdx]) change24 = (a.price - closes[backIdx]) / closes[backIdx] * 100;
       state.candles = candles;
@@ -532,6 +574,7 @@
       var c = state.candles, last = c[c.length - 1], p = state.lastPrice;
       last.c = p; if (p > last.h) last.h = p; if (p < last.l) last.l = p;
       var a = analyze(c);
+      state.lastList = a.list;
       renderIndicators(a.list); renderReco(buildReco(a.list));
       var t = new Date();
       elUpdated.classList.remove("err");
@@ -564,6 +607,7 @@
       currentRoundEnd = nextBoundary(now);
       openRound(false);
       refresh();
+      if (aiAvailable()) setTimeout(function () { callWorker(false); }, 4000);   // fresh AI read each new round
     }
     var remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
     elTimer.textContent = pad(Math.floor(remaining / 60)) + ":" + pad(remaining % 60);
@@ -600,7 +644,7 @@
       coin: pr.coin, time: pr.endLabel, pick: pr.pickDir, actual: actual,
       correct: actual === pr.pickDir, pct: (close - pr.openPrice) / pr.openPrice * 100
     });
-    if (state.rounds.length > 50) state.rounds.pop();
+    if (state.rounds.length > 700) state.rounds.pop();   // ~7 days of 15-min rounds
     saveRounds(); renderAccuracy(); renderRounds();
   }
 
@@ -654,8 +698,98 @@
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) {
     b.addEventListener("click", function () { setCoin(b.getAttribute("data-coin")); });
   });
+  // ---------- Help sheet ----------
+  var EXPLAIN = {
+    autopick: { t: "Auto Pick", d: "Your engine reads 7 technical signals from live 15-minute candles. Each votes bullish or bearish, and the majority decides OVER (price likely higher in 15 min) or UNDER. Confidence reflects how lopsided the vote is. SKIP means signals are split — no clear edge." },
+    indicators: { t: "Live Indicators", d: "Classic technical indicators recomputed live from 15-minute candles. Each shows its current value and a bull / bear / neutral tag. Tap any indicator row to learn what it means." },
+    accuracy: { t: "Pick Accuracy", d: "When each 15-minute round closes, the app checks whether the auto pick was right — did price end above or below the round's opening 'price to beat'? It tracks your hit rate, streak, and the last ~7 days of rounds, saved on this device." },
+    ai: { t: "AI Co-Pilot", d: "Optional. Connects to a small Cloudflare Worker you deploy. The worker fetches the live Kalshi crowd odds (the regulated market behind Coinbase's Over/Under) and asks Claude to weigh your indicators AND your recent track record against the crowd. The biggest edge is when a well-supported read disagrees with the crowd." },
+    "RSI (14)": { t: "RSI (14)", d: "Relative Strength Index — momentum on a 0–100 scale. Above ~55 = buyers in control (bullish); below ~45 = sellers (bearish). Above 70 is overbought (stretched up), below 30 is oversold (stretched down)." },
+    "MACD (12,26,9)": { t: "MACD (12,26,9)", d: "Moving Average Convergence Divergence. The histogram measures momentum: positive/green = upward push (bullish), negative/red = downward (bearish). Rising bars mean momentum is building in that direction." },
+    "EMA 9 / 21": { t: "EMA 9 / 21", d: "Two exponential moving averages. When the fast 9-period line is above the slow 21-period line, the short-term trend is up; below means the short-term trend is down." },
+    "Price vs EMA 21": { t: "Price vs EMA 21", d: "Is the current price above or below the 21-period average — the 'orange line' on most charts? Above = bullish bias, below = bearish bias." },
+    "Price vs EMA 50": { t: "Price vs EMA 50", d: "Price against the slower 50-period average — the medium-term trend filter. Trading above it is constructive; below it is weaker." },
+    "Momentum 1h": { t: "Momentum (1h)", d: "Rate of change over the last hour (4 fifteen-minute candles). Positive = price rising, negative = falling. Confirms whether recent moves have follow-through." },
+    "Bollinger %B": { t: "Bollinger %B", d: "Where price sits inside its volatility bands: 0 = lower band, 1 = upper band. Upper half leans bullish; near 1 is stretched/overbought, near 0 is oversold." },
+    "Volume": { t: "Volume", d: "Trade volume versus the 20-bar average. High volume on an up candle signals real buying conviction; on a down candle, real selling. Shown for context — it doesn't vote." }
+  };
+  function openInfo(key) { var t = EXPLAIN[key]; if (!t) return; $("infoTitle").textContent = t.t; $("infoText").textContent = t.d; $("infoSheet").classList.add("open"); }
+  document.addEventListener("click", function (e) { var hit = e.target.closest && e.target.closest("[data-info]"); if (hit) openInfo(hit.getAttribute("data-info")); });
+  $("infoClose").addEventListener("click", function () { $("infoSheet").classList.remove("open"); });
+  $("infoSheet").addEventListener("click", function (e) { if (e.target === $("infoSheet")) $("infoSheet").classList.remove("open"); });
+
+  // ---------- AI Co-Pilot (optional Cloudflare Worker) ----------
+  var WORKER_KEY = "workerUrl_v1";
+  function getWorkerUrl() { try { return localStorage.getItem(WORKER_KEY) || ""; } catch (e) { return ""; } }
+  function aiAvailable() { return !!getWorkerUrl(); }
+
+  function historySummary() {
+    var r = state.rounds, n = r.length, correct = 0, streak = 0, i;
+    var byDir = { OVER: { n: 0, correct: 0 }, UNDER: { n: 0, correct: 0 } };
+    for (i = 0; i < n; i++) {
+      if (r[i].correct) correct++;
+      if (r[i].pick && byDir[r[i].pick]) { byDir[r[i].pick].n++; if (r[i].correct) byDir[r[i].pick].correct++; }
+    }
+    for (i = 0; i < n; i++) { if (r[i].correct) streak++; else break; }
+    return {
+      graded: n,
+      hitRatePct: n ? Math.round(correct / n * 100) : null,
+      currentStreak: streak,
+      overHitPct: byDir.OVER.n ? Math.round(byDir.OVER.correct / byDir.OVER.n * 100) : null,
+      underHitPct: byDir.UNDER.n ? Math.round(byDir.UNDER.correct / byDir.UNDER.n * 100) : null,
+      recent: r.slice(0, 12).map(function (x) { return { time: x.time, pick: x.pick, actual: x.actual, correct: x.correct }; })
+    };
+  }
+
+  function callWorker(manual) {
+    var url = getWorkerUrl();
+    if (!url) return;
+    var btn = $("aiRun"); if (btn) { btn.disabled = true; btn.textContent = "Analyzing…"; }
+    var payload = {
+      coin: state.coin,
+      price: state.lastPrice,
+      strike: state.pendingRound ? state.pendingRound.openPrice : null,
+      pick: state.lastRecoDir,
+      indicators: (state.lastList || []).map(function (x) { return { name: x.name, value: x.val, signal: x.vote, label: x.chip }; }),
+      history: historySummary()
+    };
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (d) { renderAI(d); })
+      .catch(function (e) { renderAIError(e.message); })
+      .then(function () { if (btn) { btn.disabled = false; btn.textContent = "Refresh AI Read"; } });
+  }
+
+  function renderAI(d) {
+    var el = $("aiResult"); el.classList.remove("hidden");
+    $("aiIntro").classList.add("hidden");
+    var crowd = d.crowd, ai = d.ai || {};
+    var dirCls = ai.verdict === "OVER" ? "over" : ai.verdict === "UNDER" ? "under" : "skip";
+    var crowdLine = crowd && typeof crowd.overPct === "number"
+      ? '<div class="aiRow"><span class="k">Crowd (Kalshi)</span><span class="v">' + crowd.overPct.toFixed(0) + '% OVER</span></div>'
+      : '<div class="aiRow"><span class="k">Crowd (Kalshi)</span><span class="v" style="color:var(--label-3)">n/a</span></div>';
+    var edgeHtml = ai.edge === "against-crowd" ? '<span class="aiEdge against">EDGE vs crowd</span>'
+      : ai.edge === "with-crowd" ? '<span class="aiEdge with">agrees w/ crowd</span>' : '';
+    el.innerHTML =
+      '<div class="aiVerdict ' + dirCls + '">' + (ai.verdict || "—") + (ai.confidence ? ' · ' + ai.confidence : '') + '</div>' +
+      crowdLine +
+      '<div class="aiRow"><span class="k">Your indicators</span><span class="v">' + (state.lastRecoDir || "—") + '</span></div>' +
+      (edgeHtml ? '<div class="aiRow"><span class="k">Edge</span>' + edgeHtml + '</div>' : '') +
+      '<div class="aiRationale">' + (ai.rationale || "") + '</div>';
+  }
+  function renderAIError(msg) {
+    var el = $("aiResult"); el.classList.remove("hidden");
+    el.innerHTML = '<div class="aiMuted err" style="color:var(--red)">AI unavailable: ' + msg + '</div>';
+  }
+  $("aiRun").addEventListener("click", function () {
+    var v = $("workerUrl").value.trim();
+    try { localStorage.setItem(WORKER_KEY, v); } catch (e) {}
+    callWorker(true);
+  });
+
   loadRounds();
   renderAccuracy(); renderRounds(); tickTimer(); refresh(); connectWS();
+  (function initAI() { var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); callWorker(false); } })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
 })();
 </script>
