@@ -71,6 +71,7 @@
   .module { break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid; }
   @media (min-width: 760px) {
     .seg { max-width: 540px; }
+    .toprow { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 18px; align-items: start; }
     .grid { column-count: 2; column-gap: 18px; }
   }
   @media (min-width: 1180px) {
@@ -179,7 +180,7 @@
     <button data-coin="SOL"><span class="sym">◎</span> SOL</button>
   </div>
 
-  <main class="grid">
+  <section class="toprow">
 
   <!-- HERO PRICE -->
   <div class="module">
@@ -227,6 +228,10 @@
   </div>
 
   </div>
+
+  </section>
+
+  <main class="grid">
 
   <!-- INDICATORS -->
   <div class="module">
