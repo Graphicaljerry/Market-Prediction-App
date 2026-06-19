@@ -2,181 +2,163 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black" />
-<title>Crypto 15-Min Tracker</title>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#000000" />
+<title>15-Min Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #07080a;
-    --panel: #101216;
-    --panel-2: #171a1f;
-    --panel-3: #1d2128;
-    --border: #23272f;
-    --border-2: #2d323c;
-    --text: #f4f6f8;
-    --muted: #7c828d;
-    --muted-2: #565c66;
-    --green: #00e676;
-    --green-d: #00c853;
-    --red: #ff2e63;
-    --red-d: #ff1744;
-    --amber: #ffb300;
-    --shadow: 0 8px 28px rgba(0,0,0,.45);
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --surface-3: #3a3a3c;
+    --separator: rgba(84,84,88,0.55);
+    --label: #ffffff;
+    --label-2: rgba(235,235,245,0.62);
+    --label-3: rgba(235,235,245,0.32);
+    --green: #30d158;
+    --red: #ff453a;
+    --orange: #ff9f0a;
+    --blue: #0a84ff;
   }
 
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
 
   html, body {
-    margin: 0; padding: 0;
-    background: var(--bg); color: var(--text);
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    -webkit-font-smoothing: antialiased;
+    background: var(--bg); color: var(--label);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", sans-serif;
+    -webkit-font-smoothing: antialiased; letter-spacing: -0.01em;
   }
   body {
-    max-width: 393px; margin: 0 auto; padding: 16px 14px 44px; min-height: 100vh;
-    background:
-      radial-gradient(120% 60% at 50% -10%, rgba(0,230,118,.06), transparent 60%),
-      radial-gradient(100% 50% at 50% 110%, rgba(255,46,99,.05), transparent 60%),
-      var(--bg);
+    max-width: 393px; margin: 0 auto;
+    padding: max(14px, env(safe-area-inset-top)) 16px calc(40px + env(safe-area-inset-bottom));
+    min-height: 100vh;
   }
 
-  .mono { font-family: "Roboto Mono", monospace; font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, "SF Mono", "Roboto Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
   /* ---------- Header ---------- */
-  .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-  .brand { font-size: 15px; font-weight: 800; letter-spacing: .3px; display: flex; align-items: center; gap: 8px; }
-  .brand .spark {
-    width: 26px; height: 26px; border-radius: 8px;
-    background: linear-gradient(135deg, var(--green), #00b4d8);
-    display: grid; place-items: center; font-size: 15px; box-shadow: 0 4px 14px rgba(0,230,118,.35);
-  }
-  .live { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700; color: var(--green); letter-spacing: 1px; }
-  .live .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: livepulse 1.8s infinite; }
-  @keyframes livepulse { 0%,100%{opacity:1; transform:scale(1);} 50%{opacity:.3; transform:scale(.8);} }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 2px 18px; }
+  .appname { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  .live { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--label-2); }
+  .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: livepulse 2s infinite; }
+  @keyframes livepulse { 0%,100%{opacity:1;} 50%{opacity:.25;} }
 
-  /* ---------- Coin switcher ---------- */
-  .seg { display: flex; gap: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 13px; padding: 5px; margin-bottom: 14px; }
+  /* ---------- Segmented control ---------- */
+  .seg { display: flex; gap: 2px; background: rgba(118,118,128,0.20); border-radius: 11px; padding: 2px; margin-bottom: 22px; }
   .seg button {
-    flex: 1; min-height: 42px; border-radius: 9px; background: transparent; color: var(--muted);
-    border: none; font-family: "Roboto Mono", monospace; font-weight: 700; font-size: 14px;
-    letter-spacing: 1px; cursor: pointer; transition: all .18s; display: flex; align-items: center; justify-content: center; gap: 6px;
+    flex: 1; min-height: 40px; border-radius: 9px; background: transparent; color: var(--label);
+    border: none; font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
+    transition: background .22s ease; display: flex; align-items: center; justify-content: center; gap: 6px;
   }
-  .seg button .sym { opacity: .7; }
-  .seg button.active { background: var(--panel-3); color: var(--text); box-shadow: var(--shadow); }
-  .seg button.active .sym { opacity: 1; }
-  .seg button:active { transform: scale(.96); }
+  .seg button .sym { color: var(--label-2); font-weight: 500; }
+  .seg button.active { background: var(--surface-3); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .seg button.active .sym { color: var(--label); }
+  .seg button:active { opacity: .7; }
 
-  /* ---------- Cards ---------- */
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 16px; margin-bottom: 13px; box-shadow: var(--shadow); }
-  .label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 1.4px; color: var(--muted); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; }
+  /* ---------- Section header ---------- */
+  .sec { font-size: 13px; font-weight: 600; color: var(--label-2); margin: 0 6px 9px; }
+  .sec .tiny { color: var(--label-3); font-weight: 500; }
+
+  /* ---------- Card ---------- */
+  .card { background: var(--surface); border-radius: 18px; padding: 18px; margin-bottom: 24px; }
 
   /* ---------- Hero / price ---------- */
-  .hero { background: linear-gradient(160deg, #14171c, #0d0f13); }
-  .heroTop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-  .coinInfo { display: flex; align-items: center; gap: 11px; }
-  .badge {
-    width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
-    font-size: 22px; font-weight: 700; background: var(--panel-3); border: 1px solid var(--border-2); color: var(--text);
-  }
-  .coinName { font-size: 13px; font-weight: 700; }
-  .coinPair { font-size: 11px; color: var(--muted); margin-top: 1px; }
-  .changePill { font-size: 13px; font-weight: 700; padding: 7px 11px; border-radius: 10px; }
-  .changePill.up { color: var(--green); background: rgba(0,230,118,.12); }
-  .changePill.down { color: var(--red); background: rgba(255,46,99,.12); }
-  .price { font-size: 44px; font-weight: 800; line-height: 1.02; letter-spacing: -.5px; transition: color .2s; }
-  .price.flash { animation: flashUpdate .55s ease; }
-  @keyframes flashUpdate { 0%{transform:scale(1);} 38%{transform:scale(1.045); opacity:.6;} 100%{transform:scale(1);} }
-  .updated { font-size: 11px; color: var(--muted-2); margin-top: 10px; display: flex; justify-content: space-between; }
+  .heroTop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .coinInfo { display: flex; align-items: center; gap: 12px; }
+  .badge { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; font-size: 20px; background: var(--surface-2); color: var(--label); }
+  .coinName { font-size: 16px; font-weight: 600; }
+  .coinPair { font-size: 13px; color: var(--label-2); margin-top: 1px; }
+  .changePill { font-size: 14px; font-weight: 600; padding: 6px 11px; border-radius: 9px; }
+  .changePill.up { color: var(--green); background: rgba(48,209,88,.15); }
+  .changePill.down { color: var(--red); background: rgba(255,69,58,.15); }
+  .price { font-size: 46px; font-weight: 700; line-height: 1.0; letter-spacing: -0.03em; transition: opacity .2s; }
+  .price.flash { animation: flashUpdate .5s ease; }
+  @keyframes flashUpdate { 0%{opacity:1;} 40%{opacity:.45;} 100%{opacity:1;} }
+  .updated { font-size: 12px; color: var(--label-3); margin-top: 14px; display: flex; justify-content: space-between; }
   .err { color: var(--red); }
 
   /* ---------- Timer ---------- */
   .timerCard { text-align: center; }
-  .timer { font-size: 50px; font-weight: 800; line-height: 1; letter-spacing: 2px; }
-  .timer.warn { color: var(--red); animation: warnpulse 1s infinite; }
-  @keyframes warnpulse { 0%,100%{transform:scale(1); opacity:1;} 50%{transform:scale(1.04); opacity:.65;} }
-  .timerBarWrap { height: 6px; border-radius: 4px; background: #22262e; margin-top: 12px; overflow: hidden; }
-  #timerBar { height: 100%; width: 100%; background: linear-gradient(90deg, var(--green), #00b4d8); transition: width .9s linear, background .3s; border-radius: 4px; }
-  #timerBar.warn { background: linear-gradient(90deg, var(--red), #ff6b6b); }
-  .timerSub { font-size: 11px; color: var(--muted); margin-top: 9px; letter-spacing: .5px; }
+  .timerLabel { font-size: 13px; color: var(--label-2); font-weight: 500; margin-bottom: 10px; }
+  .timer { font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
+  .timer.warn { color: var(--red); }
+  .timerBarWrap { height: 4px; border-radius: 3px; background: rgba(118,118,128,0.24); margin-top: 16px; overflow: hidden; }
+  #timerBar { height: 100%; width: 100%; background: var(--green); transition: width .9s linear, background .3s; border-radius: 3px; }
+  #timerBar.warn { background: var(--red); }
+  .timerSub { font-size: 12px; color: var(--label-3); margin-top: 11px; }
 
   /* ---------- Recommendation ---------- */
-  .reco { text-align: center; border-radius: 14px; padding: 18px 16px; background: var(--panel-2); border: 1px solid var(--border); transition: border-color .3s; }
-  .reco .dir { font-size: 36px; font-weight: 800; letter-spacing: .5px; }
-  .reco .conf { font-size: 13px; margin-top: 5px; color: var(--muted); font-weight: 500; }
-  .reco.over { border-color: rgba(0,230,118,.5); background: linear-gradient(180deg, rgba(0,230,118,.08), var(--panel-2)); }
+  .reco { text-align: center; }
+  .reco .dir { font-size: 40px; font-weight: 700; letter-spacing: -0.02em; }
+  .reco .conf { font-size: 14px; margin-top: 6px; color: var(--label-2); font-weight: 500; }
   .reco.over .dir { color: var(--green); }
-  .reco.under { border-color: rgba(255,46,99,.5); background: linear-gradient(180deg, rgba(255,46,99,.08), var(--panel-2)); }
   .reco.under .dir { color: var(--red); }
-  .reco.skip { border-color: rgba(255,179,0,.45); }
-  .reco.skip .dir { color: var(--amber); font-size: 27px; }
-  .meter { height: 9px; border-radius: 6px; background: #262a32; margin-top: 14px; overflow: hidden; display: flex; }
-  .meter .mbull { background: linear-gradient(90deg, var(--green-d), var(--green)); height: 100%; transition: width .45s; }
-  .meter .mbear { background: linear-gradient(90deg, var(--red), var(--red-d)); height: 100%; transition: width .45s; margin-left: auto; }
-  .tally { font-size: 12.5px; margin-top: 10px; font-family: "Roboto Mono", monospace; color: var(--text); letter-spacing: .5px; }
+  .reco.skip .dir { color: var(--orange); font-size: 30px; }
+  .meter { height: 6px; border-radius: 4px; background: rgba(118,118,128,0.24); margin-top: 18px; overflow: hidden; display: flex; }
+  .meter .mbull { background: var(--green); height: 100%; transition: width .45s; }
+  .meter .mbear { background: var(--red); height: 100%; transition: width .45s; margin-left: auto; }
+  .tally { font-size: 13px; margin-top: 11px; color: var(--label-2); }
 
   /* ---------- Indicators ---------- */
-  .ind { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); }
-  .ind:last-child { border-bottom: none; padding-bottom: 0; }
+  .ind { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 0; border-bottom: 0.5px solid var(--separator); }
   .ind:first-child { padding-top: 2px; }
-  .leftcol { min-width: 0; }
-  .ind .iname { font-size: 13.5px; font-weight: 600; }
-  .ind .isub { font-size: 10.5px; color: var(--muted-2); margin-top: 2px; }
-  .ind .right { display: flex; align-items: center; gap: 11px; flex-shrink: 0; }
-  .ind .ival { font-size: 14.5px; font-weight: 700; font-family: "Roboto Mono", monospace; }
-  .chip { font-size: 10px; font-weight: 700; padding: 4px 9px; border-radius: 7px; letter-spacing: .4px; min-width: 64px; text-align: center; }
-  .chip.bull { background: rgba(0,230,118,.14); color: var(--green); }
-  .chip.bear { background: rgba(255,46,99,.14); color: var(--red); }
-  .chip.neu  { background: rgba(255,179,0,.13); color: var(--amber); }
-  .chip.info { background: #23272f; color: var(--muted); }
+  .ind:last-child { border-bottom: none; padding-bottom: 2px; }
+  .ind .iname { font-size: 15px; font-weight: 500; }
+  .ind .isub { font-size: 12px; color: var(--label-3); margin-top: 2px; }
+  .ind .right { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+  .ind .ival { font-size: 15px; font-weight: 600; }
+  .chip { font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 8px; min-width: 66px; text-align: center; }
+  .chip.bull { background: rgba(48,209,88,.15); color: var(--green); }
+  .chip.bear { background: rgba(255,69,58,.15); color: var(--red); }
+  .chip.neu  { background: rgba(255,159,10,.15); color: var(--orange); }
+  .chip.info { background: rgba(118,118,128,0.2); color: var(--label-2); }
 
   /* ---------- Bet ---------- */
-  .betInput { width: 100%; min-height: 50px; background: var(--panel-2); color: var(--text); border: 1px solid var(--border-2); border-radius: 11px; padding: 0 15px; font-size: 21px; font-weight: 700; font-family: "Roboto Mono", monospace; margin-bottom: 12px; }
-  .betInput:focus { outline: none; border-color: var(--muted); }
-  .betBtns { display: flex; gap: 10px; }
-  .btn { flex: 1; min-height: 56px; border: none; border-radius: 13px; font-size: 18px; font-weight: 800; font-family: inherit; color: #051207; letter-spacing: 1px; cursor: pointer; transition: transform .08s, opacity .2s; }
-  .btn:active { transform: scale(.95); opacity: .9; }
-  .btn.over { background: linear-gradient(135deg, var(--green), var(--green-d)); }
-  .btn.under { background: linear-gradient(135deg, var(--red), var(--red-d)); color: #fff; }
-  .btn.win { background: linear-gradient(135deg, var(--green), var(--green-d)); }
-  .btn.loss { background: linear-gradient(135deg, var(--red), var(--red-d)); color: #fff; }
-  .btn:disabled { opacity: .28; cursor: not-allowed; }
-  .pending { margin-top: 13px; padding: 13px; border-radius: 11px; background: var(--panel-2); border: 1px dashed var(--border-2); font-size: 13px; text-align: center; transition: border-color .3s; }
-  .pending .big { font-weight: 700; font-size: 15px; }
-  .resultBtns { display: flex; gap: 10px; margin-top: 11px; }
+  .betInput { width: 100%; min-height: 50px; background: var(--surface-2); color: var(--label); border: none; border-radius: 12px; padding: 0 16px; font-size: 22px; font-weight: 600; font-family: ui-monospace, "SF Mono", "Roboto Mono", monospace; font-variant-numeric: tabular-nums; margin-bottom: 12px; }
+  .betInput:focus { outline: 2px solid var(--blue); }
+  .betBtns { display: flex; gap: 11px; }
+  .btn { flex: 1; min-height: 54px; border: none; border-radius: 14px; font-size: 17px; font-weight: 600; font-family: inherit; color: #fff; cursor: pointer; transition: opacity .15s, transform .08s; letter-spacing: 0; }
+  .btn:active { transform: scale(.97); opacity: .85; }
+  .btn.over, .btn.win { background: var(--green); color: #00310f; }
+  .btn.under, .btn.loss { background: var(--red); color: #3a0500; }
+  .btn:disabled { opacity: .3; }
+  .pending { margin-top: 14px; padding: 14px; border-radius: 12px; background: var(--surface-2); font-size: 14px; text-align: center; transition: outline-color .3s; outline: 1.5px solid transparent; }
+  .pending .big { font-weight: 600; font-size: 15px; }
+  .resultBtns { display: flex; gap: 11px; margin-top: 12px; }
   .hidden { display: none !important; }
 
   /* ---------- Scoreboard ---------- */
-  .scoreGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; }
-  .stat { background: var(--panel-2); border: 1px solid var(--border); border-radius: 11px; padding: 11px 6px; text-align: center; }
-  .stat .v { font-size: 21px; font-weight: 800; }
-  .stat .k { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; margin-top: 4px; }
+  .scoreGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--surface-2); border-radius: 13px; padding: 13px 6px; text-align: center; }
+  .stat .v { font-size: 22px; font-weight: 700; }
+  .stat .k { font-size: 11px; color: var(--label-2); margin-top: 4px; font-weight: 500; }
   .pos { color: var(--green); } .neg { color: var(--red); }
 
   /* ---------- History ---------- */
-  .history { max-height: 330px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-  .hrow { display: grid; grid-template-columns: auto 1fr auto; gap: 5px 10px; align-items: center; padding: 11px 13px; border-radius: 11px; margin-bottom: 8px; font-size: 13px; border-left: 3px solid var(--border); background: var(--panel-2); }
-  .hrow.w { border-left-color: var(--green); background: rgba(0,230,118,.07); }
-  .hrow.l { border-left-color: var(--red); background: rgba(255,46,99,.07); }
-  .hrow .htime { font-size: 12px; color: var(--muted); }
-  .hrow .hpred { font-weight: 700; }
+  .history { max-height: 340px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .hrow { display: grid; grid-template-columns: auto 1fr auto; gap: 5px 10px; align-items: center; padding: 13px 14px; border-radius: 13px; margin-bottom: 9px; font-size: 14px; background: var(--surface-2); }
+  .hrow.w { background: rgba(48,209,88,.10); } .hrow.l { background: rgba(255,69,58,.10); }
+  .hrow .htime { font-size: 13px; color: var(--label-2); }
+  .hrow .hpred { font-weight: 600; }
   .hrow .hpred.over { color: var(--green); } .hrow .hpred.under { color: var(--red); }
-  .hrow .hres { font-weight: 800; text-align: right; }
+  .hrow .hres { font-weight: 600; text-align: right; }
   .hrow .hres.w { color: var(--green); } .hrow .hres.l { color: var(--red); }
-  .hrow .hmeta { grid-column: 1 / -1; font-size: 11px; color: var(--muted-2); }
-  .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 22px 0; }
+  .hrow .hmeta { grid-column: 1 / -1; font-size: 12px; color: var(--label-3); }
+  .empty { text-align: center; color: var(--label-3); font-size: 14px; padding: 24px 0; }
 
-  .footnote { text-align: center; font-size: 10px; color: var(--muted-2); margin-top: 20px; line-height: 1.6; }
+  .footnote { text-align: center; font-size: 11px; color: var(--label-3); margin-top: 8px; line-height: 1.6; }
 </style>
 </head>
 <body>
 
   <div class="topbar">
-    <div class="brand"><span class="spark">⚡</span> <span id="title">15-MIN TRACKER</span></div>
-    <div class="live"><span class="dot"></span> LIVE</div>
+    <div class="appname" id="title">15-Min Tracker</div>
+    <div class="live"><span class="dot"></span> Live</div>
   </div>
 
   <!-- COIN SWITCHER -->
@@ -193,53 +175,53 @@
         <div class="badge" id="coinBadge">Ξ</div>
         <div>
           <div class="coinName" id="coinName">Ethereum</div>
-          <div class="coinPair" id="priceLabel">ETH / USD</div>
+          <div class="coinPair" id="priceLabel">ETH · USD</div>
         </div>
       </div>
       <span id="change" class="changePill mono">—</span>
     </div>
     <div id="price" class="price mono">—</div>
     <div class="updated">
-      <span id="updated" class="mono">Loading live data…</span>
-      <span id="srcTag" class="srcTag mono"></span>
+      <span id="updated" class="mono">Loading…</span>
+      <span id="srcTag" class="mono"></span>
     </div>
   </div>
 
   <!-- TIMER -->
   <div class="card timerCard">
-    <div class="label" style="justify-content:center;">Next 15-min round closes in</div>
+    <div class="timerLabel">Next round closes in</div>
     <div id="timer" class="timer mono">--:--</div>
     <div class="timerBarWrap"><div id="timerBar"></div></div>
     <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
   </div>
 
   <!-- RECOMMENDATION -->
+  <div class="sec">Auto Pick · Next 15 Min</div>
   <div class="card">
-    <div class="label">Auto Pick · Next 15 Min</div>
     <div id="reco" class="reco skip">
-      <div class="dir" id="recoDir">ANALYZING…</div>
+      <div class="dir" id="recoDir">Analyzing…</div>
       <div class="conf" id="recoConf">Loading live indicators</div>
       <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
-      <div class="tally" id="recoTally">—</div>
+      <div class="tally mono" id="recoTally">—</div>
     </div>
   </div>
 
   <!-- INDICATORS -->
+  <div class="sec">Live Indicators <span class="tiny">· 15m candles</span></div>
   <div class="card">
-    <div class="label">Live Indicators <span style="color:var(--muted-2)">15m candles</span></div>
     <div id="indicators"><div class="empty">Loading indicators…</div></div>
   </div>
 
   <!-- BET LOGGER -->
+  <div class="sec">Log Your Bet</div>
   <div class="card">
-    <div class="label">Log Your Bet</div>
     <input id="betAmount" class="betInput mono" type="number" inputmode="decimal" placeholder="$ amount" min="0" step="1" value="10" />
     <div class="betBtns">
       <button class="btn over" id="betOver">OVER</button>
       <button class="btn under" id="betUnder">UNDER</button>
     </div>
     <div id="pending" class="pending hidden">
-      <div>Open bet: <span class="big" id="pendingText">—</span></div>
+      <div>Open bet · <span class="big" id="pendingText">—</span></div>
       <div class="resultBtns">
         <button class="btn win" id="markWin">WIN</button>
         <button class="btn loss" id="markLoss">LOSS</button>
@@ -248,27 +230,27 @@
   </div>
 
   <!-- SCOREBOARD -->
+  <div class="sec">Scoreboard</div>
   <div class="card">
-    <div class="label">Scoreboard</div>
     <div class="scoreGrid">
       <div class="stat"><div class="v mono" id="sRounds">0</div><div class="k">Rounds</div></div>
       <div class="stat"><div class="v mono pos" id="sWins">0</div><div class="k">Wins</div></div>
       <div class="stat"><div class="v mono neg" id="sLosses">0</div><div class="k">Losses</div></div>
     </div>
-    <div class="scoreGrid" style="margin-top:9px; grid-template-columns: repeat(2,1fr);">
+    <div class="scoreGrid" style="margin-top:10px; grid-template-columns: repeat(2,1fr);">
       <div class="stat"><div class="v mono" id="sWinRate">0%</div><div class="k">Win Rate</div></div>
       <div class="stat"><div class="v mono" id="sPnl">$0.00</div><div class="k">Total P&amp;L</div></div>
     </div>
   </div>
 
   <!-- HISTORY -->
+  <div class="sec">Round History <span class="tiny">· last 10</span></div>
   <div class="card">
-    <div class="label">Round History <span style="color:var(--muted-2)">last 10</span></div>
     <div id="history" class="history"><div class="empty">No rounds played yet.</div></div>
   </div>
 
   <div class="footnote">
-    Indicators computed live from 15-minute candles (Coinbase, CoinGecko fallback).<br>
+    Indicators computed live from 15-minute candles (Coinbase · CoinGecko fallback).<br>
     For tracking only — not financial advice.
   </div>
 
@@ -277,9 +259,9 @@
   "use strict";
 
   var COINS = {
-    ETH: { name: "Ethereum", pair: "ETH / USD", sym: "Ξ", cgId: "ethereum", cbProduct: "ETH-USD" },
-    BTC: { name: "Bitcoin",  pair: "BTC / USD", sym: "₿", cgId: "bitcoin",  cbProduct: "BTC-USD" },
-    SOL: { name: "Solana",   pair: "SOL / USD", sym: "◎", cgId: "solana",   cbProduct: "SOL-USD" }
+    ETH: { name: "Ethereum", pair: "ETH · USD", sym: "Ξ", cgId: "ethereum", cbProduct: "ETH-USD" },
+    BTC: { name: "Bitcoin",  pair: "BTC · USD", sym: "₿", cgId: "bitcoin",  cbProduct: "BTC-USD" },
+    SOL: { name: "Solana",   pair: "SOL · USD", sym: "◎", cgId: "solana",   cbProduct: "SOL-USD" }
   };
 
   var state = { coin: "ETH", pendingBet: null, rounds: [], wins: 0, losses: 0, pnl: 0, lastReco: "No recommendation", reqId: 0 };
@@ -382,7 +364,7 @@
       list.push({ name: "RSI (14)", sub: "Momentum oscillator", val: rsiV != null ? rsiV.toFixed(1) : "—", vote: rsiV != null ? sig : null, chip: txt });
     })();
     (function () { var sig = 0, txt = "Neutral";
-      if (mac.hist != null) { if (mac.hist > 0) { sig = 1; txt = mac.prevHist != null && mac.hist > mac.prevHist ? "Green ▲" : "Green"; } else if (mac.hist < 0) { sig = -1; txt = mac.prevHist != null && mac.hist < mac.prevHist ? "Red ▼" : "Red"; } }
+      if (mac.hist != null) { if (mac.hist > 0) { sig = 1; txt = mac.prevHist != null && mac.hist > mac.prevHist ? "Green ↑" : "Green"; } else if (mac.hist < 0) { sig = -1; txt = mac.prevHist != null && mac.hist < mac.prevHist ? "Red ↓" : "Red"; } }
       list.push({ name: "MACD (12,26,9)", sub: "Histogram", val: mac.hist != null ? (mac.hist >= 0 ? "+" : "") + mac.hist.toFixed(2) : "—", vote: mac.hist != null ? sig : null, chip: txt });
     })();
     (function () { var ok = ema9 != null && ema21 != null, sig = ok ? (ema9 > ema21 ? 1 : -1) : null;
@@ -424,7 +406,7 @@
     elPrice.classList.remove("err"); elPrice.textContent = fmtMoney(price); flash(elPrice);
     if (typeof change24 === "number" && isFinite(change24)) {
       var up = change24 >= 0;
-      elChange.textContent = (up ? "▲ " : "▼ ") + Math.abs(change24).toFixed(2) + "%";
+      elChange.textContent = (up ? "↑ " : "↓ ") + Math.abs(change24).toFixed(2) + "%";
       elChange.className = "changePill mono " + (up ? "up" : "down");
     }
   }
@@ -433,15 +415,15 @@
     list.forEach(function (x) {
       var chipCls = x.forceChip || (x.vote == null ? "info" : x.vote > 0 ? "bull" : x.vote < 0 ? "bear" : "neu");
       html += '<div class="ind"><div class="leftcol"><div class="iname">' + x.name + '</div><div class="isub">' + x.sub + '</div></div>' +
-        '<div class="right"><span class="ival">' + x.val + '</span><span class="chip ' + chipCls + '">' + x.chip + '</span></div></div>';
+        '<div class="right"><span class="ival mono">' + x.val + '</span><span class="chip ' + chipCls + '">' + x.chip + '</span></div></div>';
     });
     $("indicators").innerHTML = html;
   }
   function renderReco(reco) {
     var el = $("reco"); el.className = "reco " + reco.cls;
-    $("recoDir").textContent = reco.dir === "OVER" ? "🟢 OVER" : reco.dir === "UNDER" ? "🔴 UNDER" : "⏸ SKIP";
+    $("recoDir").textContent = reco.dir === "OVER" ? "OVER ↑" : reco.dir === "UNDER" ? "UNDER ↓" : "SKIP";
     $("recoConf").textContent = reco.conf;
-    $("recoTally").textContent = reco.bull + "▲   " + reco.bear + "▼   of " + reco.total + " indicators";
+    $("recoTally").textContent = reco.bull + "↑   " + reco.bear + "↓   of " + reco.total + " indicators";
     var denom = reco.total || 1;
     $("mBull").style.width = (reco.bull / denom * 100) + "%";
     $("mBear").style.width = (reco.bear / denom * 100) + "%";
@@ -488,7 +470,7 @@
   // ---------- Bet logger ----------
   var elBetAmount = $("betAmount"), elBetOver = $("betOver"), elBetUnder = $("betUnder"), elPending = $("pending"), elPendingText = $("pendingText");
   function placeBet(side) {
-    if (state.pendingBet) { elPending.style.borderColor = "var(--amber)"; setTimeout(function(){ elPending.style.borderColor = ""; }, 400); return; }
+    if (state.pendingBet) { elPending.style.outlineColor = "var(--orange)"; setTimeout(function(){ elPending.style.outlineColor = "transparent"; }, 400); return; }
     var amount = parseFloat(elBetAmount.value);
     if (isNaN(amount) || amount <= 0) { elBetAmount.focus(); return; }
     state.pendingBet = { coin: state.coin, side: side, amount: amount, reco: state.lastReco, roundTime: pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes()) };
@@ -534,15 +516,13 @@
   function setCoin(coin) {
     if (!COINS[coin]) return;
     state.coin = coin;
-    $("title").textContent = coin + " · 15-MIN TRACKER";
     $("coinBadge").textContent = COINS[coin].sym;
     $("coinName").textContent = COINS[coin].name;
     $("priceLabel").textContent = COINS[coin].pair;
     Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { b.classList.toggle("active", b.getAttribute("data-coin") === coin); });
     elPrice.textContent = "—"; elChange.textContent = "—"; elChange.className = "changePill mono";
     $("indicators").innerHTML = '<div class="empty">Loading indicators…</div>';
-    $("recoDir").textContent = "ANALYZING…"; $("recoConf").textContent = "Loading live indicators";
-    $("reco").className = "reco skip";
+    $("recoDir").textContent = "Analyzing…"; $("recoConf").textContent = "Loading live indicators"; $("reco").className = "reco skip";
     refresh();
   }
 
@@ -555,7 +535,6 @@
   $("markWin").addEventListener("click", function () { resolveBet(true); });
   $("markLoss").addEventListener("click", function () { resolveBet(false); });
 
-  $("title").textContent = "ETH · 15-MIN TRACKER";
   renderScore(); renderHistory(); tickTimer(); refresh();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
 })();
