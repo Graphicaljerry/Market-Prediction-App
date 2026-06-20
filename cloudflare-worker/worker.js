@@ -1,36 +1,49 @@
 /**
  * Cloudflare Worker — AI Co-Pilot for the 15-Min Tracker.
  *
- * Does two things the static app can't do on its own:
- *   1. Fetches live Kalshi crowd odds (Kalshi blocks browser CORS).
- *   2. Calls Claude (server-side, so the API key stays secret) to weigh the
- *      app's indicators + 7-day track record against the crowd.
+ * Fetches live Kalshi crowd odds (browsers can't, CORS) and asks an LLM to weigh
+ * the app's indicators + 7-day track record against the crowd. The LLM provider is
+ * switchable with one env var — keep Claude (paid, sharpest) or a free tier.
  *
- * Env vars (set in the Cloudflare dashboard → Settings → Variables):
- *   ANTHROPIC_API_KEY   (Secret, required)  — your Anthropic API key.
- *   KALSHI_SERIES_ETH   (Text, optional)    — Kalshi 15-min series ticker for ETH.
- *   KALSHI_SERIES_BTC   (Text, optional)    — ...for BTC.
- *   KALSHI_SERIES_SOL   (Text, optional)    — ...for SOL.
- *   ACCESS_TOKEN        (Secret, optional)   — if set, requests must send the
- *                                             same value as ?token=... (basic abuse guard).
+ * --- Env vars (Cloudflare dashboard → the Worker → Settings → Variables) ---
+ * Pick ONE provider by adding its key (or force it with AI_PROVIDER):
+ *   ANTHROPIC_API_KEY  (Secret) — Claude. console.anthropic.com  (paid, ~1–3¢/read)
+ *   GEMINI_API_KEY     (Secret) — Google Gemini. aistudio.google.com/apikey  (free tier)
+ *   GROQ_API_KEY       (Secret) — Groq. console.groq.com/keys  (free tier, very fast)
  *
- * If a coin's KALSHI_SERIES_* is not set, crowd odds come back as null and the
- * AI read still runs on the indicators + history alone.
+ * Optional:
+ *   AI_PROVIDER  (Text)  — "anthropic" | "gemini" | "groq". Default: whichever key exists.
+ *   AI_MODEL     (Text)  — override the model id for the chosen provider.
+ *   KALSHI_SERIES_ETH / _BTC / _SOL (Text) — Kalshi 15-min series tickers for crowd odds.
+ *   ACCESS_TOKEN (Secret) — if set, requests must include ?token=THATVALUE.
+ *
+ * A coin with no KALSHI_SERIES_* just returns crowd:null; the AI read still runs.
  */
 
-const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2";
-const MODEL = "claude-opus-4-8";
+
+const DEFAULT_MODELS = {
+  anthropic: "claude-opus-4-8",
+  gemini: "gemini-2.0-flash",
+  groq: "llama-3.3-70b-versatile",
+};
 
 const CORS = {
   "Access-Control-Allow-Origin": "*", // tighten to your Pages origin if you like
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
 export default {
   async fetch(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+    const provider = pickProvider(env);
+
+    // Quick health check in a browser: shows which provider is wired up.
+    if (request.method === "GET") {
+      return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
+    }
     if (request.method !== "POST") return json({ error: "POST only" }, 405);
 
     if (env.ACCESS_TOKEN) {
@@ -43,28 +56,29 @@ export default {
 
     const coin = String(body.coin || "ETH").toUpperCase();
 
-    // 1) Crowd odds from Kalshi (optional — only if a series ticker is configured).
     let crowd = null;
     const seriesTicker = env["KALSHI_SERIES_" + coin];
-    if (seriesTicker) {
-      try { crowd = await getKalshiCrowd(seriesTicker); } catch (_) { crowd = null; }
-    }
+    if (seriesTicker) { try { crowd = await getKalshiCrowd(seriesTicker); } catch (_) { crowd = null; } }
 
-    // 2) Claude read.
     let ai;
-    if (env.ANTHROPIC_API_KEY) {
-      try { ai = await getClaudeRead(env.ANTHROPIC_API_KEY, body, crowd); }
-      catch (e) { ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "AI error: " + e.message }; }
-    } else {
-      ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "ANTHROPIC_API_KEY is not set on the Worker." };
-    }
+    try { ai = await getAIRead(env, provider, body, crowd); }
+    catch (e) { ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "AI error: " + e.message }; }
 
-    return json({ crowd, ai });
+    return json({ crowd, ai, provider });
   },
 };
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...CORS } });
+}
+
+function pickProvider(env) {
+  const p = (env.AI_PROVIDER || "").toLowerCase();
+  if (p) return p;
+  if (env.ANTHROPIC_API_KEY) return "anthropic";
+  if (env.GEMINI_API_KEY) return "gemini";
+  if (env.GROQ_API_KEY) return "groq";
+  return "none";
 }
 
 // --- Kalshi -------------------------------------------------------------
@@ -75,42 +89,30 @@ async function getKalshiCrowd(seriesTicker) {
   const data = await r.json();
   const markets = (data.markets || []).filter((m) => m.close_time);
   if (!markets.length) return null;
-  // The nearest-expiry open market is the round currently being traded.
   markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
   const m = markets[0];
-  // yes price (cents) ≈ implied probability the market resolves YES (price up / over).
-  const yesMid = avg(m.yes_bid, m.yes_ask);
+  const yesMid = avg(m.yes_bid, m.yes_ask); // cents ≈ implied probability of YES (over)
   if (yesMid == null) return null;
   return { overPct: yesMid, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
 }
-
 function avg(a, b) {
   const xs = [a, b].filter((v) => typeof v === "number");
-  if (!xs.length) return null;
-  return xs.reduce((s, v) => s + v, 0) / xs.length;
+  return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : null;
 }
 
-// --- Claude -------------------------------------------------------------
-async function getClaudeRead(apiKey, body, crowd) {
-  const indicators = (body.indicators || [])
-    .map((i) => `- ${i.name}: ${i.value} (${i.label})`)
-    .join("\n");
-
+// --- Prompt (shared across providers) ----------------------------------
+function buildPrompt(body, crowd) {
+  const indicators = (body.indicators || []).map((i) => `- ${i.name}: ${i.value} (${i.label})`).join("\n");
   const h = body.history || {};
-  const recent = (h.recent || [])
-    .map((x) => `${x.time} ${x.pick}->${x.actual} ${x.correct ? "OK" : "X"}`)
-    .join(", ");
+  const recent = (h.recent || []).map((x) => `${x.time} ${x.pick}->${x.actual} ${x.correct ? "OK" : "X"}`).join(", ");
   const historyLine = h.graded
     ? `Track record (last ${h.graded} graded rounds): overall hit rate ${h.hitRatePct}%, current streak ${h.currentStreak}, OVER picks ${h.overHitPct ?? "n/a"}% right, UNDER picks ${h.underHitPct ?? "n/a"}% right. Recent: ${recent}.`
     : `No graded history yet.`;
+  const crowdLine = crowd && typeof crowd.overPct === "number"
+    ? `The Kalshi crowd currently prices OVER at ~${crowd.overPct.toFixed(0)}% probability.`
+    : `Live crowd odds are unavailable for this round.`;
 
-  const crowdLine =
-    crowd && typeof crowd.overPct === "number"
-      ? `The Kalshi crowd currently prices OVER at ~${crowd.overPct.toFixed(0)}% probability.`
-      : `Live crowd odds are unavailable for this round.`;
-
-  const prompt =
-`You are a disciplined short-term trading assistant for a 15-minute OVER/UNDER market: will ${body.coin} close ABOVE its round-open "price to beat" 15 minutes from now?
+  return `You are a disciplined short-term trading assistant for a 15-minute OVER/UNDER market: will ${body.coin} close ABOVE its round-open "price to beat" 15 minutes from now?
 
 Live price: ${body.price}
 Price to beat (strike): ${body.strike}
@@ -123,17 +125,45 @@ ${historyLine}
 
 ${crowdLine}
 
-Decide OVER, UNDER, or SKIP. Weigh the technicals, the user's historical hit rate (trust directions that have actually worked for them), AND the crowd. The strongest opportunities are when a well-supported technical read DISAGREES with the crowd (the crowd may be overreacting). If signals are mixed, the edge is small, or the crowd already strongly agrees with a weak technical case, prefer SKIP. Set "edge" to "against-crowd" if your verdict opposes the crowd's lean, "with-crowd" if it matches, else "n/a". Keep "rationale" under 240 characters.`;
+Decide OVER, UNDER, or SKIP. Weigh the technicals, the user's historical hit rate (trust directions that have actually worked for them), AND the crowd. The strongest opportunities are when a well-supported technical read DISAGREES with the crowd (the crowd may be overreacting). If signals are mixed, the edge is small, or the crowd already strongly agrees with a weak technical case, prefer SKIP. Set "edge" to "against-crowd" if your verdict opposes the crowd's lean, "with-crowd" if it matches, else "n/a".
 
-  const r = await fetch(ANTHROPIC_URL, {
+Respond with ONLY a JSON object, no markdown, exactly:
+{"verdict":"OVER|UNDER|SKIP","confidence":"Low|Medium|High","edge":"with-crowd|against-crowd|n/a","rationale":"under 240 characters"}`;
+}
+
+function normalize(o) {
+  o = o || {};
+  return {
+    verdict: ["OVER", "UNDER", "SKIP"].includes(o.verdict) ? o.verdict : "SKIP",
+    confidence: ["Low", "Medium", "High"].includes(o.confidence) ? o.confidence : "Low",
+    edge: ["with-crowd", "against-crowd", "n/a"].includes(o.edge) ? o.edge : "n/a",
+    rationale: String(o.rationale || "").slice(0, 300),
+  };
+}
+function extractJson(text) {
+  try { return JSON.parse(text); } catch (_) {}
+  const m = text && text.match(/\{[\s\S]*\}/); // tolerate stray prose around the JSON
+  if (m) { try { return JSON.parse(m[0]); } catch (_) {} }
+  throw new Error("model did not return JSON");
+}
+
+// --- Providers ----------------------------------------------------------
+async function getAIRead(env, provider, body, crowd) {
+  const prompt = buildPrompt(body, crowd);
+  const model = env.AI_MODEL || DEFAULT_MODELS[provider];
+  if (provider === "anthropic") return readAnthropic(env.ANTHROPIC_API_KEY, model, prompt);
+  if (provider === "gemini") return readGemini(env.GEMINI_API_KEY, model, prompt);
+  if (provider === "groq") return readGroq(env.GROQ_API_KEY, model, prompt);
+  return { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "No AI provider configured — add ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY." };
+}
+
+async function readAnthropic(key, model, prompt) {
+  if (!key) throw new Error("ANTHROPIC_API_KEY missing");
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       max_tokens: 400,
       output_config: {
         format: {
@@ -154,13 +184,51 @@ Decide OVER, UNDER, or SKIP. Weigh the technicals, the user's historical hit rat
       messages: [{ role: "user", content: prompt }],
     }),
   });
-
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error("anthropic " + r.status + " " + t.slice(0, 140));
-  }
+  if (!r.ok) throw new Error("anthropic " + r.status + " " + (await r.text()).slice(0, 140));
   const data = await r.json();
-  const textBlock = (data.content || []).find((b) => b.type === "text");
-  if (!textBlock) throw new Error("no text block in response");
-  return JSON.parse(textBlock.text);
+  const tb = (data.content || []).find((b) => b.type === "text");
+  if (!tb) throw new Error("no text block");
+  return normalize(extractJson(tb.text));
+}
+
+async function readGemini(key, model, prompt) {
+  if (!key) throw new Error("GEMINI_API_KEY missing");
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+  const r = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0.3, maxOutputTokens: 400 },
+    }),
+  });
+  if (!r.ok) throw new Error("gemini " + r.status + " " + (await r.text()).slice(0, 140));
+  const data = await r.json();
+  const text = data && data.candidates && data.candidates[0] && data.candidates[0].content &&
+    data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
+  if (!text) throw new Error("no gemini text");
+  return normalize(extractJson(text));
+}
+
+async function readGroq(key, model, prompt) {
+  if (!key) throw new Error("GROQ_API_KEY missing");
+  const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + key, "content-type": "application/json" },
+    body: JSON.stringify({
+      model,
+      max_tokens: 400,
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: "Return only a JSON object matching the user's requested shape." },
+        { role: "user", content: prompt },
+      ],
+    }),
+  });
+  if (!r.ok) throw new Error("groq " + r.status + " " + (await r.text()).slice(0, 140));
+  const data = await r.json();
+  const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
+  if (!text) throw new Error("no groq text");
+  return normalize(extractJson(text));
 }

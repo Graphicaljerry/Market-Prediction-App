@@ -1,0 +1,6 @@
+# Cloudflare Worker config for the Git-connected deploy.
+# IMPORTANT: set `name` to EXACTLY the Worker name you created in the dashboard,
+# otherwise the build deploys a *different* worker and your secrets/URL won't line up.
+name = "eth-copilot"
+main = "cloudflare-worker/worker.js"
+compatibility_date = "2026-06-20"
