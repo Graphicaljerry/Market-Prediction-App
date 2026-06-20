@@ -17,6 +17,11 @@
  *   KALSHI_SERIES_ETH / _BTC / _SOL (Text) — Kalshi 15-min series tickers for crowd odds.
  *   ACCESS_TOKEN (Secret) — if set, requests must include ?token=THATVALUE.
  *
+ * Binding (optional but recommended):
+ *   CROWD_KV (KV namespace) — shares one good Kalshi fetch across all Worker isolates
+ *     and serves it through 429s. Wired in wrangler.toml; without it the cache is
+ *     per-isolate only, so crowd will flap to n/a more often under Kalshi throttling.
+ *
  * A coin with no KALSHI_SERIES_* just returns crowd:null; the AI read still runs.
  */
 
@@ -52,17 +57,20 @@ export default {
         const coin = (u.searchParams.get("crowd") || "").toUpperCase();
         const t = env["KALSHI_SERIES_" + coin];
         if (!t) return json({ coin, seriesVarSet: false, hint: "Add KALSHI_SERIES_" + coin + " as a Text variable (Settings → Variables and Secrets)." });
+        const kv = env.CROWD_KV ? await kvGet(env, t) : null;
+        const kvCached = kv ? { overPct: kv.data && kv.data.overPct, ageSec: Math.round((Date.now() - kv.t) / 1000) } : null;
         try {
-          // single Kalshi call to keep rate-limit pressure low
-          const r = await fetch(`${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(t)}&status=open&limit=200`, { headers: KALSHI_HEADERS });
+          const r = await kalshiFetch(`${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(t)}&status=open&limit=200`);
           const b = await r.json().catch(() => ({}));
           const ms = (b.markets || []).filter((m) => m.close_time).sort((a, c) => new Date(a.close_time) - new Date(c.close_time));
           const m = ms[0];
           let over = m ? overFromMarket(m) : null;
           let obOver = null;
           if (over == null && m) obOver = await overFromOrderbook(m.ticker);   // list row had no quotes → try the book
-          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, rawMarket: m || null, overFromMarket: over, overFromOrderbook: obOver, overPct: over != null ? over : obOver });
-        } catch (e) { return json({ coin, seriesTicker: t, error: e.message }, 502); }
+          const live = over != null ? over : obOver;
+          if (live != null && env.CROWD_KV) await kvPut(env, t, { t: Date.now(), data: { overPct: live, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time } });
+          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, rawMarket: m || null, overFromMarket: over, overFromOrderbook: obOver, overPct: live, kvCached });
+        } catch (e) { return json({ coin, seriesTicker: t, error: e.message, kvCached }, 502); }
       }
       // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
@@ -81,7 +89,7 @@ export default {
 
     let crowd = null;
     const seriesTicker = env["KALSHI_SERIES_" + coin];
-    if (seriesTicker) { try { crowd = await getKalshiCrowd(seriesTicker); } catch (_) { crowd = null; } }
+    if (seriesTicker) { try { crowd = await getKalshiCrowd(env, seriesTicker); } catch (_) { crowd = null; } }
 
     let ai;
     try { ai = await getAIRead(env, provider, body, crowd); }
@@ -110,38 +118,75 @@ const KALSHI_HEADERS = {
   Accept: "application/json",
   "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
 };
-const crowdCache = new Map(); // seriesTicker -> { t, data } : avoid hammering Kalshi
-const FRESH_MS = 60000;   // serve cache without re-fetching for 60s
-const STALE_MS = 600000;  // on error, keep serving the last good value for up to 10 min
-async function getKalshiCrowd(seriesTicker) {
-  const cached = crowdCache.get(seriesTicker);
-  if (cached && Date.now() - cached.t < FRESH_MS) return cached.data; // 60s fresh cache
-  const url = `${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(seriesTicker)}&status=open&limit=200`;
+const crowdMem = new Map();   // L1: { t, data } per isolate (isolates are short-lived)
+const FRESH_MS = 60000;       // don't re-hit Kalshi if our value is younger than this
+const STALE_MS = 900000;      // serve last good value through errors for up to 15 min
+const KV_TTL = 1800;          // seconds KV keeps an entry
+
+// Returns crowd odds, preferring a fresh cache and falling back to the last good value
+// (flagged stale) when Kalshi rate-limits us. env.CROWD_KV (if bound) shares one good
+// fetch across every Worker isolate — essential because Kalshi 429s Cloudflare's IPs.
+async function getKalshiCrowd(env, seriesTicker) {
+  const now = Date.now();
+  let cached = crowdMem.get(seriesTicker);
+  if ((!cached || now - cached.t >= FRESH_MS) && env.CROWD_KV) {
+    const kv = await kvGet(env, seriesTicker);          // pull the shared value
+    if (kv && (!cached || kv.t > cached.t)) cached = kv;
+  }
+  if (cached && now - cached.t < FRESH_MS) return cached.data;   // fresh enough, no fetch
+
   try {
-    const r = await fetch(url, { headers: KALSHI_HEADERS });
-    if (!r.ok) throw new Error("kalshi " + r.status);
-    const data = await r.json();
-    const markets = (data.markets || []).filter((m) => m.close_time);
-    if (!markets.length) return staleOrNull(cached);
-    markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
-    const m = markets[0];
-    let over = overFromMarket(m);
-    if (over == null) over = await overFromOrderbook(m.ticker);   // illiquid list row → derive mid from the order book
-    if (over == null) return staleOrNull(cached);
-    const result = { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
-    crowdCache.set(seriesTicker, { t: Date.now(), data: result });
-    return result;
-  } catch (e) {
-    // Rate-limited or down: serve the last good value (marked stale) instead of n/a.
-    const stale = staleOrNull(cached);
-    if (stale) return stale;
-    throw e;
+    const data = await fetchCrowd(seriesTicker);
+    if (data) {
+      const entry = { t: now, data };
+      crowdMem.set(seriesTicker, entry);
+      if (env.CROWD_KV) await kvPut(env, seriesTicker, entry);   // share with other isolates
+      return data;
+    }
+    return staleOrNull(cached, now);
+  } catch (_) {
+    return staleOrNull(cached, now);   // 429 / down → last known
   }
 }
-// Returns the cached value (flagged stale) if it's still within the stale window, else null.
-function staleOrNull(cached) {
-  if (cached && Date.now() - cached.t < STALE_MS) return { ...cached.data, stale: true };
+
+// One Kalshi round-trip → implied OVER probability (or null). Throws on hard HTTP error.
+async function fetchCrowd(seriesTicker) {
+  const url = `${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(seriesTicker)}&status=open&limit=200`;
+  const r = await kalshiFetch(url);
+  if (!r.ok) throw new Error("kalshi " + r.status);
+  const data = await r.json();
+  const markets = (data.markets || []).filter((m) => m.close_time);
+  if (!markets.length) return null;
+  markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
+  const m = markets[0];
+  let over = overFromMarket(m);
+  if (over == null) over = await overFromOrderbook(m.ticker);   // list row had no quotes → order book
+  if (over == null) return null;
+  return { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
+}
+
+function staleOrNull(cached, now) {
+  if (cached && (now - cached.t) < STALE_MS) return { ...cached.data, stale: true };
   return null;
+}
+
+// Kalshi's rate limit is bursty; a couple of short retries usually clears a 429.
+async function kalshiFetch(url) {
+  let r;
+  for (let i = 0; i < 3; i++) {
+    r = await fetch(url, { headers: KALSHI_HEADERS });
+    if (r.status !== 429) return r;
+    await sleep(300 * (i + 1));   // 300ms, 600ms, 900ms
+  }
+  return r;
+}
+function sleep(ms) { return new Promise((res) => setTimeout(res, ms)); }
+
+async function kvGet(env, key) {
+  try { const s = await env.CROWD_KV.get("crowd:" + key); return s ? JSON.parse(s) : null; } catch (_) { return null; }
+}
+async function kvPut(env, key, entry) {
+  try { await env.CROWD_KV.put("crowd:" + key, JSON.stringify(entry), { expirationTtl: KV_TTL }); } catch (_) {}
 }
 function avg(a, b) {
   const xs = [a, b].filter((v) => typeof v === "number");
@@ -160,7 +205,7 @@ function overFromMarket(m) {
 // YES midpoint. Kalshi books are priced in cents; yes_ask ≈ 100 − best NO bid.
 async function overFromOrderbook(ticker) {
   try {
-    const r = await fetch(`${KALSHI_BASE}/markets/${encodeURIComponent(ticker)}/orderbook?depth=1`, { headers: KALSHI_HEADERS });
+    const r = await kalshiFetch(`${KALSHI_BASE}/markets/${encodeURIComponent(ticker)}/orderbook?depth=1`);
     if (!r.ok) return null;
     const d = await r.json();
     const ob = (d && d.orderbook) || {};

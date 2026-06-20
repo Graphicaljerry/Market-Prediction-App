@@ -11,3 +11,10 @@ compatibility_date = "2026-06-20"
 KALSHI_SERIES_ETH = "KXETH15M"
 KALSHI_SERIES_BTC = "KXBTC15M"
 KALSHI_SERIES_SOL = "KXSOL15M"
+
+# Cross-isolate cache for Kalshi crowd odds. Kalshi rate-limits Cloudflare's shared
+# egress IPs (429s), so we persist each good fetch here and serve it (even when stale)
+# through the throttled gaps. One success is shared across every Worker instance.
+[[kv_namespaces]]
+binding = "CROWD_KV"
+id = "fc9c4d13092c4e96956659aa427c2ec6"
