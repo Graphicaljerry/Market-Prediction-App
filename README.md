@@ -9,6 +9,7 @@ the **live Kalshi crowd odds** — then tells you what to play for the **next ro
 right before the clock runs out.
 
 > **Live app:** https://graphicaljerry.github.io/Market-Prediction-App/
+> **Design (Figma):** https://www.figma.com/design/K8o8dinrXn2XmHO7T3i9JV/
 > Supports **ETH**, **BTC**, and **SOL**, switchable in the header.
 
 ---
@@ -20,11 +21,13 @@ right before the clock runs out.
 - [Architecture](#architecture)
 - [The 15-minute round model](#the-15-minute-round-model)
 - [Indicator engine](#indicator-engine)
+- [The Auto Pick card — "what & when to buy"](#the-auto-pick-card--what--when-to-buy)
 - [Accuracy tracker](#accuracy-tracker)
 - [AI Co-Pilot (Cloudflare Worker)](#ai-co-pilot-cloudflare-worker)
 - [Bet Window & conviction alerts](#bet-window--conviction-alerts)
 - [Crowd odds (Kalshi)](#crowd-odds-kalshi)
 - [Design system](#design-system)
+- [Design files (Figma)](#design-files-figma)
 - [Data persistence](#data-persistence)
 - [Deployment](#deployment)
 - [Repository layout](#repository-layout)
@@ -274,6 +277,36 @@ iOS/Apple-inspired dark theme:
   orange `#ff9f0a` (skip/caution), blue `#0a84ff` (info/next-round).
 - **Responsive** from phone through iPad/MacBook to ultrawide via fluid grids.
 - Help affordances: an info sheet (`EXPLAIN` map) defines each indicator in plain English.
+
+---
+
+## Design files (Figma)
+
+The UI is mocked up in Figma with the same design system (true-black, Inter + Roboto
+Mono, the system accent colors) across three breakpoints:
+
+**📐 Figma file:** https://www.figma.com/design/K8o8dinrXn2XmHO7T3i9JV/
+
+| Frame | Layout |
+|---|---|
+| **📱 Mobile · 390** | single-column stack |
+| **📲 Tablet · 834** | two-column layout |
+| **🖥 Desktop · 1440** | 3-up top row (hero · timer · pick) + 4-up grid |
+
+Each frame includes the topbar, coin switcher, the ⭐ STRONG SIGNAL bet banner, hero
+price, round timer, the **BUY OVER/UNDER + likelihood % + mini-chart** Auto Pick card,
+AI Co-Pilot, Live Indicators, Pick Accuracy, and Recent Rounds.
+
+### Inspiration (via Mobbin)
+The file also has a board of curated references for live-chart trading and binary
+prediction UIs that informed the design:
+
+- [Binance · Events (Higher/Lower)](https://mobbin.com/screens/96c7545e-029f-4356-bd8c-afe4c5954a81) — short-term Higher/Lower on a candle chart with time increments + payout %; the closest analogue to this product.
+- [Crypto.com · ETH Leverage](https://mobbin.com/screens/20740a03-a93e-4c43-9e44-5ec28a59c06d) — dashed current-price line + green Buy / red Sell (the "line to beat").
+- [Binance · Price Predict](https://mobbin.com/screens/1ae4ce0d-625a-4005-a98c-e5554bd92f86) — "I think ETH is going ↑/↓" green-up / red-down.
+- [Coinbase · BTC chart](https://mobbin.com/screens/f7580aa4-4e73-4a2a-800f-4682a03bbd30) — true-black candles, 15M interval, Indicators dropdown.
+- [Formula 1® · Predict](https://mobbin.com/screens/a8c724bd-26fe-4105-a82c-5ebb7fcbcd3a) — binary YES/NO with points and a round countdown.
+- [OKX · Simple Options](https://mobbin.com/screens/39f1d20c-ed59-4cb5-a7b2-c2ea40e26b7e) — one-button "going up ↑" simplicity.
 
 ---
 
