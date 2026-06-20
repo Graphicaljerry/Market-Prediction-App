@@ -43,13 +43,15 @@ Every 15 minutes the market resets: at the round open, the live price becomes th
 The app:
 1. Streams the **real-time price** over a WebSocket.
 2. Pulls **15-minute candles** and computes a panel of **technical indicators**.
-3. Combines those into a single **Auto Pick** (OVER / UNDER / SKIP), **locked once per
-   round** so it doesn't flicker.
+3. Combines those into a single **Auto Pick** card that tells you plainly **BUY OVER ↑**
+   or **BUY UNDER ↓**, with a blended **likelihood %** and a live mini chart of price vs
+   the line to beat. The pick is **locked per round** so it doesn't flicker.
 4. **Records and grades** every pick automatically so you build a real hit-rate history.
 5. Asks an **AI Co-Pilot** to weigh the technicals + your track record + the **Kalshi
    crowd** and issue a blunt verdict with a one-line rationale.
-6. In the final two minutes, opens a **Bet Window** that surfaces the freshest call for
-   the **next** round — with **conviction alerts** when indicators, AI, and crowd align.
+6. In the final two minutes, the pick card and a **Bet Window** banner flip to the best
+   guess for the **next** round — with **conviction alerts** when indicators, AI, and
+   crowd align.
 
 ---
 
@@ -148,9 +150,34 @@ From the 15-minute candles the app computes a panel and turns each into a bull/b
 | **Volume** | Current bar vs 20-bar average (context, not a vote) |
 
 The votes are tallied into a single **Auto Pick**. Two layers keep it usable:
-- **`renderRoundCall`** — the big locked card, set **once** at the round boundary.
+- **`renderRoundCall`** — the locked direction for the round, set **once** at the boundary.
 - **`renderLean`** — a small "live lean" that may update intra-round without disturbing
   the locked call.
+
+---
+
+## The Auto Pick card — "what & when to buy"
+
+The headline card (`renderPickCard()`) turns the signals into one plain instruction so you
+never have to interpret raw indicators:
+
+- **BUY OVER ↑ / BUY UNDER ↓** in large type, with a plain-language subtitle ("*betting the
+  price goes UP/DOWN*") and a hint telling you *when* ("place it on Coinbase now").
+- **A single blended likelihood %** (`combinedOdds()`) — one probability that the price ends
+  OVER, blending three sources with renormalizing weights:
+  - the **indicator tally** (40%) — share of decisive indicators that are bullish
+  - the **AI** verdict + confidence (35%) — High/Medium/Low → 0.80 / 0.68 / 0.58
+  - the live **Kalshi crowd** (25%) — the market's own implied probability
+
+  The % updates live; the **direction stays locked** for the round so it doesn't flip-flop.
+- **Phase-aware scope.** Most of the round it reads *"✅ For THIS round · closes HH:MM"*. In
+  the final 2 minutes (`BET_WINDOW`) it flips to *"⏭ Best guess · NEXT round HH:MM–HH:MM ·
+  get ready"*. If the live blend turns against the locked pick, it shows **CAUTION** instead
+  of a false BUY.
+- **Live mini chart** (`drawMiniChart()` on a `<canvas>`) — the live price racing against
+  the strike: **green** line/fill above the line (OVER winning), **red** below (UNDER
+  winning), with a dashed strike line. Points are sampled ~1/sec into `state.priceHist` and
+  reset each round.
 
 ---
 
@@ -201,12 +228,13 @@ Setup details (keys, vars, Git deploy) live in
 ## Bet Window & conviction alerts
 
 In the final `BET_WINDOW` (120s) the **Bet Window** banner activates and shows the call
-for the **next** round, plus a conviction tier from `convictionFor()`:
+for the **next** round (showing **BUY <dir>** + the blended **% likely UP/DOWN**), plus a
+conviction tier from `convictionFor()`:
 
 - ⭐ **STRONG SIGNAL** — indicators **and** AI **and** crowd all point the same way.
 - ⚡ **EDGE vs CROWD** — you and the AI agree, but the crowd leans the other way (the
   contrarian setup the prompt hunts for).
-- 🔔 **BET WINDOW** — normal; place it or skip.
+- 🔔 **GET READY** — normal; place it or skip.
 
 Outside the window the banner counts down to when the next window opens.
 
@@ -215,15 +243,24 @@ Outside the window the banner counts down to when the next window opens.
 ## Crowd odds (Kalshi)
 
 The Worker reads the nearest-expiry open market in the coin's 15-minute Kalshi series
-(`KXETH15M` / `KXBTC15M` / `KXSOL15M`), using `yes_bid`/`yes_ask` (cents ≈ implied OVER
-probability), falling back to `last_price`. Reliability touches:
+(`KXETH15M` / `KXBTC15M` / `KXSOL15M`) and turns its YES bid/ask midpoint into an implied
+OVER probability. Getting this reliable took a few rounds, because Kalshi **rate-limits
+Cloudflare's shared egress IPs** and **changed its quote schema**:
 
-- a **60-second fresh cache** so rapid reads don't hammer Kalshi;
-- a **browser-like User-Agent** (Kalshi throttles default bot agents to 429);
-- **stale-serve on error** — if Kalshi rate-limits or hiccups, the last good value is
-  served (flagged *"last known"*) for up to 10 minutes instead of dropping to `n/a`.
+- **Quote parsing.** Kalshi now prices in **dollars as strings** (`yes_bid_dollars: "0.5000"`
+  → 50%), not the legacy integer-cent `yes_bid`/`yes_ask`. `overFromMarket()` parses the
+  `*_dollars` fields (×100), with legacy-cent and `last_price_dollars` fallbacks.
+- **Browser-like User-Agent** — Kalshi throttles default bot agents straight to `429`.
+- **Retry on 429** (`kalshiFetch()`, 300/600/900 ms backoff) to ride out bursty throttling.
+- **KV-backed cache** (`CROWD_KV`, wired in `wrangler.toml`) — one good fetch is shared
+  across every Worker isolate and served (flagged *stale / "last known"*) for up to 15 min
+  through throttled gaps. An in-memory `Map` only lives for one short-lived isolate, so KV
+  is what makes the crowd stop flapping to `n/a`. A 60-second fresh window avoids re-hitting
+  Kalshi on every request.
 
-A coin with no series ticker simply shows crowd `n/a`; the AI read still runs.
+The `?crowd=COIN` GET route is a diagnostic that dumps `httpStatus`, the raw market, the
+derived `overPct`, and the current `kvCached` value/age. A coin with no series ticker simply
+shows crowd `n/a`; the AI read still runs.
 
 ---
 
@@ -263,6 +300,8 @@ at `cloudflare-worker/worker.js`; every push redeploys the Worker.
 - Public, non-secret vars (the Kalshi series tickers) live in `wrangler.toml [vars]`
   because **Git deploys wipe plain-text dashboard variables** — only **Secrets** persist.
 - API keys are added as **Secrets** in the Worker dashboard and survive deploys.
+- A **KV namespace** (`CROWD_KV`) is bound via `wrangler.toml [[kv_namespaces]]` for the
+  shared crowd-odds cache; the binding is part of the Git deploy.
 
 ---
 
@@ -304,6 +343,9 @@ Worker with `wrangler dev` (see the Worker README).
 - `connectWS` / `onLivePrice` — WebSocket subscription and live price handling.
 - indicator builder — RSI/MACD/EMA/Bollinger/ROC/Volume → vote list.
 - `renderRoundCall` (locked) vs `renderLean` (live lean).
+- `combinedOdds` / `indOver` / `aiOver` / `crowdOver` — blend indicators + AI + crowd into
+  one P(OVER); `renderPickCard` — the BUY OVER/UNDER + % + phase-aware scope card.
+- `drawMiniChart` / `pushPricePoint` / `resetChart` — the live price-vs-strike canvas.
 - `nextBoundary` / `tickTimer` — round clock, grading, per-round AI trigger.
 - `updateBetWindow` / `convictionFor` / `crowdDirOf` — Bet Window + conviction tiers.
 - `callWorker` / `historySummary` / `scopeAt` / `renderAI` — AI request, track-record
@@ -312,7 +354,9 @@ Worker with `wrangler dev` (see the Worker README).
 `cloudflare-worker/worker.js`
 - `fetch` handler — health check, `?discover=COIN`, `?crowd=COIN` diagnostics, and the
   POST path (crowd + AI).
-- `getKalshiCrowd` — crowd odds with fresh cache, browser UA, and stale-serve.
+- `getKalshiCrowd` / `fetchCrowd` — crowd odds with KV + in-memory cache and stale-serve.
+- `overFromMarket` / `dollarsToPct` — parse Kalshi's `*_dollars` quote schema → implied %.
+- `kalshiFetch` — browser UA + 429 retry; `kvGet` / `kvPut` — `CROWD_KV` shared cache.
 - `buildPrompt` — phase-aware prompt (current vs **next** round near the limit).
 - `pickProvider` / `getAIRead` / `readAnthropic` / `readGemini` / `readGroq` / `normalize`.
 
