@@ -38,20 +38,24 @@ auto-detects which provider to use; or force it with a Text var `AI_PROVIDER`.
 |---|---|---|---|
 | **Gemini** (free) | `GEMINI_API_KEY` | aistudio.google.com/apikey | Free tier |
 | **Groq** (free, very fast) | `GROQ_API_KEY` | console.groq.com/keys | Free tier |
-| **Claude** (sharpest) | `ANTHROPIC_API_KEY` | console.anthropic.com | ~1–3¢ / read |
+| **Claude** (sharpest) | `ANTHROPIC_API_KEY` | console.anthropic.com | **Haiku default, ~0.05–0.1¢ / read** |
 
 - **Keep options open:** add more than one key and flip between them by setting
   `AI_PROVIDER` = `gemini` | `groq` | `anthropic`. No redeploy of code needed — just save the var.
-- Override the model with `AI_MODEL` if you want (defaults: `gemini-2.0-flash`,
-  `llama-3.3-70b-versatile`, `claude-opus-4-8`).
+- Override the model with `AI_MODEL` if you want (defaults: `claude-haiku-4-5`,
+  `gemini-2.0-flash`, `llama-3.3-70b-versatile`). The app also sends its own model choice
+  (Haiku by default) and can pick Sonnet/Opus per call from the **AI Co-Pilot** settings.
 - **Check it worked:** open the Worker URL in a browser (a GET) — it returns
   `{"ok":true,"provider":"…","model":"…"}` so you can confirm which brain is active.
 
 ## B-as-in-budget: cap Claude spend
-If you use Claude, set a hard ceiling so it can never surprise you:
+Spend is small by design, but cap it anyway:
 - **console.anthropic.com → Settings → Limits / Billing** → set a **monthly spend limit**
   (e.g. $5). The key stops working past that cap.
-- The app only calls the AI **once per 15-min round** (not every tick), so usage stays small.
+- The default model is **Haiku** (~0.05–0.1¢/read). The app pays for **at most one** read per
+  15-min round (the 2-min lock), **never while the tab is hidden**, and its **AI spend** setting
+  (Smart / Every round / Manual) only pays when the call is close or contrarian. Refreshing the
+  free **Kalshi crowd** between reads sends `noAI: true` and makes **no LLM call**.
 
 ## (Optional) Crowd odds — Kalshi series tickers
 Without these, the AI still works; the **Crowd** line just shows `n/a`.
@@ -60,9 +64,22 @@ Add Text vars `KALSHI_SERIES_ETH`, `KALSHI_SERIES_BTC`, `KALSHI_SERIES_SOL` set 
 `https://external-api.kalshi.com/trade-api/v2/series?category=Crypto`). The Worker auto-picks
 the nearest-expiry open market in that series.
 
+## 24/7 auto-tracker (cron) — free, no AI spend
+The root `wrangler.toml` adds a **cron trigger** (`[triggers] crons = ["*/15 * * * *"]`). Every
+15 minutes the Worker's `scheduled` handler makes a market-anchored pick for each coin that has
+a `KALSHI_SERIES_*` set — using **only free data** (Kalshi price + Coinbase 1-min momentum +
+order book, **no LLM**) — grades the previous round, and stores it in **KV** under `picks:<COIN>`.
+- **Costs nothing beyond the free tier:** no Anthropic calls on the schedule; cron + KV are free.
+- **Read it:** open `…workers.dev/?picks=ETH` (or `?picks` for all coins) — latest pick, rolling
+  history, and hit rate. The app shows this in its **24/7 Auto-Tracker** panel and feeds the
+  record into the AI prompt.
+- **After deploying,** confirm the schedule under the Worker → **Triggers** tab.
+- Uses the same **`CROWD_KV`** namespace already bound for the crowd cache — nothing extra to set up.
+
 ## Connect the app
 Open the live app → **AI Co-Pilot** → paste the Worker URL → **Save & Get AI Read**.
-It saves on your device and auto-refreshes once per 15-minute round.
+It saves on your device. The crowd refreshes for free; the paid AI read runs at most once per
+round while the tab is open (tune it with the **AI spend** setting).
 
 ## Optional hardening
 - **Abuse guard:** add a Secret `ACCESS_TOKEN`, then call the Worker as `…workers.dev/?token=VALUE`.

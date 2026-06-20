@@ -1,16 +1,50 @@
 # 15-Minute Crypto Over/Under Tracker
 
-A single-page web app that mirrors Coinbase's **"15 min Ethereum"** market (the
+A single-page web app that mirrors Coinbase's **"15 min"** crypto market (the
 Kalshi-powered Over/Under: *will the price be above its round-open level 15 minutes
-from now?*) and helps you decide which way to bet. It pulls **live prices**, computes
-**technical indicators** in your browser, **auto-grades** its own track record, and
-folds in an **AI Co-Pilot** that weighs your indicators + your 7-day hit rate against
-the **live Kalshi crowd odds** — then tells you what to play for the **next round**
-right before the clock runs out.
+from now?*) and helps you decide which way to bet. It pulls **live prices**, models the
+**probability of finishing above the line** from real market physics, **auto-grades** its
+own track record and **calibrates** to it, runs a **24/7 server-side auto-tracker**, and
+folds in an **AI Co-Pilot** that weighs everything against the **live Kalshi crowd** —
+then tells you what to play for the **next round** right before the clock runs out.
 
 > **Live app:** https://graphicaljerry.github.io/Market-Prediction-App/
 > **Design (Figma):** https://www.figma.com/design/K8o8dinrXn2XmHO7T3i9JV/
-> Supports **ETH**, **BTC**, **SOL**, **DOGE**, **SHIB**, and **XRP**, switchable in the header.
+> Supports **ETH**, **BTC**, **SOL**, **DOGE**, **SHIB**, and **XRP** (segmented control on
+> desktop, a dropdown on mobile).
+
+---
+
+## What's new (latest)
+
+Recent work, newest first:
+
+- **24/7 auto-tracker (free, in-app).** A scheduled Cloudflare Worker (cron, every 15 min)
+  makes a market-anchored pick from **free data only** — Kalshi price + 1-min momentum +
+  order book, **no LLM** — and grades the previous round, building an always-on per-coin
+  record even when no tab is open. Shown in a new **24/7 Auto-Tracker** panel, and the AI
+  reads this record too. Read it directly at `…/?picks=ETH`.
+- **AI cost controls.** Default model switched from Opus → **Claude Haiku 4.5** (~20× cheaper).
+  The free **Kalshi crowd** is decoupled from the paid AI call; the paid read now runs **at
+  most once per round** (the 2-min lock), **never while the tab is hidden**, and an **"AI
+  spend"** setting (Smart / Every round / Manual) only pays when the call is close or
+  contrarian to the market.
+- **Position (barrier) model.** The probability now uses the real physics of an OVER/UNDER —
+  `P(over) = Φ( ln(price/line) / (σ·√time-left) )` — distance to the line vs time vs realized
+  volatility, from **1-minute** candles. Mid-round it reads near-certainty instead of guessing
+  from indicator votes.
+- **Market-anchored, calibrated probability.** The blend leans on the Kalshi market (the
+  efficient prior) + the position model + the AI's **numeric** probability, then **calibrates**
+  to your realized results. Fixed a real bug where the final-2-min pick was priced off *this*
+  round's nearly-settled market instead of the **next** round's.
+- **Order-book imbalance** added as a live indicator + AI input + gentle blend tilt.
+- **Zoomable chart** with timeframe buttons: Live · 1m · 5m · 10m · 15m · 30m · 1h · 1d.
+- **Recommendation-driven aurora glow** — a slow-drifting green background that crossfades to
+  red when the pick is UNDER; near-black canvas otherwise.
+- **Brand coin icons** as crisp inline SVG; **12-hour clock** (AM/PM) throughout; **mobile
+  dropdown** coin selector; the old top "bet window" banner replaced by a prominent
+  **next-round ribbon** inside the Auto Pick card.
+- **Rewritten backend prompt** (see [AI Co-Pilot](#ai-co-pilot-cloudflare-worker)).
 
 ---
 
@@ -20,11 +54,13 @@ right before the clock runs out.
 - [Tech stack](#tech-stack)
 - [Architecture](#architecture)
 - [The 15-minute round model](#the-15-minute-round-model)
+- [The probability engine](#the-probability-engine)
 - [Indicator engine](#indicator-engine)
 - [The Auto Pick card — "what & when to buy"](#the-auto-pick-card--what--when-to-buy)
-- [Accuracy tracker](#accuracy-tracker)
+- [Accuracy tracker & calibration](#accuracy-tracker--calibration)
+- [24/7 Auto-Tracker (cron)](#247-auto-tracker-cron)
 - [AI Co-Pilot (Cloudflare Worker)](#ai-co-pilot-cloudflare-worker)
-- [Bet Window & conviction alerts](#bet-window--conviction-alerts)
+- [Next-round ribbon & conviction](#next-round-ribbon--conviction)
 - [Crowd odds (Kalshi)](#crowd-odds-kalshi)
 - [Design system](#design-system)
 - [Design files (Figma)](#design-files-figma)
@@ -45,16 +81,21 @@ Every 15 minutes the market resets: at the round open, the live price becomes th
 
 The app:
 1. Streams the **real-time price** over a WebSocket.
-2. Pulls **15-minute candles** and computes a panel of **technical indicators**.
-3. Combines those into a single **Auto Pick** card that tells you plainly **BUY OVER ↑**
-   or **BUY UNDER ↓**, with a blended **likelihood %** and a live mini chart of price vs
-   the line to beat. The pick is **locked per round** so it doesn't flicker.
-4. **Records and grades** every pick automatically so you build a real hit-rate history.
-5. Asks an **AI Co-Pilot** to weigh the technicals + your track record + the **Kalshi
-   crowd** and issue a blunt verdict with a one-line rationale.
-6. In the final two minutes, the pick card and a **Bet Window** banner flip to the best
-   guess for the **next** round — with **conviction alerts** when indicators, AI, and
-   crowd align.
+2. Pulls candles at multiple granularities, computes a panel of **technical indicators**
+   and the **order-book imbalance**, and measures **realized volatility + momentum** from
+   1-minute data.
+3. Combines those — anchored on the **Kalshi market price** and a **position model** — into a
+   single **Auto Pick** card that tells you plainly **BUY OVER ↑** or **BUY UNDER ↓**, with a
+   blended **likelihood %**, a zoomable mini chart of price vs the line to beat, and the
+   live crowd + AI read. The pick is **locked per round** so it doesn't flicker.
+4. **Records and grades** every pick automatically and **calibrates** its probabilities to
+   your realized results.
+5. Runs a **24/7 server-side auto-tracker** that keeps an independent per-coin record from
+   free data, even while the app is closed.
+6. Asks an **AI Co-Pilot** to weigh the math + your track record + the auto-tracker + the
+   Kalshi crowd and issue a calibrated probability with a plain-English reason.
+7. In the final two minutes, the pick card surfaces a prominent **next-round ribbon** with
+   the locked pick — with **conviction tiers** when the signals align.
 
 ---
 
@@ -62,15 +103,18 @@ The app:
 
 - **Decision-first.** The screen answers one question — *OVER or UNDER for the next
   round?* — and everything else supports that.
-- **Honest about itself.** It grades its own picks and shows the running hit rate. No
-  cherry-picking.
-- **Fresh when it matters.** The recommendation that counts is computed **near the round
-  boundary**, on the most recent data, not at page load.
+- **Anchored on the market, honest about edge.** A 15-minute market is near-efficient; the
+  app treats the live Kalshi price as the best prior and only deviates with real, supported
+  signal. Most rounds deserve a **SKIP**.
+- **Calibrated, not confident.** It grades its own picks and pulls its probabilities toward
+  what actually happened. Accuracy beats a confident-looking number that's wrong.
+- **Cheap by default.** Free data does the heavy lifting; the paid AI is opt-in, gated, and
+  runs at most once per round while you're watching.
 - **Stable, not jumpy.** The headline pick locks per round; only the "live lean" moves.
-- **No backend to run.** Everything is static + one optional serverless Worker. Keys
-  never touch the browser.
-- **Apple/iOS feel.** True-black dark UI, SF system fonts, system accent colors, large
-  legible numerals, responsive from phone to ultrawide.
+- **No backend to run.** Static app + one optional serverless Worker. Keys never touch the
+  browser.
+- **Apple/iOS feel.** Near-black dark UI, system fonts, large legible numerals, a slow
+  ambient glow, responsive from phone to ultrawide.
 
 ---
 
@@ -79,13 +123,15 @@ The app:
 | Layer | Choice | Why |
 |---|---|---|
 | **App** | Single-file **vanilla HTML/CSS/JS** (`eth-tracker.html`) | Zero build, loads instantly, trivially hostable on Pages |
-| **Fonts** | Google Fonts + system SF stack | Apple-like typography with no asset pipeline |
-| **Live price** | **Coinbase Exchange WebSocket** (`wss://ws-feed.exchange.coinbase.com`, ticker channel, no auth) | Real-time, free, no key |
-| **Candles** | **Coinbase Exchange REST** (`/products/<X>-USD/candles?granularity=900`) → **CoinGecko** fallback | 15-min OHLCV for the indicators |
-| **Crowd odds** | **Kalshi public API** via the Worker | The actual market the bet tracks |
-| **AI** | **Cloudflare Worker** proxy → Anthropic **Claude** / Google **Gemini** / **Groq** | Key stays server-side; provider is switchable |
-| **Hosting** | **GitHub Pages** (static app) + **Cloudflare Workers** (AI/crowd proxy) | Both free, both Git-deployed |
-| **Storage** | Browser **localStorage** | Track record + settings persist per device, no DB |
+| **Fonts** | Space Mono + system stack | Apple-like typography with no asset pipeline |
+| **Live price** | **Coinbase Exchange WebSocket** (`wss://ws-feed.exchange.coinbase.com`, ticker) | Real-time, free, no key |
+| **Candles** | **Coinbase Exchange REST** (`/candles?granularity=…` 60/300/900/3600/86400) → **CoinGecko** fallback | OHLCV for indicators, volatility, momentum, and the zoomable chart |
+| **Order book** | **Coinbase Exchange REST** (`/book?level=2`) | Bid/ask imbalance near the touch |
+| **Crowd odds** | **Kalshi public API** via the Worker | The actual market the bet tracks (current + next round) |
+| **AI** | **Cloudflare Worker** proxy → Anthropic **Claude** / Google **Gemini** / **Groq** | Key stays server-side; provider + model switchable; **Haiku** default |
+| **Auto-tracker** | **Cloudflare Worker cron** + **KV** | 24/7 per-coin record from free data, no LLM |
+| **Hosting** | **GitHub Pages** (app) + **Cloudflare Workers** (proxy + cron) | Both free, both Git-deployed |
+| **Storage** | Browser **localStorage** + Worker **KV** | Track record + settings per device; crowd cache + auto-tracker server-side |
 
 No frameworks, no bundler, no npm install for the app itself.
 
@@ -96,32 +142,30 @@ No frameworks, no bundler, no npm install for the app itself.
 ```
                  ┌─────────────────────────────────────────────┐
                  │  Browser — eth-tracker.html (GitHub Pages)   │
-                 │                                              │
   Coinbase WS ──▶│  live price ─┐                               │
-  Coinbase REST ─▶│  candles ───┼─▶ indicator engine ─▶ Auto   │
-  CoinGecko ─────▶│  (fallback) │        │              Pick    │
-                 │             └─▶ accuracy tracker ◀──┘  │     │
-                 │                   (localStorage)        │     │
-                 │                                         ▼     │
-                 │            POST {price, strike, pick,         │
-                 │              indicators, history,             │
-                 │              secondsLeft}                     │
-                 └───────────────────┬───────────────────────────┘
-                                     │ HTTPS
-                                     ▼
+  Coinbase REST ─▶│  candles ───┤                               │
+                 │  1m micro ───┼─▶ probability engine ─▶ Auto  │
+  Coinbase book ─▶│  order book │   (position model +     Pick  │
+                 │             │    market + AI + calib.)  │     │
+                 │  accuracy + calibration (localStorage) ─┘     │
+                 └───────┬───────────────────────┬───────────────┘
+                  GET ?picks │            POST {price, strike,    │ HTTPS
+                  (free)     │              market, indicators,   │
+                             │              history, secondsLeft, │
+                             ▼              noAI?}                 ▼
                  ┌─────────────────────────────────────────────┐
                  │  Cloudflare Worker (cloudflare-worker/...)   │
-                 │   • fetch Kalshi crowd odds (server-side)    │
-                 │   • call Claude / Gemini / Groq (key hidden) │
-                 │   • return {crowd, ai, provider}             │
-                 └───────────────────┬───────────────────────────┘
-                          ┌──────────┴───────────┐
-                          ▼                      ▼
-                   Kalshi public API      LLM provider API
+                 │   fetch: Kalshi crowd (cur+next) + LLM read  │
+                 │   scheduled (cron /15m): free per-coin pick  │
+                 │       + grade → KV  (no LLM, no AI spend)    │
+                 │   returns {crowd, ai, provider} / picks      │
+                 └───────┬─────────────────┬─────────────────────┘
+                         ▼                 ▼              ▼
+                  Kalshi API        LLM provider     CROWD_KV (crowd cache + picks)
 ```
 
 The browser never sees the AI key and can't call Kalshi directly (no CORS) — the Worker
-exists to do exactly those two things.
+does those two things, plus the cron that keeps a free 24/7 record.
 
 ---
 
@@ -130,16 +174,42 @@ exists to do exactly those two things.
 Rounds are aligned to wall-clock quarter hours (`:00`, `:15`, `:30`, `:45`).
 
 - `nextBoundary(now)` rounds **up** to the next quarter hour — that's `currentRoundEnd`.
-- At each boundary the timer **grades** the round that just ended, **opens** a new one
-  (capturing the current price as the new strike), re-locks the headline pick, and fires
-  a fresh AI read a few seconds in.
-- A countdown + progress bar show time remaining; both turn amber in the final 2 minutes.
+- At each boundary `tickTimer` **grades** the round that just ended, **opens** a new one
+  (capturing the strike + a signal snapshot), re-locks the headline pick, refreshes the
+  free crowd, and pulls the fresh auto-tracker record.
+- A countdown + progress bar show time remaining (12-hour AM/PM labels); the final 2
+  minutes (`BET_WINDOW = 120s`) is the **bet window** when the locked **next-round** pick
+  surfaces as a ribbon.
+
+---
+
+## The probability engine
+
+The headline likelihood is one number — `combinedOdds()` → `P(OVER)` — built from a
+**weighted, market-anchored blend** and then **calibrated** to your history:
+
+1. **Position / barrier model** (`barrierOver`) — the physics of an OVER/UNDER:
+   `Φ( ln(price/line) / (σ·√(time-left/900)) )`, where σ is per-round volatility from
+   **1-minute** candles (`refreshMicro`). Its weight grows as the position becomes decisive;
+   it bows out in the final 2 min (the next round opens at the line, so there's no distance
+   edge yet).
+2. **The market** (`crowdOver` of the scope-correct Kalshi market, ~0.42) — the efficient
+   prior; uses the **next** round's market during the bet window.
+3. **AI** (`aiOver`, ~0.30) — Claude's own **numeric** probability (`probOver`).
+4. **Indicators** (`indOver`, ~0.22) — the bull/bear tally (correlated, so demoted).
+5. **Order-book imbalance** (`obiOver`, ~0.07) and **short-term momentum** (`momOver`, ~0.08)
+   — gentle, short-horizon tilts.
+
+`calibrate()` then nudges the raw blend toward your realized results: among past rounds whose
+model-confidence sat in the same band, how often did that side actually win? (Laplace-smoothed,
+weighted by sample size, gated until ≥8 samples.) `normCdf` is an Abramowitz-Stegun approximation.
 
 ---
 
 ## Indicator engine
 
-From the 15-minute candles the app computes a panel and turns each into a bull/bear vote:
+From 15-minute candles (plus the order book), the app computes a panel and turns each into a
+bull/bear vote or an info chip:
 
 | Indicator | What it reads |
 |---|---|
@@ -151,119 +221,134 @@ From the 15-minute candles the app computes a panel and turns each into a bull/b
 | **Momentum 1h (ROC)** | Rate of change over the last hour |
 | **Bollinger %B** | Position within the 20-period bands |
 | **Volume** | Current bar vs 20-bar average (context, not a vote) |
+| **Order Book** | Live bid/ask size imbalance within ±0.15% of mid (info + small tilt) |
 
-The votes are tallied into a single **Auto Pick**. Two layers keep it usable:
-- **`renderRoundCall`** — the locked direction for the round, set **once** at the boundary.
-- **`renderLean`** — a small "live lean" that may update intra-round without disturbing
-  the locked call.
+Two layers keep it usable: **`renderRoundCall`** (the locked direction, set once at the
+boundary) and **`renderLean`** (a small "live lean" that updates intra-round without
+disturbing the locked call).
 
 ---
 
 ## The Auto Pick card — "what & when to buy"
 
-The headline card (`renderPickCard()`) turns the signals into one plain instruction so you
-never have to interpret raw indicators:
+The headline card (`renderPickCard()`) turns everything into one plain instruction:
 
-- **BUY OVER ↑ / BUY UNDER ↓** in large type, with a plain-language subtitle ("*betting the
-  price goes UP/DOWN*") and a hint telling you *when* ("place it on Coinbase now").
-- **A single blended likelihood %** (`combinedOdds()`) — one probability that the price ends
-  OVER, blending three sources with renormalizing weights:
-  - the **indicator tally** (40%) — share of decisive indicators that are bullish
-  - the **AI** verdict + confidence (35%) — High/Medium/Low → 0.80 / 0.68 / 0.58
-  - the live **Kalshi crowd** (25%) — the market's own implied probability
-
-  The % updates live; the **direction stays locked** for the round so it doesn't flip-flop.
-- **Phase-aware scope.** Most of the round it reads *"✅ For THIS round · closes HH:MM"*. In
-  the final 2 minutes (`BET_WINDOW`) it flips to *"⏭ Best guess · NEXT round HH:MM–HH:MM ·
-  get ready"*. If the live blend turns against the locked pick, it shows **CAUTION** instead
-  of a false BUY.
-- **Live mini chart** (`drawMiniChart()` on a `<canvas>`) — the live price racing against
-  the strike: **green** line/fill above the line (OVER winning), **red** below (UNDER
-  winning), with a dashed strike line. Points are sampled ~1/sec into `state.priceHist` and
-  reset each round.
+- **BUY OVER ↑ / BUY UNDER ↓** in large type, with a plain-language subtitle and a hint.
+- **A single blended likelihood %** from [the probability engine](#the-probability-engine).
+  The % updates live; the **direction stays locked** for the round.
+- **Phase-aware scope + next-round ribbon.** Most of the round it reads *"✅ THIS round ·
+  closes h:mm AM/PM"*. In the final 2 minutes a pulsing **ribbon** shows the locked
+  **NEXT-round** pick — *"⏭ NEXT ROUND · BUY OVER ↑ when it opens h:mm · 🔒 locked …"*.
+  **SKIP** when there's no clear edge.
+- **Zoomable mini chart** (`drawMiniChart` → `drawLiveChart` / `drawTFChart`) — the live price
+  racing the strike (green above / red below, dashed strike line), with timeframe buttons
+  (Live · 1m · 5m · 10m · 15m · 30m · 1h · 1d) that pull historical closes against the same
+  line to beat.
+- **"The read"** — the crowd + AI rows that feed the blend, plus the plain-English "why".
 
 ---
 
-## Accuracy tracker
+## Accuracy tracker & calibration
 
-Every locked pick is stored with its strike, direction, and round time. When the round
-ends, `gradeRound()` compares the close to the strike and marks the pick correct or not.
-`historySummary()` derives, over the retained window (~7 days / a few hundred rounds):
+Every locked pick is stored with its strike, direction, round time, and a **signal snapshot**
+(indicator net, model probability, order-book imbalance, AI verdict, crowd, conviction). When
+the round ends, `gradeRound()` compares the close to the strike — scoring the pick you actually
+**committed** (the locked one) — and records the outcome. `historySummary()` derives, over the
+retained window (~7 days):
 
-- overall **hit rate**, current **streak**
-- **OVER** hit-rate and **UNDER** hit-rate separately (so the AI can trust the direction
-  that's actually worked for you)
-- the last ~12 graded rounds as a recent-form string
+- overall **hit rate**, current **streak**, separate **OVER** / **UNDER** hit-rates;
+- a **confidence-calibration** table (when it claimed N% likely, that side truly won X%);
+- **conditional hit-rates** (when indicators strongly agreed; when the order book agreed);
+- the recent rounds with the signals behind each.
 
-This summary is sent to the AI on every read, so its advice is grounded in *your* results,
-not generic priors.
+This summary is sent to the AI on every read, and `calibrate()` uses it locally so the live
+probability reflects *your* results. The **Pick Accuracy** panel shows Rounds / Correct /
+Streak / Hit Rate inline, and notes when the odds are calibrated.
+
+---
+
+## 24/7 Auto-Tracker (cron)
+
+A **scheduled** Worker (`crons = ["*/15 * * * *"]`) keeps an independent, always-on record —
+even when no tab is open — using **only free data and no LLM**, so it adds nothing to AI spend.
+Each run, per coin with a Kalshi series:
+
+1. Grades the previous round's pick (latest price vs the stored strike).
+2. Makes a fresh pick the simple way: the **Kalshi market price** nudged by **1-min momentum**
+   and **order-book imbalance**, with **SKIP** near 50/50 (`freePick`).
+3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV` under `picks:<COIN>`.
+
+Read it at `…/?picks=ETH` (or `?picks` for all coins). The app shows it in the **24/7
+Auto-Tracker** panel (`fetchAutoTracker` / `renderAutoTracker`), and the Worker folds the
+record into the AI prompt as an independent reality check on the market.
 
 ---
 
 ## AI Co-Pilot (Cloudflare Worker)
 
-`cloudflare-worker/worker.js` is a module-syntax Worker with one job: take the app's
-snapshot and return a disciplined verdict.
+`cloudflare-worker/worker.js` takes the app's snapshot and returns a disciplined, **numeric**
+verdict.
 
-- **Providers (switchable):** Anthropic Claude (`claude-opus-4-8` default, sharpest),
-  Google Gemini (`gemini-2.0-flash`, free), Groq (`llama-3.3-70b-versatile`, free). It
-  auto-detects from whichever key is present, or you force it with `AI_PROVIDER`. The app
-  can also request a specific model per call.
-- **Structured output:** Anthropic uses `output_config` JSON-schema so the verdict is
-  always `{verdict, confidence, edge, rationale}`; Gemini/Groq use JSON response modes,
-  with a tolerant `extractJson()` fallback.
-- **Prompt:** `buildPrompt()` lays out live price, strike, the indicator votes, the
-  track-record line, and the crowd line, then asks for OVER/UNDER/SKIP. It explicitly
-  rewards **well-supported technicals that disagree with the crowd** (potential edge) and
-  prefers **SKIP** when signals are mixed or the edge is thin.
-- **Next-round framing:** the app sends `secondsLeft`. When ≤120s remain, the current
-  round is effectively settled, so the prompt **reframes the question for the next round**
-  (strike ≈ current price) and the AI panel is labelled *"Next round HH:MM–HH:MM · as of
-  HH:MM."* Otherwise it reads the current round.
-- **Cost control:** the AI is called roughly **once per round**, not per tick. With Claude
-  you can set a hard monthly spend cap in the Anthropic console.
+- **Providers (switchable):** Anthropic Claude (**`claude-haiku-4-5` default** — cheap and
+  plenty sharp; Sonnet/Opus selectable), Google Gemini (`gemini-2.0-flash`, free), Groq
+  (`llama-3.3-70b-versatile`, free). Auto-detected from the key present, or forced with
+  `AI_PROVIDER`; the app can request a specific model per call.
+- **Structured output:** `{probOver, verdict, confidence, edge, rationale}` — Anthropic via
+  JSON-schema, Gemini/Groq via JSON modes, with a tolerant `extractJson()` fallback and a
+  `normalize()` that derives `probOver` if omitted.
+- **The prompt** (`buildPrompt`) is built around market efficiency: **anchor on the Kalshi
+  price** (don't re-derive it), here's **the math** (distance, time-left, volatility, the
+  position-model probability, momentum), the indicators are **correlated** so don't over-count
+  them, here's **your calibration + conditional hit-rates** and the **24/7 auto-tracker's**
+  record — then strict **SKIP discipline** (only past a real margin) and a **plain-English**
+  rationale. It reframes for the **next round** when ≤120s remain.
+- **Cost controls:**
+  - **Crowd-only path** — the app can POST `noAI: true` to refresh the free Kalshi price +
+    strike with **no LLM call**.
+  - **Once per round** — the paid read fires at the 2-min lock, not every tick or round-open.
+  - **Visibility-gated** — no automatic paid reads while the tab is hidden.
+  - **"AI spend" setting** — *Smart* (default; only pays when the call is close or contrarian
+    to the market), *Every round*, or *Manual only*.
+  - Set a hard monthly cap in the Anthropic console for belt-and-suspenders.
 
-Setup details (keys, vars, Git deploy) live in
+Setup details (keys, vars, Git deploy, cron) live in
 [`cloudflare-worker/README.md`](cloudflare-worker/README.md).
 
 ---
 
-## Bet Window & conviction alerts
+## Next-round ribbon & conviction
 
-In the final `BET_WINDOW` (120s) the **Bet Window** banner activates and shows the call
-for the **next** round (showing **BUY <dir>** + the blended **% likely UP/DOWN**), plus a
-conviction tier from `convictionFor()`:
+In the final `BET_WINDOW` (120s) the Auto Pick card surfaces a prominent, pulsing
+**next-round ribbon** with the locked pick for the **next** round (BUY OVER/UNDER + the blended
+% + the lock timestamp), colored to the side. `convictionFor()` tiers it:
 
-- ⭐ **STRONG SIGNAL** — indicators **and** AI **and** crowd all point the same way.
-- ⚡ **EDGE vs CROWD** — you and the AI agree, but the crowd leans the other way (the
-  contrarian setup the prompt hunts for).
-- 🔔 **GET READY** — normal; place it or skip.
+- ⭐ **STRONG** — indicators **and** AI **and** crowd all point the same way.
+- ⚡ **EDGE vs CROWD** — you and the AI agree, but the crowd leans the other way.
+- 🔒 **LOCKED** — normal; place it or skip.
 
-Outside the window the banner counts down to when the next window opens.
+The locked pick is committed once (after a brief settle on a fresh read) and held steady so it
+doesn't flicker.
 
 ---
 
 ## Crowd odds (Kalshi)
 
 The Worker reads the nearest-expiry open market in the coin's 15-minute Kalshi series
-(`KXETH15M` / `KXBTC15M` / `KXSOL15M`) and turns its YES bid/ask midpoint into an implied
-OVER probability. Getting this reliable took a few rounds, because Kalshi **rate-limits
-Cloudflare's shared egress IPs** and **changed its quote schema**:
+(`KXETH15M` / `KXBTC15M` / `KXSOL15M`) and turns its YES bid/ask midpoint into an implied OVER
+probability — **and also returns the next round's market** (`next`), which the app uses during
+the bet window. Reliability details:
 
-- **Quote parsing.** Kalshi now prices in **dollars as strings** (`yes_bid_dollars: "0.5000"`
-  → 50%), not the legacy integer-cent `yes_bid`/`yes_ask`. `overFromMarket()` parses the
-  `*_dollars` fields (×100), with legacy-cent and `last_price_dollars` fallbacks.
+- **Quote parsing.** Kalshi prices in **dollars as strings** (`yes_bid_dollars: "0.5000"` →
+  50%); `overFromMarket()` parses `*_dollars` (×100) with legacy-cent + `last_price_dollars`
+  fallbacks. `strikeFromMarket()` reads `floor_strike` (or parses the subtitle).
 - **Browser-like User-Agent** — Kalshi throttles default bot agents straight to `429`.
-- **Retry on 429** (`kalshiFetch()`, 300/600/900 ms backoff) to ride out bursty throttling.
-- **KV-backed cache** (`CROWD_KV`, wired in `wrangler.toml`) — one good fetch is shared
-  across every Worker isolate and served (flagged *stale / "last known"*) for up to 15 min
-  through throttled gaps. An in-memory `Map` only lives for one short-lived isolate, so KV
-  is what makes the crowd stop flapping to `n/a`. A 60-second fresh window avoids re-hitting
-  Kalshi on every request.
+- **Retry on 429** (`kalshiFetch()`, 300/600/900 ms backoff).
+- **KV-backed cache** (`CROWD_KV`) — one good fetch shared across every isolate and served
+  (flagged *stale*) for up to 15 min through throttled gaps; a 60s fresh window avoids
+  re-hitting Kalshi. The cron also warms this cache for the live app.
 
-The `?crowd=COIN` GET route is a diagnostic that dumps `httpStatus`, the raw market, the
-derived `overPct`, and the current `kvCached` value/age. A coin with no series ticker simply
-shows crowd `n/a`; the AI read still runs.
+The `?crowd=COIN` GET route dumps `httpStatus`, the raw market, the derived `overPct`/`strike`,
+and the cached value/age. A coin with no series ticker simply shows crowd `n/a`.
 
 ---
 
@@ -271,19 +356,25 @@ shows crowd `n/a`; the AI read still runs.
 
 iOS/Apple-inspired dark theme:
 
-- **True black** `#000` background, layered translucent cards.
-- **SF system font stack** (`-apple-system`) with large monospaced numerals for prices.
+- **Near-black** `#0a0a0b` background (not pure black), layered translucent glass cards.
+- **Recommendation-driven aurora** — a fixed, slowly-drifting glow that stays **green** (the
+  signature color, always visible) and crossfades to **red** when the pick is UNDER; the
+  centre stays near-black (~70% dark / ~30% gradient). Honors `prefers-reduced-motion`.
 - **System accent colors:** green `#30d158` (OVER/bull), red `#ff453a` (UNDER/bear),
   orange `#ff9f0a` (skip/caution), blue `#0a84ff` (info/next-round).
-- **Responsive** from phone through iPad/MacBook to ultrawide via fluid grids.
-- Help affordances: an info sheet (`EXPLAIN` map) defines each indicator in plain English.
+- **Brand coin icons** as crisp inline **SVG** (ETH diamond, BTC ₿, SOL bars, DOGE Ð, SHIB,
+  XRP) — tiny and impossible to corrupt.
+- **12-hour clock** with AM/PM everywhere.
+- **Responsive:** a **segmented** coin control on tablet/desktop, a **dropdown** on mobile;
+  fluid grids from phone to ultrawide.
+- Help affordances: an info sheet (`EXPLAIN` map) defines each indicator + panel in plain
+  English.
 
 ---
 
 ## Design files (Figma)
 
-The UI is mocked up in Figma with the same design system (true-black, Inter + Roboto
-Mono, the system accent colors) across three breakpoints:
+The UI is mocked up in Figma with the same design system across three breakpoints:
 
 **📐 Figma file:** https://www.figma.com/design/K8o8dinrXn2XmHO7T3i9JV/
 
@@ -291,50 +382,56 @@ Mono, the system accent colors) across three breakpoints:
 |---|---|
 | **📱 Mobile · 390** | single-column stack |
 | **📲 Tablet · 834** | two-column layout |
-| **🖥 Desktop · 1440** | 3-up top row (hero · timer · pick) + 4-up grid |
+| **🖥 Desktop · 1440** | 3-up top row (hero · timer · pick) + grid |
 
-Each frame includes the topbar, coin switcher, the ⭐ STRONG SIGNAL bet banner, hero
-price, round timer, the **BUY OVER/UNDER + likelihood % + mini-chart** Auto Pick card,
-AI Co-Pilot, Live Indicators, Pick Accuracy, and Recent Rounds.
+The file also includes a **Crypto Icons** style-guide frame (the brand marks reproduced as
+SVG in the app) and a board of curated references.
 
 ### Inspiration (via Mobbin)
-The file also has a board of curated references for live-chart trading and binary
-prediction UIs that informed the design:
 
-- [Binance · Events (Higher/Lower)](https://mobbin.com/screens/96c7545e-029f-4356-bd8c-afe4c5954a81) — short-term Higher/Lower on a candle chart with time increments + payout %; the closest analogue to this product.
+- [Binance · Events (Higher/Lower)](https://mobbin.com/screens/96c7545e-029f-4356-bd8c-afe4c5954a81) — short-term Higher/Lower on a candle chart with time increments + payout %; the closest analogue.
 - [Crypto.com · ETH Leverage](https://mobbin.com/screens/20740a03-a93e-4c43-9e44-5ec28a59c06d) — dashed current-price line + green Buy / red Sell (the "line to beat").
-- [Binance · Price Predict](https://mobbin.com/screens/1ae4ce0d-625a-4005-a98c-e5554bd92f86) — "I think ETH is going ↑/↓" green-up / red-down.
-- [Coinbase · BTC chart](https://mobbin.com/screens/f7580aa4-4e73-4a2a-800f-4682a03bbd30) — true-black candles, 15M interval, Indicators dropdown.
-- [Formula 1® · Predict](https://mobbin.com/screens/a8c724bd-26fe-4105-a82c-5ebb7fcbcd3a) — binary YES/NO with points and a round countdown.
+- [Binance · Price Predict](https://mobbin.com/screens/1ae4ce0d-625a-4005-a98c-e5554bd92f86) — "I think ETH is going ↑/↓".
+- [Coinbase · BTC chart](https://mobbin.com/screens/f7580aa4-4e73-4a2a-800f-4682a03bbd30) — true-black candles, 15M interval, indicators.
+- [Formula 1® · Predict](https://mobbin.com/screens/a8c724bd-26fe-4105-a82c-5ebb7fcbcd3a) — binary YES/NO with a round countdown.
 - [OKX · Simple Options](https://mobbin.com/screens/39f1d20c-ed59-4cb5-a7b2-c2ea40e26b7e) — one-button "going up ↑" simplicity.
 
 ---
 
 ## Data persistence
 
-All client-side, in `localStorage` (per device, no account):
+Client-side, in `localStorage` (per device, no account):
 
 | Key | Holds |
 |---|---|
-| `pickTracker_v1` | graded round history (~7 days) |
-| `workerUrl_v1` | saved AI Worker URL (defaults to the baked-in one) |
-| `aiModel_v1` | preferred AI model |
+| `pickTracker_v1` | graded round history + signal snapshots (~7 days) |
+| `workerUrl_v1` | saved AI Worker URL |
+| `aiModel_v1` | preferred AI model (defaults to Haiku) |
+| `aiBudget_v1` | AI spend mode (`smart` / `always` / `manual`) |
+
+Server-side, in Worker **KV** (`CROWD_KV`):
+
+| Key | Holds |
+|---|---|
+| `crowd:<series>` | shared Kalshi crowd-odds cache (stale-serve through 429s) |
+| `picks:<COIN>` | 24/7 auto-tracker: latest pick + rolling history + hit rate |
 
 ---
 
 ## Deployment
 
 **App → GitHub Pages.** `.github/workflows/pages.yml` copies `eth-tracker.html` to
-`index.html` and publishes on every push to `main`. (Pages must be enabled with the
-**GitHub Actions** source; on a private repo that's a one-time manual toggle.)
+`index.html` and publishes on every push to `main`.
 
-**Worker → Cloudflare (Git-connected).** The repo's root `wrangler.toml` points Cloudflare
-at `cloudflare-worker/worker.js`; every push redeploys the Worker.
-- Public, non-secret vars (the Kalshi series tickers) live in `wrangler.toml [vars]`
-  because **Git deploys wipe plain-text dashboard variables** — only **Secrets** persist.
+**Worker → Cloudflare (Git-connected).** The repo's root `wrangler.toml` points Cloudflare at
+`cloudflare-worker/worker.js`; **every push redeploys the Worker** (no manual `wrangler
+deploy` needed).
+- Public, non-secret vars (the Kalshi series tickers) live in `wrangler.toml [vars]` because
+  Git deploys wipe plain-text dashboard variables — only **Secrets** persist.
 - API keys are added as **Secrets** in the Worker dashboard and survive deploys.
-- A **KV namespace** (`CROWD_KV`) is bound via `wrangler.toml [[kv_namespaces]]` for the
-  shared crowd-odds cache; the binding is part of the Git deploy.
+- A **KV namespace** (`CROWD_KV`) is bound for the crowd cache **and** the auto-tracker picks.
+- The **cron trigger** (`[triggers] crons`) drives the 24/7 auto-tracker — free-tier
+  compatible, no AI spend. Confirm it under the Worker → **Triggers** tab after a deploy.
 
 ---
 
@@ -343,10 +440,10 @@ at `cloudflare-worker/worker.js`; every push redeploys the Worker.
 ```
 .
 ├── eth-tracker.html              # the entire app (served as index.html)
-├── wrangler.toml                 # Cloudflare Worker config + public [vars]
+├── wrangler.toml                 # Worker config: [vars], KV, and the cron trigger
 ├── cloudflare-worker/
-│   ├── worker.js                 # AI + Kalshi-crowd proxy
-│   └── README.md                 # Worker setup (keys, providers, deploy)
+│   ├── worker.js                 # AI + Kalshi-crowd proxy + scheduled auto-tracker
+│   └── README.md                 # Worker setup (keys, providers, deploy, cron)
 ├── .github/workflows/pages.yml   # GitHub Pages deploy
 └── README.md                     # this file
 ```
@@ -363,41 +460,42 @@ python3 -m http.server 8000
 # then visit http://localhost:8000/eth-tracker.html
 ```
 
-Live price, indicators, and the accuracy tracker work with no setup. To exercise the AI
-panel locally, point it at a deployed Worker URL in the **AI Co-Pilot** box, or run the
-Worker with `wrangler dev` (see the Worker README).
+Live price, indicators, volatility/momentum, the chart, and the accuracy tracker work with no
+setup. To exercise the AI panel and the auto-tracker locally, point the **AI Co-Pilot** box at
+a deployed Worker URL, or run the Worker with `wrangler dev` (see the Worker README). Quick
+sanity check on the JS: extract the `<script>` and run `node --check`.
 
 ---
 
 ## Crucial code map
 
 `eth-tracker.html`
-- `COINS` — per-coin config (Coinbase product, CoinGecko id, symbol).
-- `connectWS` / `onLivePrice` — WebSocket subscription and live price handling.
-- indicator builder — RSI/MACD/EMA/Bollinger/ROC/Volume → vote list.
-- `renderRoundCall` (locked) vs `renderLean` (live lean).
-- `combinedOdds` / `indOver` / `aiOver` / `crowdOver` — blend indicators + AI + crowd into
-  one P(OVER); `renderPickCard` — the BUY OVER/UNDER + % + phase-aware scope card.
-- `drawMiniChart` / `pushPricePoint` / `resetChart` — the live price-vs-strike canvas.
-- `nextBoundary` / `tickTimer` — round clock, grading, per-round AI trigger.
-- `updateBetWindow` / `convictionFor` / `crowdDirOf` — Bet Window + conviction tiers.
-- `callWorker` / `historySummary` / `scopeAt` / `renderAI` — AI request, track-record
-  payload, round-scope labelling, and result rendering.
+- `COINS` / `COIN_ICONS` — per-coin config + inline-SVG brand icons.
+- `connectWS` / live price handling; `loadCoinbaseCandles` / `refreshMicro` / `refreshOrderBook`
+  — candles, 1-min volatility + momentum, order-book imbalance.
+- probability engine: `indOver` / `aiOver` / `crowdOver` / `obiOver` / `momOver` / `barrierOver`
+  (+ `normCdf`, `sigmaRoundFallback`) → `rawCombinedOdds` → `calibrate` → `combinedOdds`.
+- `renderPickCard` (locked call + next-round ribbon + glow) / `renderLean` / `setGlow`.
+- `drawMiniChart` → `drawLiveChart` / `drawTFChart`, `loadTFCloses` — zoomable chart.
+- `nextBoundary` / `tickTimer` — round clock, grading, per-round refresh.
+- `openRound` / `gradeRound` / `snapshotFeat` / `historySummary` — record + calibration data.
+- `callWorker` (paid + `crowdOnly`) / `marketContext` / `aiWorthIt` / `refreshCrowd` /
+  `applyCrowd` — AI + free crowd, visibility + smart-spend gating.
+- `fetchAutoTracker` / `renderAutoTracker` — the 24/7 panel; `hm`/`hma`/`hms`/`rangeHM` — 12h clock.
 
 `cloudflare-worker/worker.js`
-- `fetch` handler — health check, `?discover=COIN`, `?crowd=COIN` diagnostics, and the
-  POST path (crowd + AI).
-- `getKalshiCrowd` / `fetchCrowd` — crowd odds with KV + in-memory cache and stale-serve.
-- `overFromMarket` / `dollarsToPct` — parse Kalshi's `*_dollars` quote schema → implied %.
-- `kalshiFetch` — browser UA + 429 retry; `kvGet` / `kvPut` — `CROWD_KV` shared cache.
-- `buildPrompt` — phase-aware prompt (current vs **next** round near the limit).
+- `fetch` handler — health check, `?discover`, `?crowd`, `?picks` diagnostics, the POST path
+  (crowd + AI, or `noAI` crowd-only).
+- `scheduled` — the cron: `runCoinPick` (grade + `freePick` + KV) using `cbMicro` / `cbObi`.
+- `getKalshiCrowd` / `fetchCrowd` — crowd (current + `next`) with KV + stale-serve.
+- `buildPrompt` — market-anchored, physics + calibration + auto-tracker, numeric `probOver`.
 - `pickProvider` / `getAIRead` / `readAnthropic` / `readGemini` / `readGroq` / `normalize`.
 
 ---
 
 ## Disclaimer
 
-This is an educational tool for tracking and reasoning about a short-term prediction
-market. It is **not financial advice**. Prices, indicators, AI output, and crowd odds can
-all be wrong; 15-minute markets are effectively a coin flip with costs. Never stake more
-than you can afford to lose.
+This is an educational tool for tracking and reasoning about a short-term prediction market.
+It is **not financial advice**. Prices, indicators, AI output, crowd odds, and the calibrated
+probabilities can all be wrong; 15-minute markets are effectively a coin flip with costs, and
+no model can predict the future. Never stake more than you can afford to lose.
