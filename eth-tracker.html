@@ -117,6 +117,8 @@
   .meter .mbull { background: var(--green); height: 100%; transition: width .45s; }
   .meter .mbear { background: var(--red); height: 100%; transition: width .45s; margin-left: auto; }
   .tally { font-size: 13px; margin-top: 11px; color: var(--label-2); }
+  .lean { font-size: 12px; margin-top: 9px; color: var(--label-3); }
+  .lean.over { color: var(--green); } .lean.under { color: var(--red); } .lean.skip { color: var(--orange); }
 
   /* ---------- Indicators ---------- */
   .ind { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 0; border-bottom: 0.5px solid var(--separator); }
@@ -249,13 +251,14 @@
 
   <!-- RECOMMENDATION -->
   <div class="module">
-  <div class="sec">Auto Pick · Next 15 Min <button class="ihelp" data-info="autopick">?</button></div>
+  <div class="sec">Auto Pick <span class="tiny">· locked per round</span> <button class="ihelp" data-info="autopick">?</button></div>
   <div class="card">
     <div id="reco" class="reco skip">
       <div class="dir" id="recoDir">Analyzing…</div>
       <div class="conf" id="recoConf">Loading live indicators</div>
       <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
       <div class="tally mono" id="recoTally">—</div>
+      <div class="lean mono" id="liveLean">—</div>
     </div>
   </div>
 
@@ -337,7 +340,7 @@
     SOL: { name: "Solana",   pair: "SOL · USD", sym: "◎", cgId: "solana",   cbProduct: "SOL-USD" }
   };
 
-  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false };
+  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -495,7 +498,9 @@
     });
     $("indicators").innerHTML = html;
   }
-  function renderReco(reco) {
+  // The big card = the LOCKED call for the round (set only at each round open).
+  function renderRoundCall(reco) {
+    state.roundCall = reco;
     var el = $("reco"); el.className = "reco " + reco.cls;
     $("recoDir").textContent = reco.dir === "OVER" ? "OVER ↑" : reco.dir === "UNDER" ? "UNDER ↓" : "SKIP";
     $("recoConf").textContent = reco.conf;
@@ -503,8 +508,16 @@
     var denom = reco.total || 1;
     $("mBull").style.width = (reco.bull / denom * 100) + "%";
     $("mBear").style.width = (reco.bear / denom * 100) + "%";
+  }
+  // The live, twitchy reading — shown small, and used for bets/AI. Locks the
+  // round call on first load; after that the big card changes only at boundaries.
+  function renderLean(reco) {
+    state.lastRecoObj = reco;
     state.lastReco = reco.dir === "SKIP" ? "SKIP" : (reco.dir + " · " + reco.conf.split("—")[0].trim());
     state.lastRecoDir = reco.dir;
+    $("liveLean").textContent = "Live lean: " + reco.dir + " · " + reco.bull + "↑ " + reco.bear + "↓";
+    $("liveLean").className = "lean mono " + reco.cls;
+    if (!state.roundCall) renderRoundCall(reco);
   }
 
   function refresh() {
@@ -526,7 +539,7 @@
         elUpdated.textContent = "Updated " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
         elSrc.textContent = res.src + " · 15m";
       }
-      renderIndicators(a.list); renderReco(buildReco(a.list));
+      renderIndicators(a.list); renderLean(buildReco(a.list));
       if (!state.pendingRound) openRound(true);
       updateRoundStatus();
       maybeAutoAI();
@@ -584,7 +597,7 @@
       last.c = p; if (p > last.h) last.h = p; if (p < last.l) last.l = p;
       var a = analyze(c);
       state.lastList = a.list;
-      renderIndicators(a.list); renderReco(buildReco(a.list));
+      renderIndicators(a.list); renderLean(buildReco(a.list));
       var t = new Date();
       elUpdated.classList.remove("err");
       elUpdated.textContent = "Live · " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
@@ -616,6 +629,7 @@
       gradeRound();
       currentRoundEnd = nextBoundary(now);
       openRound(false);
+      if (state.lastRecoObj) renderRoundCall(state.lastRecoObj);   // lock the call for the new round
       refresh();
       if (aiAvailable()) setTimeout(function () { callWorker(false); }, 4000);   // fresh AI read each new round
     }
@@ -698,7 +712,8 @@
     elPrice.textContent = "—"; elChange.textContent = "—"; elChange.className = "changePill mono";
     $("indicators").innerHTML = '<div class="empty">Loading indicators…</div>';
     $("recoDir").textContent = "Analyzing…"; $("recoConf").textContent = "Loading live indicators"; $("reco").className = "reco skip";
-    state.candles = null; state.wsLive = false; state.aiPrimed = false;
+    state.candles = null; state.wsLive = false; state.aiPrimed = false; state.roundCall = null; state.lastRecoObj = null;
+    $("liveLean").textContent = "—"; $("liveLean").className = "lean mono";
     $("roundStatus").textContent = "Waiting for round open…";
     connectWS();
     refresh();
@@ -710,7 +725,7 @@
   });
   // ---------- Help sheet ----------
   var EXPLAIN = {
-    autopick: { t: "Auto Pick", d: "Your engine reads 7 technical signals from live 15-minute candles. Each votes bullish or bearish, and the majority decides OVER (price likely higher in 15 min) or UNDER. Confidence reflects how lopsided the vote is. SKIP means signals are split — no clear edge." },
+    autopick: { t: "Auto Pick (locked per round)", d: "Your single, stable call for the round. It LOCKS the moment a new 15-minute round opens and does not change until the next round — so you have one clear pick to act on instead of a number that flickers. The small 'Live lean' below shows where the 7 indicators are leaning right now (it moves intra-round); the locked call ignores that noise. Best practice: act on the locked call right when the timer flips to a new round. SKIP means the signals were split at lock time — no clear edge." },
     indicators: { t: "Live Indicators", d: "Classic technical indicators recomputed live from 15-minute candles. Each shows its current value and a bull / bear / neutral tag. Tap any indicator row to learn what it means." },
     accuracy: { t: "Pick Accuracy", d: "When each 15-minute round closes, the app checks whether the auto pick was right — did price end above or below the round's opening 'price to beat'? It tracks your hit rate, streak, and the last ~7 days of rounds, saved on this device." },
     ai: { t: "AI Co-Pilot", d: "Optional. Connects to a small Cloudflare Worker you deploy. The worker fetches the live Kalshi crowd odds (the regulated market behind Coinbase's Over/Under) and asks Claude to weigh your indicators AND your recent track record against the crowd. The biggest edge is when a well-supported read disagrees with the crowd." },

@@ -40,8 +40,14 @@ export default {
 
     const provider = pickProvider(env);
 
-    // Quick health check in a browser: shows which provider is wired up.
     if (request.method === "GET") {
+      const u = new URL(request.url);
+      // Helper to find Kalshi 15-min series tickers: open ?discover=ETH in your browser.
+      if (u.searchParams.has("discover")) {
+        const coin = (u.searchParams.get("discover") || "").toUpperCase();
+        try { return json(await discover(coin)); } catch (e) { return json({ error: e.message }, 502); }
+      }
+      // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
     }
     if (request.method !== "POST") return json({ error: "POST only" }, 405);
@@ -98,6 +104,33 @@ async function getKalshiCrowd(seriesTicker) {
 function avg(a, b) {
   const xs = [a, b].filter((v) => typeof v === "number");
   return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : null;
+}
+
+// Lists candidate Kalshi crypto series so you can pick the 15-minute one and set
+// KALSHI_SERIES_<COIN> to its ticker. Open ?discover=ETH (or BTC/SOL) in a browser.
+async function discover(coin) {
+  // Try the series catalog first.
+  let r = await fetch(`${KALSHI_BASE}/series?category=Crypto`, { headers: { Accept: "application/json" } });
+  if (r.ok) {
+    const data = await r.json();
+    const all = (data.series || []).map((s) => ({ ticker: s.ticker, title: s.title || s.name || "" }));
+    const hit = coin ? all.filter((s) => (s.ticker + " " + s.title).toUpperCase().includes(coin)) : all;
+    return { kind: "series", hint: "Set KALSHI_SERIES_" + (coin || "ETH") + " to the 15-minute series ticker below.", count: hit.length, series: hit.slice(0, 60) };
+  }
+  // Fallback: scan open markets and collect distinct series tickers.
+  r = await fetch(`${KALSHI_BASE}/markets?status=open&limit=1000`, { headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error("kalshi " + r.status);
+  const d2 = await r.json();
+  const seen = {}, out = [];
+  for (const m of d2.markets || []) {
+    const text = (m.ticker + " " + (m.title || "")).toUpperCase();
+    if (coin && !text.includes(coin)) continue;
+    if (m.series_ticker && !seen[m.series_ticker]) {
+      seen[m.series_ticker] = 1;
+      out.push({ series_ticker: m.series_ticker, sample_market: m.ticker, title: m.title, close_time: m.close_time });
+    }
+  }
+  return { kind: "markets", hint: "Set KALSHI_SERIES_" + (coin || "ETH") + " to the series_ticker of the 15-minute market.", count: out.length, series: out.slice(0, 60) };
 }
 
 // --- Prompt (shared across providers) ----------------------------------
