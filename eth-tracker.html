@@ -71,7 +71,11 @@
   .module { break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid; }
   @media (min-width: 760px) {
     .seg { max-width: 540px; }
-    .toprow { display: grid; grid-template-columns: repeat(3, 1fr); column-gap: 18px; align-items: start; }
+    /* hero + timer stacked on the left, the taller consolidated Auto Pick on the right */
+    .toprow { display: grid; grid-template-columns: 1fr 1.15fr; column-gap: 18px; align-items: start; }
+    .toprow > .module:nth-child(1) { grid-column: 1; grid-row: 1; }
+    .toprow > .module:nth-child(2) { grid-column: 1; grid-row: 2; }
+    .toprow > .module:nth-child(3) { grid-column: 2; grid-row: 1 / span 2; }
     .grid { column-count: 2; column-gap: 18px; }
   }
   @media (min-width: 1180px) {
@@ -228,6 +232,19 @@
   .aiBtn { width:100%; min-height:46px; border:none; border-radius:12px; background:var(--blue); color:#fff; font-size:15px; font-weight:700; cursor:pointer; }
   .aiBtn:active{ opacity:.85; } .aiBtn:disabled{ opacity:.45; }
   .aiMuted { font-size:12.5px; color:var(--label-3); line-height:1.55; margin-bottom:12px; }
+  /* consolidated "The read" section inside the Auto Pick panel */
+  .panelDivider { display:flex; align-items:center; gap:10px; margin:20px 0 4px; }
+  .panelDivider::before, .panelDivider::after { content:""; flex:1; height:.5px; background:var(--separator); }
+  .panelDivider span { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--label-3); }
+  .aiRow .v.o { color:var(--green); } .aiRow .v.u { color:var(--red); }
+  .aiWhy { margin-top:10px; }
+  .aiWhyText { font-size:13px; color:var(--label-2); line-height:1.55; margin-top:6px; }
+  .aiSetup { margin-top:14px; border-top:.5px solid var(--separator); }
+  .aiSetup > summary { list-style:none; cursor:pointer; font-size:12.5px; font-weight:600; color:var(--label-2); padding:11px 0 4px; display:flex; align-items:center; gap:7px; }
+  .aiSetup > summary::-webkit-details-marker { display:none; }
+  .aiSetup > summary::before { content:"\25B8"; color:var(--label-3); font-size:11px; transition:transform .2s; }
+  .aiSetup[open] > summary::before { transform:rotate(90deg); }
+  .aiSetupBody { padding-top:6px; }
 
   .footnote { text-align: center; font-size: 11px; color: var(--label-3); margin-top: 8px; line-height: 1.6; }
 </style>
@@ -289,7 +306,7 @@
 
   <!-- RECOMMENDATION -->
   <div class="module">
-  <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span> <button class="ihelp" data-info="autopick">?</button></div>
+  <div class="sec">Auto Pick <span class="tiny">· your bet + the read</span> <button class="ihelp" data-info="autopick">?</button></div>
   <div class="card">
     <div id="reco" class="reco skip">
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
@@ -303,6 +320,27 @@
     </div>
     <canvas id="miniChart" class="miniChart"></canvas>
     <div class="miniChartLbl" id="miniChartLbl">Live price vs the line you must beat</div>
+
+    <!-- The read: the market crowd + AI verdict that feed the blended % above -->
+    <div class="panelDivider"><span>The read</span></div>
+    <div id="blend" class="blend"></div>
+    <div id="aiWhy" class="aiWhy hidden"></div>
+    <div class="aiMuted" id="aiIntro">Add the live <b>Kalshi crowd odds</b> + a <b>Claude</b> read to the blend above — connect your Cloudflare Worker below (optional).</div>
+    <details id="aiSetup" class="aiSetup">
+      <summary>&#9881; AI Co-Pilot setup</summary>
+      <div class="aiSetupBody">
+        <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <select id="aiModel" class="settingsInput">
+          <option value="">Model · provider default</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5 · cheapest</option>
+          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 · balanced</option>
+          <option value="claude-opus-4-8">Claude Opus 4.8 · smartest</option>
+          <option value="gemini-2.0-flash">Gemini 2.0 Flash · free</option>
+          <option value="llama-3.3-70b-versatile">Groq Llama 3.3 70B · free</option>
+        </select>
+        <button id="aiRun" class="aiBtn">Save &amp; Get AI Read</button>
+      </div>
+    </details>
   </div>
 
   </div>
@@ -311,24 +349,7 @@
 
   <main class="grid">
 
-  <!-- AI CO-PILOT -->
-  <div class="module">
-  <div class="sec">AI Co-Pilot <button class="ihelp" data-info="ai">?</button></div>
-  <div class="card">
-    <div class="aiMuted" id="aiIntro">Optional. Connects to your own Cloudflare Worker, which pulls the live <b>Kalshi crowd odds</b> (the market behind Coinbase) and asks <b>Claude</b> to weigh your indicators + your 7-day track record against the crowd — and flag when your read disagrees with it.</div>
-    <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
-    <select id="aiModel" class="settingsInput">
-      <option value="">Model · provider default</option>
-      <option value="claude-haiku-4-5">Claude Haiku 4.5 · cheapest</option>
-      <option value="claude-sonnet-4-6">Claude Sonnet 4.6 · balanced</option>
-      <option value="claude-opus-4-8">Claude Opus 4.8 · smartest</option>
-      <option value="gemini-2.0-flash">Gemini 2.0 Flash · free</option>
-      <option value="llama-3.3-70b-versatile">Groq Llama 3.3 70B · free</option>
-    </select>
-    <button id="aiRun" class="aiBtn">Save &amp; Get AI Read</button>
-    <div id="aiResult" class="hidden" style="margin-top:14px;"></div>
-  </div>
-  </div>
+  <!-- (AI Co-Pilot is now consolidated into the Auto Pick panel above) -->
 
   <!-- INDICATORS -->
   <div class="module">
@@ -597,6 +618,7 @@
   // The headline "what & when to buy" card. Shows a FROZEN call — this round's locked pick,
   // or (final 2 min) the locked next-round bet — with the live blend only as an agree/drift note.
   function renderPickCard() {
+    renderBlend();   // keep "The read" rows current alongside the call
     var remaining = state.remaining == null ? 999 : state.remaining;
     var nextMode = remaining <= BET_WINDOW;
     var el = $("reco"), scopeEl = $("recoScope"), buyEl = $("buyLine"), hintEl = $("buyHint"),
@@ -1133,33 +1155,45 @@
   }
 
   function renderAI(d, scope) {
-    state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null;   // feed the Bet Window + combined odds
+    state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null;   // feed the blend + combined odds
     if (state.pendingRound && d.crowd && typeof d.crowd.strike === "number") state.pendingRound.marketStrike = d.crowd.strike;   // real line to beat
     if (state.lockingNext && !state.lockedNext) commitLockedNext();   // settle the locked next-round pick on this fresh read
+    state.aiScope = scope || null;
     renderPickCard(); updateRoundStatus(); drawMiniChart();
-    var el = $("aiResult"); el.classList.remove("hidden");
+    renderBlend(); renderWhy();
     $("aiIntro").classList.add("hidden");
-    var crowd = d.crowd, ai = d.ai || {};
-    var dirCls = ai.verdict === "OVER" ? "over" : ai.verdict === "UNDER" ? "under" : "skip";
-    var scopeHtml = scope
-      ? '<div class="aiScope' + (scope.nextRound ? ' next' : '') + '">' + scope.label + ' · as of ' + scope.asOf + '</div>'
-      : '';
-    var crowdLine = crowd && typeof crowd.overPct === "number"
-      ? '<div class="aiRow"><span class="k">Crowd (Kalshi)</span><span class="v">' + crowd.overPct.toFixed(0) + '% OVER' + (crowd.stale ? ' <span style="color:var(--label-3);font-weight:500">(last known)</span>' : '') + '</span></div>'
-      : '<div class="aiRow"><span class="k">Crowd (Kalshi)</span><span class="v" style="color:var(--label-3)">n/a</span></div>';
-    var edgeHtml = ai.edge === "against-crowd" ? '<span class="aiEdge against">EDGE vs crowd</span>'
-      : ai.edge === "with-crowd" ? '<span class="aiEdge with">agrees w/ crowd</span>' : '';
+  }
+  // "The read" — the two extra inputs behind the blended % (live crowd + AI verdict).
+  function renderBlend() {
+    var el = $("blend"); if (!el) return;
+    var ai = state.lastAI, crowd = state.lastCrowd;
+    var crowdVal = crowd && typeof crowd.overPct === "number"
+      ? crowd.overPct.toFixed(0) + "% OVER" + (crowd.stale ? " · last known" : "")
+      : "n/a";
+    var aiVal, aiCls = "";
+    if (ai && ai.verdict) { aiVal = ai.verdict + (ai.confidence ? " · " + ai.confidence : ""); aiCls = ai.verdict === "OVER" ? "o" : ai.verdict === "UNDER" ? "u" : ""; }
+    else aiVal = aiAvailable() ? "reading…" : "not connected";
+    var edge = ai && ai.edge === "against-crowd" ? '<span class="aiEdge against">EDGE vs crowd</span>'
+      : ai && ai.edge === "with-crowd" ? '<span class="aiEdge with">agrees w/ crowd</span>' : "";
     el.innerHTML =
-      scopeHtml +
-      '<div class="aiVerdict ' + dirCls + '">' + (ai.verdict || "—") + (ai.confidence ? ' · ' + ai.confidence : '') + '</div>' +
-      crowdLine +
-      '<div class="aiRow"><span class="k">Your indicators</span><span class="v">' + (state.lastRecoDir || "—") + '</span></div>' +
-      (edgeHtml ? '<div class="aiRow"><span class="k">Edge</span>' + edgeHtml + '</div>' : '') +
-      '<div class="aiRationale">' + (ai.rationale || "") + '</div>';
+      '<div class="aiRow"><span class="k">Crowd · Kalshi</span><span class="v">' + crowdVal + '</span></div>' +
+      '<div class="aiRow"><span class="k">AI · Claude</span><span class="v ' + aiCls + '">' + aiVal + '</span></div>' +
+      (edge ? '<div class="aiRow"><span class="k">Edge</span>' + edge + '</div>' : '');
+  }
+  // The AI's reasoning + which round the read applies to.
+  function renderWhy() {
+    var el = $("aiWhy"); if (!el) return;
+    var ai = state.lastAI, scope = state.aiScope;
+    if (!ai || !ai.rationale) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+    var s = scope ? '<div class="aiScope' + (scope.nextRound ? ' next' : '') + '">' + scope.label + ' · as of ' + scope.asOf + '</div>' : '';
+    el.innerHTML = s + '<div class="aiWhyText"></div>';
+    el.querySelector(".aiWhyText").textContent = ai.rationale;   // textContent: never inject model output as HTML
+    el.classList.remove("hidden");
   }
   function renderAIError(msg) {
-    var el = $("aiResult"); el.classList.remove("hidden");
-    el.innerHTML = '<div class="aiMuted err" style="color:var(--red)">AI unavailable: ' + msg + '</div>';
+    var el = $("aiWhy"); el.classList.remove("hidden"); el.innerHTML = "";
+    var d = document.createElement("div"); d.className = "aiMuted"; d.style.color = "var(--red)";
+    d.textContent = "AI unavailable: " + msg; el.appendChild(d);
   }
   $("aiRun").addEventListener("click", function () {
     try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {}
