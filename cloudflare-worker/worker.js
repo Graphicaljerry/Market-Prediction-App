@@ -64,12 +64,9 @@ export default {
           const b = await r.json().catch(() => ({}));
           const ms = (b.markets || []).filter((m) => m.close_time).sort((a, c) => new Date(a.close_time) - new Date(c.close_time));
           const m = ms[0];
-          let over = m ? overFromMarket(m) : null;
-          let obOver = null;
-          if (over == null && m) obOver = await overFromOrderbook(m.ticker);   // list row had no quotes → try the book
-          const live = over != null ? over : obOver;
-          if (live != null && env.CROWD_KV) await kvPut(env, t, { t: Date.now(), data: { overPct: live, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time } });
-          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, rawMarket: m || null, overFromMarket: over, overFromOrderbook: obOver, overPct: live, kvCached });
+          const over = m ? overFromMarket(m) : null;
+          if (over != null && env.CROWD_KV) await kvPut(env, t, { t: Date.now(), data: { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time } });
+          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, rawMarket: m || null, overPct: over, kvCached });
         } catch (e) { return json({ coin, seriesTicker: t, error: e.message, kvCached }, 502); }
       }
       // Quick health check: shows which provider is wired up.
@@ -159,9 +156,8 @@ async function fetchCrowd(seriesTicker) {
   if (!markets.length) return null;
   markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
   const m = markets[0];
-  let over = overFromMarket(m);
-  if (over == null) over = await overFromOrderbook(m.ticker);   // list row had no quotes → order book
-  if (over == null) return null;
+  const over = overFromMarket(m);
+  if (over == null) return null;   // quotes not posted yet (e.g. right at round open) → caller serves stale
   return { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
 }
 
@@ -193,37 +189,27 @@ function avg(a, b) {
   return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : null;
 }
 
-// Implied OVER % straight from a market row's quote fields (cents = probability).
+// Implied OVER % straight from a market row's quote fields. Newer Kalshi rows price
+// in dollars as strings ("0.5100" = 51%); older rows used integer cents (yes_bid: 51).
 function overFromMarket(m) {
   if (!m) return null;
-  let over = avg(m.yes_bid, m.yes_ask);
-  if (over == null && typeof m.last_price === "number" && m.last_price > 0) over = m.last_price;
+  const yesBid = dollarsToPct(m.yes_bid_dollars) ?? centsToPct(m.yes_bid);
+  const yesAsk = dollarsToPct(m.yes_ask_dollars) ?? centsToPct(m.yes_ask);
+  let over = avg(yesBid, yesAsk);   // midpoint of the YES bid/ask = implied P(OVER)
+  if (over == null) {
+    const last = dollarsToPct(m.last_price_dollars) ?? centsToPct(m.last_price);
+    if (last != null) over = last;
+  }
   return over;
 }
-
-// Fallback when the list row carries no quotes: pull the order book and take the
-// YES midpoint. Kalshi books are priced in cents; yes_ask ≈ 100 − best NO bid.
-async function overFromOrderbook(ticker) {
-  try {
-    const r = await kalshiFetch(`${KALSHI_BASE}/markets/${encodeURIComponent(ticker)}/orderbook?depth=1`);
-    if (!r.ok) return null;
-    const d = await r.json();
-    const ob = (d && d.orderbook) || {};
-    const yesBid = bestPrice(ob.yes);
-    const noBid = bestPrice(ob.no);
-    const yesAsk = noBid != null ? 100 - noBid : null;
-    return avg(yesBid, yesAsk);
-  } catch (_) { return null; }
+// "0.5100" (dollars, 0–1) → 51. Ignores 0/blank (no quote) and out-of-range values.
+function dollarsToPct(v) {
+  const n = typeof v === "string" ? parseFloat(v) : (typeof v === "number" ? v : NaN);
+  return Number.isFinite(n) && n > 0 && n <= 1 ? n * 100 : null;
 }
-// Best bid on one side: rows are [price_cents, size]; the highest price is the top bid.
-function bestPrice(side) {
-  if (!Array.isArray(side) || !side.length) return null;
-  let best = null;
-  for (const lvl of side) {
-    const p = Array.isArray(lvl) ? lvl[0] : null;
-    if (typeof p === "number" && (best == null || p > best)) best = p;
-  }
-  return best;
+// Legacy integer-cent field (51 → 51); 0 means no quote.
+function centsToPct(v) {
+  return typeof v === "number" && v > 0 && v <= 100 ? v : null;
 }
 
 // Lists candidate Kalshi crypto series so you can pick the 15-minute one and set
