@@ -5,6 +5,12 @@ name = "market-prediction-app"
 main = "cloudflare-worker/worker.js"
 compatibility_date = "2026-06-20"
 
+# 24/7 auto-tracker: every 15 min the Worker computes a pick from FREE data only
+# (Kalshi price + Coinbase candles + order book — no LLM call, no AI spend) and grades
+# the previous round. Read it at  <worker-url>/?picks=ETH . Stays within the free tier.
+[triggers]
+crons = ["*/15 * * * *"]
+
 # Public Kalshi 15-min series tickers (not secret). Kept here so Git deploys don't
 # wipe them — plain-text dashboard variables get reset on every Worker build.
 [vars]

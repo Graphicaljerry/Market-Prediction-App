@@ -70,6 +70,14 @@ export default {
           return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, rawMarket: m || null, overPct: over, strike, kvCached });
         } catch (e) { return json({ coin, seriesTicker: t, error: e.message, kvCached }, 502); }
       }
+      // Auto-tracker readout: ?picks=ETH for one coin, or ?picks for all configured coins.
+      if (u.searchParams.has("picks")) {
+        const coin = (u.searchParams.get("picks") || "").toUpperCase();
+        if (coin) return json((await kvGetRaw(env, "picks:" + coin)) || { coin, empty: true });
+        const out = {};
+        for (const c of AUTO_COINS) { const r = await kvGetRaw(env, "picks:" + c); if (r) out[c] = r; }
+        return json(out);
+      }
       // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
     }
@@ -98,6 +106,13 @@ export default {
     catch (e) { ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", probOver: 50, rationale: "AI error: " + e.message }; }
 
     return json({ crowd, ai, provider });
+  },
+
+  // Cron (every 15 min): compute a pick from FREE data only — no LLM call, so no AI spend —
+  // and grade the previous round. Lets the tracker keep a 24/7 record even when no tab is open.
+  async scheduled(event, env, ctx) {
+    const coins = AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]);
+    ctx.waitUntil(Promise.all(coins.map((c) => runCoinPick(env, c).catch(() => {}))));
   },
 };
 
@@ -453,4 +468,106 @@ async function readGroq(key, model, prompt) {
   const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
   if (!text) throw new Error("no groq text");
   return normalize(extractJson(text));
+}
+
+// --- Scheduled auto-tracker (free data only — no LLM, no AI spend) --------
+// Runs on cron. Per coin: grade the previous round's pick, then make a fresh pick for the
+// round that just opened, using the Kalshi market price (anchor) nudged by short-term
+// momentum and order-book pressure. Stored in CROWD_KV and read back via ?picks=COIN.
+const AUTO_COINS = ["ETH", "BTC", "SOL", "DOGE", "SHIB", "XRP"];
+const CB_BASE = "https://api.exchange.coinbase.com";
+const CB_PRODUCT = { ETH: "ETH-USD", BTC: "BTC-USD", SOL: "SOL-USD", DOGE: "DOGE-USD", SHIB: "SHIB-USD", XRP: "XRP-USD" };
+const CB_HEADERS = { "User-Agent": "market-prediction-app-cron/1.0", Accept: "application/json" };
+const pad2 = (n) => (n < 10 ? "0" + n : "" + n);
+const round4 = (x) => Math.round(x * 1e4) / 1e4;
+
+async function cbJson(path) {
+  const r = await fetch(CB_BASE + path, { headers: CB_HEADERS });
+  if (!r.ok) throw new Error("cb " + r.status);
+  return r.json();
+}
+// Last price + recent 1-min momentum from Coinbase 1-min candles.
+async function cbMicro(product) {
+  const rows = await cbJson(`/products/${product}/candles?granularity=60`);   // [time,low,high,open,close,vol], newest first
+  if (!Array.isArray(rows) || rows.length < 12) return null;
+  const closes = rows.map((x) => x[4]).reverse();   // oldest → newest
+  const L = closes.length, look = Math.min(10, L - 1);
+  const p0 = closes[L - 1 - look], pN = closes[L - 1];
+  const mom = (p0 > 0 && look > 0) ? Math.log(pN / p0) / look : 0;   // avg log-return per minute
+  return { price: pN, mom };
+}
+// Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
+async function cbObi(product) {
+  const j = await cbJson(`/products/${product}/book?level=2`);
+  const bids = j.bids || [], asks = j.asks || [];
+  if (!bids.length || !asks.length) return null;
+  const mid = (parseFloat(bids[0][0]) + parseFloat(asks[0][0])) / 2;
+  if (!(mid > 0)) return null;
+  const band = mid * 0.0015; let bv = 0, av = 0, p;
+  for (const b of bids) { p = parseFloat(b[0]); if (mid - p > band) break; bv += parseFloat(b[1]); }
+  for (const a of asks) { p = parseFloat(a[0]); if (p - mid > band) break; av += parseFloat(a[1]); }
+  const tot = bv + av;
+  return tot ? (bv - av) / tot : null;
+}
+// Market-anchored free pick: crowd price nudged by momentum + book; SKIP near 50/50.
+function freePick(crowdOverPct, mom, obi) {
+  const parts = [];
+  if (typeof crowdOverPct === "number") parts.push({ p: Math.max(0.02, Math.min(0.98, crowdOverPct / 100)), w: 0.6 });
+  if (typeof mom === "number") parts.push({ p: Math.max(0.4, Math.min(0.6, 0.5 + 0.5 * Math.tanh(mom * 120))), w: 0.2 });
+  if (typeof obi === "number") parts.push({ p: Math.max(0.3, Math.min(0.7, 0.5 + 0.5 * Math.tanh(2 * obi))), w: 0.2 });
+  if (!parts.length) return null;
+  let ws = 0, ac = 0; for (const x of parts) { ws += x.w; ac += x.p * x.w; }
+  const pOver = ac / ws;
+  return { pOver, side: pOver >= 0.58 ? "OVER" : pOver <= 0.42 ? "UNDER" : "SKIP" };
+}
+async function kvGetRaw(env, key) {
+  try { if (!env.CROWD_KV) return null; const s = await env.CROWD_KV.get(key); return s ? JSON.parse(s) : null; } catch (_) { return null; }
+}
+async function kvPutRaw(env, key, val) {
+  try { if (env.CROWD_KV) await env.CROWD_KV.put(key, JSON.stringify(val), { expirationTtl: 60 * 60 * 24 * 8 }); } catch (_) {}
+}
+async function runCoinPick(env, coin) {
+  const series = env["KALSHI_SERIES_" + coin], product = CB_PRODUCT[coin];
+  if (!series || !product) return;
+  const [crowd, micro, obi] = await Promise.all([
+    getKalshiCrowd(env, series).catch(() => null),
+    cbMicro(product).catch(() => null),
+    cbObi(product).catch(() => null),
+  ]);
+  const key = "picks:" + coin;
+  const rec = (await kvGetRaw(env, key)) || { coin, pending: null, history: [], graded: 0, correct: 0 };
+
+  // 1) grade the previous pick once its round has closed
+  const p = rec.pending;
+  if (p && micro && typeof micro.price === "number" && Date.now() >= (p.closeMs || 0)) {
+    if (typeof p.strike === "number" && (p.side === "OVER" || p.side === "UNDER")) {
+      const actual = micro.price > p.strike ? "OVER" : micro.price < p.strike ? "UNDER" : "FLAT";
+      if (actual !== "FLAT") {
+        const correct = actual === p.side;
+        rec.history.unshift({ time: p.label, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: micro.price });
+        if (rec.history.length > 200) rec.history.pop();
+        rec.graded++; if (correct) rec.correct++;
+      }
+    }
+    rec.pending = null;
+  }
+
+  // 2) make a fresh pick for the round that just opened (the current Kalshi market)
+  if (crowd && typeof crowd.overPct === "number" && typeof crowd.strike === "number") {
+    const fp = freePick(crowd.overPct, micro && micro.mom, obi);
+    if (fp) {
+      const d = new Date();
+      rec.pending = {
+        coin, strike: crowd.strike, side: fp.side,
+        pOver: Math.round(fp.pOver * 100),
+        prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
+        closeMs: crowd.closeTime ? new Date(crowd.closeTime).getTime() : Date.now() + 900000,
+        label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",
+        signals: { crowdOver: Math.round(crowd.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null },
+      };
+    }
+  }
+  rec.hitRatePct = rec.graded ? Math.round(rec.correct / rec.graded * 100) : null;
+  rec.updated = Date.now();
+  await kvPutRaw(env, key, rec);
 }
