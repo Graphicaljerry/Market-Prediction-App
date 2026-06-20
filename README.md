@@ -10,7 +10,7 @@ right before the clock runs out.
 
 > **Live app:** https://graphicaljerry.github.io/Market-Prediction-App/
 > **Design (Figma):** https://www.figma.com/design/K8o8dinrXn2XmHO7T3i9JV/
-> Supports **ETH**, **BTC**, and **SOL**, switchable in the header.
+> Supports **ETH**, **BTC**, **SOL**, **DOGE**, **SHIB**, and **XRP**, switchable in the header.
 
 ---
 
