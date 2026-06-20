@@ -47,6 +47,20 @@ export default {
         const coin = (u.searchParams.get("discover") || "").toUpperCase();
         try { return json(await discover(coin)); } catch (e) { return json({ error: e.message }, 502); }
       }
+      // Crowd diagnostic: open ?crowd=ETH to see exactly why crowd shows n/a.
+      if (u.searchParams.has("crowd")) {
+        const coin = (u.searchParams.get("crowd") || "").toUpperCase();
+        const t = env["KALSHI_SERIES_" + coin];
+        if (!t) return json({ coin, seriesVarSet: false, hint: "Add KALSHI_SERIES_" + coin + " as a Text variable (Settings → Variables and Secrets)." });
+        try {
+          const r = await fetch(`${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(t)}&status=open&limit=200`, { headers: { Accept: "application/json" } });
+          const b = await r.json().catch(() => ({}));
+          const ms = (b.markets || []).filter((m) => m.close_time).sort((a, c) => new Date(a.close_time) - new Date(c.close_time));
+          const m = ms[0];
+          let crowd; try { crowd = await getKalshiCrowd(t); } catch (e) { crowd = { error: e.message }; }
+          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, nearest: m ? { ticker: m.ticker, close_time: m.close_time, yes_bid: m.yes_bid, yes_ask: m.yes_ask, last_price: m.last_price } : null, crowd });
+        } catch (e) { return json({ coin, seriesTicker: t, error: e.message }, 502); }
+      }
       // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
     }
@@ -97,9 +111,10 @@ async function getKalshiCrowd(seriesTicker) {
   if (!markets.length) return null;
   markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
   const m = markets[0];
-  const yesMid = avg(m.yes_bid, m.yes_ask); // cents ≈ implied probability of YES (over)
-  if (yesMid == null) return null;
-  return { overPct: yesMid, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
+  let over = avg(m.yes_bid, m.yes_ask); // cents ≈ implied probability of YES (over)
+  if (over == null && typeof m.last_price === "number") over = m.last_price; // fall back to last trade
+  if (over == null) return null;
+  return { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
 }
 function avg(a, b) {
   const xs = [a, b].filter((v) => typeof v === "number");
@@ -160,8 +175,10 @@ ${crowdLine}
 
 Decide OVER, UNDER, or SKIP. Weigh the technicals, the user's historical hit rate (trust directions that have actually worked for them), AND the crowd. The strongest opportunities are when a well-supported technical read DISAGREES with the crowd (the crowd may be overreacting). If signals are mixed, the edge is small, or the crowd already strongly agrees with a weak technical case, prefer SKIP. Set "edge" to "against-crowd" if your verdict opposes the crowd's lean, "with-crowd" if it matches, else "n/a".
 
+Be blunt and terse. The "rationale" is ONE short sentence, max ~100 characters — name the single deciding factor only. No preamble, no hedging, no restating the question.
+
 Respond with ONLY a JSON object, no markdown, exactly:
-{"verdict":"OVER|UNDER|SKIP","confidence":"Low|Medium|High","edge":"with-crowd|against-crowd|n/a","rationale":"under 240 characters"}`;
+{"verdict":"OVER|UNDER|SKIP","confidence":"Low|Medium|High","edge":"with-crowd|against-crowd|n/a","rationale":"one short blunt sentence"}`;
 }
 
 function normalize(o) {
@@ -170,7 +187,7 @@ function normalize(o) {
     verdict: ["OVER", "UNDER", "SKIP"].includes(o.verdict) ? o.verdict : "SKIP",
     confidence: ["Low", "Medium", "High"].includes(o.confidence) ? o.confidence : "Low",
     edge: ["with-crowd", "against-crowd", "n/a"].includes(o.edge) ? o.edge : "n/a",
-    rationale: String(o.rationale || "").slice(0, 300),
+    rationale: String(o.rationale || "").slice(0, 160),
   };
 }
 function extractJson(text) {
