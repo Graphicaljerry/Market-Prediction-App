@@ -244,6 +244,9 @@
     <button data-coin="ETH" class="active"><span class="sym">Ξ</span> ETH</button>
     <button data-coin="BTC"><span class="sym">₿</span> BTC</button>
     <button data-coin="SOL"><span class="sym">◎</span> SOL</button>
+    <button data-coin="DOGE"><span class="sym">Ð</span> DOGE</button>
+    <button data-coin="SHIB"><span class="sym">🐕</span> SHIB</button>
+    <button data-coin="XRP"><span class="sym">✕</span> XRP</button>
   </div>
 
   <div id="betWindow" class="betwin">Next bet window opens soon…</div>
@@ -375,16 +378,19 @@
   "use strict";
 
   var COINS = {
-    ETH: { name: "Ethereum", pair: "ETH · USD", sym: "Ξ", cgId: "ethereum", cbProduct: "ETH-USD" },
-    BTC: { name: "Bitcoin",  pair: "BTC · USD", sym: "₿", cgId: "bitcoin",  cbProduct: "BTC-USD" },
-    SOL: { name: "Solana",   pair: "SOL · USD", sym: "◎", cgId: "solana",   cbProduct: "SOL-USD" }
+    ETH:  { name: "Ethereum",  pair: "ETH · USD",  sym: "Ξ",  cgId: "ethereum",  cbProduct: "ETH-USD" },
+    BTC:  { name: "Bitcoin",   pair: "BTC · USD",  sym: "₿",  cgId: "bitcoin",   cbProduct: "BTC-USD" },
+    SOL:  { name: "Solana",    pair: "SOL · USD",  sym: "◎",  cgId: "solana",    cbProduct: "SOL-USD" },
+    DOGE: { name: "Dogecoin",  pair: "DOGE · USD", sym: "Ð",  cgId: "dogecoin",  cbProduct: "DOGE-USD" },
+    SHIB: { name: "Shiba Inu", pair: "SHIB · USD", sym: "🐕", cgId: "shiba-inu", cbProduct: "SHIB-USD" },
+    XRP:  { name: "XRP",       pair: "XRP · USD",  sym: "✕",  cgId: "ripple",    cbProduct: "XRP-USD" }
   };
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
-  function fmtMoney(n){ var d = n < 1 ? 4 : 2; return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function fmtMoney(n){ var a = Math.abs(n), d = a >= 1 ? 2 : a >= 0.1 ? 4 : a >= 0.01 ? 5 : a >= 0.0001 ? 6 : 8; return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
 
   // ---------- Indicator math ----------
   function emaSeries(vals, p) {
