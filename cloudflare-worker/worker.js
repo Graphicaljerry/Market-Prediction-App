@@ -53,12 +53,14 @@ export default {
         const t = env["KALSHI_SERIES_" + coin];
         if (!t) return json({ coin, seriesVarSet: false, hint: "Add KALSHI_SERIES_" + coin + " as a Text variable (Settings → Variables and Secrets)." });
         try {
+          // single Kalshi call to keep rate-limit pressure low
           const r = await fetch(`${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(t)}&status=open&limit=200`, { headers: { Accept: "application/json" } });
           const b = await r.json().catch(() => ({}));
           const ms = (b.markets || []).filter((m) => m.close_time).sort((a, c) => new Date(a.close_time) - new Date(c.close_time));
           const m = ms[0];
-          let crowd; try { crowd = await getKalshiCrowd(t); } catch (e) { crowd = { error: e.message }; }
-          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, nearest: m ? { ticker: m.ticker, close_time: m.close_time, yes_bid: m.yes_bid, yes_ask: m.yes_ask, last_price: m.last_price } : null, crowd });
+          let over = m ? avg(m.yes_bid, m.yes_ask) : null;
+          if (over == null && m && typeof m.last_price === "number") over = m.last_price;
+          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, nearest: m ? { ticker: m.ticker, close_time: m.close_time, yes_bid: m.yes_bid, yes_ask: m.yes_ask, last_price: m.last_price } : null, overPct: over });
         } catch (e) { return json({ coin, seriesTicker: t, error: e.message }, 502); }
       }
       // Quick health check: shows which provider is wired up.
@@ -102,7 +104,10 @@ function pickProvider(env) {
 }
 
 // --- Kalshi -------------------------------------------------------------
+const crowdCache = new Map(); // seriesTicker -> { t, data } : avoid hammering Kalshi
 async function getKalshiCrowd(seriesTicker) {
+  const cached = crowdCache.get(seriesTicker);
+  if (cached && Date.now() - cached.t < 60000) return cached.data; // 60s cache
   const url = `${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(seriesTicker)}&status=open&limit=200`;
   const r = await fetch(url, { headers: { Accept: "application/json" } });
   if (!r.ok) throw new Error("kalshi " + r.status);
@@ -111,10 +116,12 @@ async function getKalshiCrowd(seriesTicker) {
   if (!markets.length) return null;
   markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
   const m = markets[0];
-  let over = avg(m.yes_bid, m.yes_ask); // cents ≈ implied probability of YES (over)
-  if (over == null && typeof m.last_price === "number") over = m.last_price; // fall back to last trade
+  let over = avg(m.yes_bid, m.yes_ask);
+  if (over == null && typeof m.last_price === "number") over = m.last_price;
   if (over == null) return null;
-  return { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
+  const result = { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
+  crowdCache.set(seriesTicker, { t: Date.now(), data: result });
+  return result;
 }
 function avg(a, b) {
   const xs = [a, b].filter((v) => typeof v === "number");
