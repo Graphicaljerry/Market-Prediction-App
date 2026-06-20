@@ -255,10 +255,25 @@ async function discover(coin) {
 function buildPrompt(body, crowd) {
   const indicators = (body.indicators || []).map((i) => `- ${i.name}: ${i.value} (${i.label})`).join("\n");
   const h = body.history || {};
-  const recent = (h.recent || []).map((x) => `${x.time} ${x.pick}->${x.actual} ${x.correct ? "OK" : "X"}`).join(", ");
+  const recent = (h.recent || []).map((x) => {
+    const extra = [x.net != null ? `net ${x.net > 0 ? "+" : ""}${x.net}` : null, x.said ? `said ${x.said}` : null, x.obi != null ? `book ${x.obi > 0 ? "+" : ""}${x.obi}` : null].filter(Boolean).join("/");
+    return `${x.time} ${x.pick}->${x.actual} ${x.correct ? "OK" : "X"}${extra ? " [" + extra + "]" : ""}`;
+  }).join(", ");
+  // Calibration: when the model said a side was N% likely, how often did that side actually win?
+  const calLine = (h.confidenceCalibration || []).length
+    ? "Calibration of past confidence — " + h.confidenceCalibration.map((c) => `when it said ${c.saidLikely} likely, that side actually won ${c.actuallyWonPct}% (n=${c.n})`).join("; ") + "."
+    : "";
+  const condBits = [];
+  if (h.whenIndicatorsStronglyAgree) condBits.push(`when the indicators strongly agreed, picks hit ${h.whenIndicatorsStronglyAgree.hitPct}% (n=${h.whenIndicatorsStronglyAgree.n})`);
+  if (h.whenOrderBookAgrees) condBits.push(`when the order book agreed with the pick, it hit ${h.whenOrderBookAgrees.hitPct}% (n=${h.whenOrderBookAgrees.n})`);
+  const condLine = condBits.length ? "Conditional accuracy — " + condBits.join("; ") + "." : "";
   const historyLine = h.graded
-    ? `Track record (last ${h.graded} graded rounds): overall hit rate ${h.hitRatePct}%, current streak ${h.currentStreak}, OVER picks ${h.overHitPct ?? "n/a"}% right, UNDER picks ${h.underHitPct ?? "n/a"}% right. Recent: ${recent}.`
-    : `No graded history yet.`;
+    ? `Track record (last ${h.graded} graded rounds): overall hit rate ${h.hitRatePct}%, current streak ${h.currentStreak}, OVER picks ${h.overHitPct ?? "n/a"}% right, UNDER picks ${h.underHitPct ?? "n/a"}% right.
+${calLine}
+${condLine}
+Recent rounds (pick->result, with the signals behind each): ${recent}.
+Use this record to calibrate your confidence: if a band has historically won LESS than it claimed, be more cautious there; if a setup (strong indicator agreement, or order-book agreement) has historically won often, lean into it. Trust patterns that have actually paid off for THIS user.`
+    : `No graded history yet — judge on the live signals alone and keep confidence modest.`;
   const crowdLine = crowd && typeof crowd.overPct === "number"
     ? `The Kalshi crowd currently prices OVER at ~${crowd.overPct.toFixed(0)}% probability${crowd.stale ? " (last known, odds feed briefly stale)" : ""}.`
     : `Live crowd odds are unavailable for this round.`;

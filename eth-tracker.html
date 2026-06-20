@@ -40,29 +40,41 @@
     padding: max(14px, env(safe-area-inset-top)) clamp(16px, 3.5vw, 44px) calc(40px + env(safe-area-inset-bottom));
     min-height: 100vh;
   }
-  /* green "aurora" glow — the Bullish Orbs from the V2 design */
-  body::before, body::after {
-    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    transition: opacity 1.4s ease; will-change: transform, opacity;
-    animation: auroraDrift 95s ease-in-out infinite alternate;   /* very slow ambient drift — futuristic */
-  }
-  /* green glow (default) — visible corner pools, but the center stays near-black (~70% dark) */
-  body::before {
-    opacity: 1;
+  /* ---------- Aurora glow ---------- */
+  /* A fixed, layered glow that colours itself to the live recommendation: green when the
+     pick is OVER, red when UNDER, amber when SKIP. Each layer drifts very slowly and
+     independently so the background feels alive without distracting. Centre stays near-black. */
+  #aura { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+  #aura .lyr { position: absolute; inset: -14%; opacity: 0; transition: opacity 1.8s ease; will-change: transform, opacity; }
+  #aura .lyr.over {
     background:
       radial-gradient(46% 34% at 0% 0%,     rgba(13,224,89,0.34), transparent 66%),
       radial-gradient(52% 40% at 100% 100%, rgba(13,224,89,0.26), transparent 68%);
+    animation: auraDriftA 44s ease-in-out infinite alternate;
   }
-  /* red glow — crossfades in when price is below the line (.dir-down) */
-  body::after {
-    opacity: 0;
+  #aura .lyr.under {
     background:
       radial-gradient(46% 34% at 0% 0%,     rgba(255,69,58,0.32), transparent 66%),
       radial-gradient(52% 40% at 100% 100%, rgba(255,69,58,0.24), transparent 68%);
+    animation: auraDriftB 52s ease-in-out infinite alternate;
   }
-  body.dir-down::before { opacity: 0; }
-  body.dir-down::after  { opacity: 1; }
-  @keyframes auroraDrift { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(1.5%,-1.5%,0) scale(1.03); } }
+  #aura .lyr.skip {
+    background:
+      radial-gradient(44% 32% at 2% 0%,      rgba(255,159,10,0.20), transparent 66%),
+      radial-gradient(50% 38% at 100% 100%,  rgba(255,159,10,0.15), transparent 68%);
+    animation: auraDriftA 60s ease-in-out infinite alternate;
+  }
+  /* before any call lands, a calm green presence */
+  body .lyr.over { opacity: .5; }
+  body.glow-over  .lyr.over  { opacity: 1; }
+  body.glow-over  .lyr.under, body.glow-over  .lyr.skip  { opacity: 0; }
+  body.glow-under .lyr.under { opacity: 1; }
+  body.glow-under .lyr.over,  body.glow-under .lyr.skip  { opacity: 0; }
+  body.glow-skip  .lyr.skip  { opacity: .85; }
+  body.glow-skip  .lyr.over,  body.glow-skip  .lyr.under { opacity: 0; }
+  @keyframes auraDriftA { from { transform: translate3d(0,0,0) scale(1); }    to { transform: translate3d(2%,-1.6%,0) scale(1.05); } }
+  @keyframes auraDriftB { from { transform: translate3d(0,0,0) scale(1.03); } to { transform: translate3d(-2%,1.6%,0) scale(1); } }
+  @media (prefers-reduced-motion: reduce) { #aura .lyr { animation: none; } }
 
   .mono { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
@@ -181,6 +193,15 @@
 
   .scopeTag { font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--label-3); margin-bottom: 12px; }
   .reco.over .scopeTag { color: var(--green); } .reco.under .scopeTag { color: var(--red); }
+  /* prominent "next round" ribbon (the 2-min-prior locked suggestion) */
+  .nextRibbon { display: none; }
+  .nextRibbon.show { display: block; margin: 0 0 14px; padding: 9px 12px; border-radius: 11px; font-size: 12.5px; font-weight: 700;
+    letter-spacing: .01em; line-height: 1.4; border: 1px solid transparent; animation: nextPulse 2.4s ease-in-out infinite; }
+  .nextRibbon .nrLock { display: inline-block; font-size: 11px; font-weight: 600; opacity: .8; }
+  .nextRibbon.over  { background: rgba(48,209,88,.15);  color: var(--green);  border-color: rgba(48,209,88,.5); }
+  .nextRibbon.under { background: rgba(255,69,58,.15);  color: var(--red);    border-color: rgba(255,69,58,.5); }
+  .nextRibbon.skip  { background: rgba(255,159,10,.13); color: var(--orange); border-color: rgba(255,159,10,.45); }
+  @keyframes nextPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); } 50% { box-shadow: 0 0 14px 0 rgba(255,255,255,.06); } }
   .buyLine { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; border-radius: 14px; padding: 14px 10px; }
   .buyLine .buySub { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; margin-top: 4px; opacity: .85; }
   .buyLine.over { color: var(--green); background: rgba(48,209,88,.13); }
@@ -310,6 +331,8 @@
 </head>
 <body>
 
+  <div id="aura" aria-hidden="true"><div class="lyr over"></div><div class="lyr under"></div><div class="lyr skip"></div></div>
+
   <div class="topbar">
     <div class="appname" id="title">15-Min Tracker</div>
     <div class="live"><span class="dot"></span> Live</div>
@@ -377,6 +400,7 @@
   <div class="sec">Auto Pick <span class="tiny">· your bet + the read</span> <button class="ihelp" data-info="autopick">?</button></div>
   <div class="card">
     <div id="reco" class="reco skip">
+      <div class="nextRibbon" id="nextRibbon"></div>
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
       <div class="buyLine skip" id="buyLine">Analyzing…</div>
       <div class="buyHint" id="buyHint">Loading live market data…</div>
@@ -695,17 +719,48 @@
     if (!ob || Date.now() - ob.ts > 120000) return null;
     return Math.max(0.2, Math.min(0.8, ob.pOver));   // clamp — it's a short-horizon nudge, not a verdict
   }
-  function combinedOdds(reco) {
+  function rawCombinedOdds(reco) {
     var parts = [{ p: indOver(reco), w: 0.40 }];
     var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: 0.35 });
     var c = crowdOver(state.lastCrowd); if (c != null) parts.push({ p: c, w: 0.25 });
     var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.08 });   // gentle book-pressure tilt
     var wsum = 0, acc = 0;
     parts.forEach(function (x) { wsum += x.w; acc += x.p * x.w; });
-    var pOver = wsum ? acc / wsum : 0.5;
-    return { pOver: pOver, dir: pOver >= 0.5 ? "OVER" : "UNDER" };
+    return wsum ? acc / wsum : 0.5;
+  }
+  // Calibrate the model's probability against THIS device's realized outcomes: among past
+  // rounds whose model-pOver sat in the same band, how often did price actually finish OVER?
+  // With enough samples we pull the estimate toward what actually happened — accuracy over ego.
+  function calibrate(pRaw) {
+    var r = state.rounds, n = 0, nOver = 0, win = 0.085, i, f;
+    for (i = 0; i < r.length; i++) {
+      f = r[i].feat;
+      if (!f || typeof f.pOver !== "number" || r[i].actual !== "OVER" && r[i].actual !== "UNDER") continue;
+      if (Math.abs(f.pOver - pRaw) <= win) { n++; if (r[i].actual === "OVER") nOver++; }
+    }
+    if (n < 8) return pRaw;                          // too little evidence — trust the model
+    var emp = (nOver + 0.5) / (n + 1);               // Laplace-smoothed realized OVER-rate in this band
+    var w = Math.min(n, 40) / 40 * 0.5;              // up to 50% weight toward realized results
+    return Math.max(0.02, Math.min(0.98, pRaw * (1 - w) + emp * w));
+  }
+  function combinedOdds(reco) {
+    var pRaw = rawCombinedOdds(reco), pOver = calibrate(pRaw);
+    return { pOver: pOver, raw: pRaw, dir: pOver >= 0.5 ? "OVER" : "UNDER" };
   }
   function pctFor(pOver, dir) { return Math.round((dir === "OVER" ? pOver : 1 - pOver) * 100); }
+  // Signal snapshot behind the current pick — stored per round so we can learn what works.
+  function snapshotFeat() {
+    var reco = state.lastRecoObj || (state.lastList ? buildReco(state.lastList) : null);
+    var ob = (state.obi && Date.now() - state.obi.ts < 120000) ? state.obi.obi : null;
+    return {
+      net: reco ? (reco.bull - reco.bear) : 0,
+      pOver: Math.round(rawCombinedOdds(reco) * 1000) / 1000,
+      obi: ob == null ? null : Math.round(ob * 100) / 100,
+      ai: state.lastAI && state.lastAI.verdict ? state.lastAI.verdict : null,
+      crowd: state.lastCrowd && typeof state.lastCrowd.overPct === "number" ? Math.round(state.lastCrowd.overPct) : null,
+      conv: reco ? convictionFor(reco).level : null
+    };
+  }
 
   // ---------- Locked, committed picks (stable — they don't twitch second-to-second) ----------
   function nowClock() { var t = new Date(); return pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds()); }
@@ -751,6 +806,17 @@
   }
   function leanClass() { var f = state.leanFlips || 0; return f >= 3 ? "bear" : (f === 0 ? "bull" : "neu"); }
 
+  // Tint the ambient aurora to the live recommendation.
+  var _glow = "";
+  function setGlow(dir) {
+    var g = dir === "OVER" ? "over" : dir === "UNDER" ? "under" : "skip";
+    if (g === _glow) return;
+    _glow = g;
+    var b = document.body;
+    b.classList.remove("glow-over", "glow-under", "glow-skip");
+    b.classList.add("glow-" + g);
+  }
+
   // The headline "what & when to buy" card. Shows a FROZEN call — this round's locked pick,
   // or (final 2 min) the locked next-round bet — with the live blend only as an agree/drift note.
   function renderPickCard() {
@@ -765,6 +831,24 @@
     var call = null, locking = false;
     if (nextMode) { ensureLockedNext(); call = state.lockedNext; locking = !call && state.lockingNext; }
     else { call = state.thisRoundLock || fallbackThisCall(); }
+
+    // colour the ambient glow to the live recommendation (over=green / under=red / skip=amber)
+    setGlow(locking ? "SKIP" : call ? call.dir : "SKIP");
+
+    // prominent "next round" ribbon — restores the 2-min-prior suggestion inside this card
+    var ribbon = $("nextRibbon");
+    if (ribbon) {
+      if (nextMode && (call || locking)) {
+        var rdir = locking ? "skip" : call.dir === "OVER" ? "over" : call.dir === "UNDER" ? "under" : "skip";
+        ribbon.className = "nextRibbon show " + rdir;
+        ribbon.innerHTML = locking
+          ? "&#9203; Locking your NEXT-round pick…"
+          : (call.dir === "SKIP"
+              ? "&#9197; NEXT ROUND " + nsH + "–" + neH + " · SKIP — too close to call"
+              : "&#9197; NEXT ROUND &middot; <b>BUY " + (call.dir === "OVER" ? "OVER &uarr;" : "UNDER &darr;") + "</b> when it opens " + nsH +
+                " <span class=\"nrLock\">&#128274; locked " + (call.atLabel || "") + "</span>");
+      } else { ribbon.className = "nextRibbon"; ribbon.innerHTML = ""; }
+    }
 
     leanEl.textContent = liveLeanLine(call ? call.dir : "SKIP");
     leanEl.className = "lean mono " + leanClass();
@@ -1114,9 +1198,8 @@
   function updateRoundStatus() {
     var el = $("roundStatus");
     var strike = roundStrike();
-    if (strike == null || state.lastPrice == null) { el.textContent = "Waiting for round open…"; document.body.classList.remove("dir-down"); return; }
+    if (strike == null || state.lastPrice == null) { el.textContent = "Waiting for round open…"; return; }
     var d = state.lastPrice - strike, pct = strike ? d / strike * 100 : 0;
-    document.body.classList.toggle("dir-down", d < 0);   // glow turns red when UNDER is winning, green when OVER
     var side = d > 0 ? "OVER" : d < 0 ? "UNDER" : "FLAT";
     var cls = d > 0 ? "o" : d < 0 ? "u" : "";
     var arrow = d > 0 ? "▲" : d < 0 ? "▼" : "•";
@@ -1216,14 +1299,16 @@
     return state.lastPrice;
   }
   function openRound(partial) {
+    var locked = state.lockedNext;   // the pick we committed 2 min ago is what we grade against
     state.pendingRound = {
       coin: state.coin,
       openTime: currentRoundEnd.getTime() - 900000,
       openPrice: roundOpenPrice(),
       marketStrike: null,                 // real Kalshi strike — filled in when the crowd read returns
-      pickDir: state.lastRecoDir || "SKIP",
+      pickDir: locked ? locked.dir : (state.lastRecoDir || "SKIP"),
       endLabel: roundLabel(currentRoundEnd),
-      partial: !!partial
+      partial: !!partial,
+      feat: snapshotFeat()                // the signal context behind this pick, for learning
     };
   }
   // The line to beat: the real Kalshi strike when we have it, else the round's open price.
@@ -1244,7 +1329,8 @@
     if (actual === "FLAT") return;                                   // no movement — push, ignore
     state.rounds.unshift({
       coin: pr.coin, time: pr.endLabel, pick: pr.pickDir, actual: actual,
-      correct: actual === pr.pickDir, pct: (close - refStrike) / refStrike * 100
+      correct: actual === pr.pickDir, pct: (close - refStrike) / refStrike * 100,
+      feat: pr.feat || null                                          // signal snapshot → powers calibration + AI learning
     });
     if (state.rounds.length > 700) state.rounds.pop();   // ~7 days of 15-min rounds
     saveRounds(); renderAccuracy(); renderRounds();
@@ -1262,7 +1348,9 @@
     $("sStreak").textContent = streak;
     $("sHitRate").textContent = graded ? Math.round(correct / graded * 100) + "%" : "—";
     $("sHitRate").className = "v mono " + (graded ? (correct / graded >= 0.5 ? "pos" : "neg") : "");
-    $("accNote").textContent = graded ? (correct + " of " + graded + " auto-picks correct") : "Grading begins at the next 15-min close.";
+    var note = graded ? (correct + " of " + graded + " auto-picks correct") : "Grading begins at the next 15-min close.";
+    if (graded >= 8) note += " · odds now calibrated to your results";
+    $("accNote").textContent = note;
   }
 
   function renderRounds() {
@@ -1345,11 +1433,25 @@
   function aiAvailable() { return !!getWorkerUrl(); }
 
   function historySummary() {
-    var r = state.rounds, n = r.length, correct = 0, streak = 0, i;
+    var r = state.rounds, n = r.length, correct = 0, streak = 0, i, x, f;
     var byDir = { OVER: { n: 0, correct: 0 }, UNDER: { n: 0, correct: 0 } };
+    // confidence calibration, folded by symmetry so each band = "favored-side confidence"
+    var cal = [[0.5,0.6],[0.6,0.7],[0.7,0.8],[0.8,1.01]].map(function (b) { return { lo: b[0], hi: b[1], n: 0, won: 0 }; });
+    var agree = { n: 0, correct: 0 };       // rounds where the indicators strongly agreed (|net|>=3)
+    var obiAgree = { n: 0, correct: 0 };    // rounds where the order book agreed with the pick
     for (i = 0; i < n; i++) {
-      if (r[i].correct) correct++;
-      if (r[i].pick && byDir[r[i].pick]) { byDir[r[i].pick].n++; if (r[i].correct) byDir[r[i].pick].correct++; }
+      x = r[i];
+      if (x.correct) correct++;
+      if (x.pick && byDir[x.pick]) { byDir[x.pick].n++; if (x.correct) byDir[x.pick].correct++; }
+      f = x.feat;
+      if (f && typeof f.pOver === "number" && (x.actual === "OVER" || x.actual === "UNDER")) {
+        var p = f.pOver, isOver = x.actual === "OVER" ? 1 : 0;
+        var pp = p >= 0.5 ? p : 1 - p, won = p >= 0.5 ? isOver : 1 - isOver;   // did the favored side win?
+        for (var k = 0; k < cal.length; k++) { if (pp >= cal[k].lo && pp < cal[k].hi) { cal[k].n++; cal[k].won += won; break; } }
+        if (typeof f.net === "number" && Math.abs(f.net) >= 3) { agree.n++; if (x.correct) agree.correct++; }
+        if (typeof f.obi === "number" && f.obi !== 0 && (x.pick === "OVER" || x.pick === "UNDER") &&
+            ((f.obi > 0) === (x.pick === "OVER"))) { obiAgree.n++; if (x.correct) obiAgree.correct++; }
+      }
     }
     for (i = 0; i < n; i++) { if (r[i].correct) streak++; else break; }
     return {
@@ -1358,7 +1460,17 @@
       currentStreak: streak,
       overHitPct: byDir.OVER.n ? Math.round(byDir.OVER.correct / byDir.OVER.n * 100) : null,
       underHitPct: byDir.UNDER.n ? Math.round(byDir.UNDER.correct / byDir.UNDER.n * 100) : null,
-      recent: r.slice(0, 12).map(function (x) { return { time: x.time, pick: x.pick, actual: x.actual, correct: x.correct }; })
+      confidenceCalibration: cal.filter(function (c) { return c.n >= 4; }).map(function (c) {
+        return { saidLikely: Math.round(c.lo * 100) + "-" + Math.round(c.hi * 100) + "%", n: c.n, actuallyWonPct: Math.round(c.won / c.n * 100) };
+      }),
+      whenIndicatorsStronglyAgree: agree.n >= 4 ? { n: agree.n, hitPct: Math.round(agree.correct / agree.n * 100) } : null,
+      whenOrderBookAgrees: obiAgree.n >= 4 ? { n: obiAgree.n, hitPct: Math.round(obiAgree.correct / obiAgree.n * 100) } : null,
+      recent: r.slice(0, 12).map(function (x) {
+        var g = x.feat || {};
+        return { time: x.time, pick: x.pick, actual: x.actual, correct: x.correct,
+          net: typeof g.net === "number" ? g.net : null, obi: typeof g.obi === "number" ? g.obi : null,
+          said: typeof g.pOver === "number" ? Math.round((g.pOver >= 0.5 ? g.pOver : 1 - g.pOver) * 100) + "%" : null };
+      })
     };
   }
 
