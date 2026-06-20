@@ -386,7 +386,8 @@
     XRP:  { name: "XRP",       pair: "XRP · USD",  sym: "✕",  cgId: "ripple",    cbProduct: "XRP-USD" }
   };
 
-  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null };
+  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
+    lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0 };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -549,61 +550,99 @@
   }
   function pctFor(pOver, dir) { return Math.round((dir === "OVER" ? pOver : 1 - pOver) * 100); }
 
-  // The headline "what & when to buy" card. Phase-aware: most of the round it shows
-  // the LOCKED pick for THIS round; in the final 2 min it shows the best guess for the NEXT round.
+  // ---------- Locked, committed picks (stable — they don't twitch second-to-second) ----------
+  function nowClock() { var t = new Date(); return pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds()); }
+  // Freeze a blended call (dir + % + conviction) from an indicator reco.
+  function makeCall(reco) {
+    if (!reco) return null;
+    var o = combinedOdds(reco);
+    var dir = reco.dir === "SKIP" ? (o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP") : reco.dir;
+    return { dir: dir, pct: dir === "SKIP" ? 50 : pctFor(o.pOver, dir), conv: convictionFor(reco), atLabel: null };
+  }
+  function fallbackThisCall() { var rc = state.roundCall || state.lastRecoObj; return rc ? makeCall(rc) : null; }
+
+  // The NEXT-round bet: locked ONCE in the final 2 min (after a brief settle on a fresh
+  // AI read) and then held steady until the round turns over — no per-second flicker.
+  function ensureLockedNext() {
+    if (state.lockedNext || state.lockingNext || !state.lastRecoObj) return;
+    state.lockingNext = true;
+    if (aiAvailable() && !state.betWindowFired) { state.betWindowFired = true; callWorker(false); }   // pull a fresh read to lock on
+    var wait = aiAvailable() ? 4000 : 0;
+    if (wait) state.lockTimer = setTimeout(commitLockedNext, wait); else commitLockedNext();
+  }
+  function commitLockedNext() {
+    if (state.lockTimer) { clearTimeout(state.lockTimer); state.lockTimer = null; }
+    if (state.lockedNext || !state.lockingNext) return;
+    var reco = state.lastRecoObj; if (!reco) { state.lockingNext = false; return; }
+    var o = combinedOdds(reco), dir = o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP";
+    state.lockedNext = {
+      dir: dir, pct: dir === "SKIP" ? 50 : pctFor(o.pOver, dir), conv: convictionFor(reco),
+      atLabel: nowClock(), forLabel: pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes())
+    };
+    state.lockingNext = false;
+    renderPickCard(); updateBetWindow(state.remaining == null ? 999 : state.remaining);
+  }
+  function clearLocks() { if (state.lockTimer) { clearTimeout(state.lockTimer); state.lockTimer = null; } state.lockingNext = false; }
+
+  // Live blend vs a locked direction — shown only as a note; never rewrites the locked call.
+  function liveLeanLine(shownDir) {
+    var reco = state.lastRecoObj; if (!reco) return "—";
+    var o = combinedOdds(reco), upPct = Math.round(o.pOver * 100), f = state.leanFlips || 0;
+    var stab = f === 0 ? "steady" : f <= 2 ? (f + " flip" + (f > 1 ? "s" : "") + " this round") : (f + " flips · choppy");
+    var agree = shownDir === "SKIP" ? "" : (pctFor(o.pOver, shownDir) >= 50 ? " · ✓ agrees" : " · ⚠ drifted");
+    return "Live: " + reco.bull + "↑ " + reco.bear + "↓ · " + upPct + "% UP" + agree + " · " + stab;
+  }
+  function leanClass() { var f = state.leanFlips || 0; return f >= 3 ? "bear" : (f === 0 ? "bull" : "neu"); }
+
+  // The headline "what & when to buy" card. Shows a FROZEN call — this round's locked pick,
+  // or (final 2 min) the locked next-round bet — with the live blend only as an agree/drift note.
   function renderPickCard() {
-    var locked = state.roundCall, live = state.lastRecoObj, base = locked || live;
-    if (!base) return;
-    var el = $("reco"), scopeEl = $("recoScope"), buyEl = $("buyLine"), hintEl = $("buyHint"), pctEl = $("oddsPct"), lblEl = $("oddsLbl");
     var remaining = state.remaining == null ? 999 : state.remaining;
     var nextMode = remaining <= BET_WINDOW;
-    var odds = combinedOdds(live || base);
-
+    var el = $("reco"), scopeEl = $("recoScope"), buyEl = $("buyLine"), hintEl = $("buyHint"),
+        pctEl = $("oddsPct"), lblEl = $("oddsLbl"), leanEl = $("liveLean");
     var nsH = pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes());
-    var ne = new Date(currentRoundEnd.getTime() + 15 * 60000);
-    var neH = pad(ne.getHours()) + ":" + pad(ne.getMinutes());
+    var ne = new Date(currentRoundEnd.getTime() + 15 * 60000), neH = pad(ne.getHours()) + ":" + pad(ne.getMinutes());
 
-    // In the last 2 min we always give a forward-looking best guess for the next round;
-    // earlier, we show the stable locked pick (which may itself be SKIP).
-    var dir = nextMode ? odds.dir : base.dir;
-    var pct = pctFor(odds.pOver, dir);
+    var call = null, locking = false;
+    if (nextMode) { ensureLockedNext(); call = state.lockedNext; locking = !call && state.lockingNext; }
+    else { call = state.thisRoundLock || fallbackThisCall(); }
 
-    // SKIP: the locked pick had no clear side. (Can't happen in next-round mode.)
-    if (dir === "SKIP") {
+    leanEl.textContent = liveLeanLine(call ? call.dir : "SKIP");
+    leanEl.className = "lean mono " + leanClass();
+
+    if (locking) {
       el.className = "reco skip";
-      scopeEl.textContent = "For this round · closes " + nsH;
-      buyEl.className = "buyLine skip"; buyEl.textContent = "SKIP — signals are split";
-      hintEl.textContent = "No clear edge right now. Sitting out is a position too.";
+      scopeEl.textContent = "⏭ NEXT round " + nsH + "–" + neH;
+      buyEl.className = "buyLine skip"; buyEl.textContent = "🔒 Locking pick…";
+      hintEl.textContent = "Reading the freshest signals to lock your next-round bet.";
+      pctEl.textContent = "—"; lblEl.textContent = "locking";
+      return;
+    }
+    if (!call) return;
+
+    if (call.dir === "SKIP") {
+      el.className = "reco skip";
+      scopeEl.textContent = nextMode ? ("⏭ NEXT round " + nsH + "–" + neH + (call.atLabel ? " · 🔒 locked " + call.atLabel : "")) : ("✅ THIS round · closes " + nsH);
+      buyEl.className = "buyLine skip"; buyEl.textContent = "SKIP — no clear edge";
+      hintEl.textContent = nextMode ? "Too close to call — sitting out the next round is fine." : "No clear edge — sitting out is a position too.";
       pctEl.textContent = "—"; lblEl.textContent = "no clear side";
       return;
     }
-
-    // THIS-round pick whose live blend has flipped against it → caution, don't say "BUY".
-    if (!nextMode && pct < 50) {
-      el.className = "reco skip";
-      scopeEl.textContent = "For this round · closes " + nsH;
-      buyEl.className = "buyLine skip";
-      buyEl.innerHTML = "CAUTION · your " + dir + " pick weakened";
-      hintEl.textContent = "Live signals now lean " + odds.dir + ". Consider skipping or smaller size.";
-      pctEl.textContent = pctFor(odds.pOver, odds.dir) + "%";
-      lblEl.textContent = "now lean " + (odds.dir === "OVER" ? "UP" : "DOWN");
-      return;
-    }
-
-    var cls = dir === "OVER" ? "over" : "under";
+    var cls = call.dir === "OVER" ? "over" : "under";
     el.className = "reco " + cls;
     buyEl.className = "buyLine " + cls;
-    buyEl.innerHTML = "BUY " + (dir === "OVER" ? "OVER ↑" : "UNDER ↓") +
-      '<span class="buySub">' + (dir === "OVER" ? "betting the price goes UP" : "betting the price goes DOWN") + "</span>";
-    pctEl.textContent = pct + "%";
+    buyEl.innerHTML = "BUY " + (call.dir === "OVER" ? "OVER ↑" : "UNDER ↓") +
+      '<span class="buySub">' + (call.dir === "OVER" ? "betting the price goes UP" : "betting the price goes DOWN") + "</span>";
+    pctEl.textContent = call.pct + "%";
     if (nextMode) {
-      scopeEl.textContent = "⏭ Best guess · NEXT round " + nsH + "–" + neH;
-      hintEl.textContent = "This round's almost over — get ready to buy " + dir + " when the next round opens.";
-      lblEl.textContent = "likely " + (dir === "OVER" ? "UP" : "DOWN");
+      scopeEl.textContent = "⏭ NEXT round " + nsH + "–" + neH + (call.atLabel ? " · 🔒 locked " + call.atLabel : "");
+      hintEl.textContent = "Locked — buy " + call.dir + " when the next round opens.";
+      lblEl.textContent = "likely " + (call.dir === "OVER" ? "UP" : "DOWN");
     } else {
-      scopeEl.textContent = "✅ For THIS round · closes " + nsH;
-      hintEl.textContent = pct >= 60 ? "Solid signal — place BUY " + dir + " on Coinbase now." : "Place BUY " + dir + " on Coinbase now (modest confidence).";
-      lblEl.textContent = "chance " + (dir === "OVER" ? "UP" : "DOWN");
+      scopeEl.textContent = "✅ THIS round · closes " + nsH;
+      hintEl.textContent = "Your locked pick for this round — live status below.";
+      lblEl.textContent = "chance " + (call.dir === "OVER" ? "UP" : "DOWN");
     }
   }
 
@@ -634,6 +673,9 @@
   // The big card = the LOCKED call for the round (set only at each round open).
   function renderRoundCall(reco) {
     state.roundCall = reco;
+    // Freeze this round's actionable call — prefer the pick you locked last bet window.
+    state.thisRoundLock = state.lockedNext || makeCall(reco);
+    state.lockedNext = null; clearLocks();
     $("recoConf").textContent = reco.conf;
     $("recoTally").textContent = reco.bull + "↑   " + reco.bear + "↓   of " + reco.total + " indicators";
     var denom = reco.total || 1;
@@ -647,10 +689,13 @@
     state.lastRecoObj = reco;
     state.lastReco = reco.dir === "SKIP" ? "SKIP" : (reco.dir + " · " + reco.conf.split("—")[0].trim());
     state.lastRecoDir = reco.dir;
-    $("liveLean").textContent = "Live lean: " + reco.dir + " · " + reco.bull + "↑ " + reco.bear + "↓";
-    $("liveLean").className = "lean mono " + reco.cls;
+    // Track how flippy the live read has been this round (a stability/conviction signal).
+    if (reco.dir === "OVER" || reco.dir === "UNDER") {
+      if (state.leanDir && state.leanDir !== reco.dir) state.leanFlips++;
+      state.leanDir = reco.dir;
+    }
     if (!state.roundCall) renderRoundCall(reco);
-    renderPickCard();
+    renderPickCard();   // also refreshes the live lean + stability line (#liveLean)
   }
 
   function refresh() {
@@ -744,6 +789,10 @@
   // ---------- Mini live chart (price vs the line to beat) ----------
   function resetChart() {
     state.priceHist = [];
+    var pr = state.pendingRound;
+    // Anchor the line at the round's real open (left edge) so it spans the whole window
+    // — even if you loaded mid-round (the 15-min candle's open price = the boundary price).
+    if (pr && pr.openPrice != null && pr.openTime != null) state.priceHist.push({ t: pr.openTime, p: pr.openPrice });
     if (state.lastPrice != null) state.priceHist.push({ t: Date.now(), p: state.lastPrice });
     drawMiniChart();
   }
@@ -759,7 +808,7 @@
     var W = cv.clientWidth || cv.offsetWidth || 300, H = 96, dpr = window.devicePixelRatio || 1;
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     var ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
-    var strike = state.pendingRound ? state.pendingRound.openPrice : null, hist = state.priceHist, lbl = $("miniChartLbl");
+    var strike = roundStrike(), hist = state.priceHist, lbl = $("miniChartLbl");
     if (strike == null || hist.length < 2) {
       ctx.fillStyle = "rgba(235,235,245,.3)"; ctx.font = "12px -apple-system, system-ui, sans-serif"; ctx.textAlign = "center";
       ctx.fillText("Waiting for live price…", W / 2, H / 2);
@@ -791,14 +840,15 @@
     ctx.fillStyle = lastAbove ? "#30d158" : "#ff453a";
     ctx.beginPath(); ctx.arc(X(last.t), Y(last.p), 3.5, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "rgba(235,235,245,.55)"; ctx.font = "10px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
-    ctx.fillText("beat " + fmtMoney(strike), 5, yS - 4 < 11 ? yS + 13 : yS - 4);
+    var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
+    ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     if (lbl) lbl.textContent = lastAbove ? "Above the line → OVER is winning right now" : "Below the line → UNDER is winning right now";
   }
 
   // Live "Price to beat" / Over-Under status vs the strike captured at round open.
   function updateRoundStatus() {
     var el = $("roundStatus");
-    var strike = state.pendingRound ? state.pendingRound.openPrice : null;
+    var strike = roundStrike();
     if (strike == null || state.lastPrice == null) { el.textContent = "Waiting for round open…"; return; }
     var d = state.lastPrice - strike, pct = strike ? d / strike * 100 : 0;
     var side = d > 0 ? "OVER" : d < 0 ? "UNDER" : "FLAT";
@@ -817,10 +867,12 @@
     if (now >= currentRoundEnd) {
       gradeRound();
       currentRoundEnd = nextBoundary(now);
+      state.leanFlips = 0; state.leanDir = null;                   // fresh stability tracking per round
       openRound(false);
       state.betWindowFired = false;
       resetChart();                                                // fresh price track for the new round
-      if (state.lastRecoObj) renderRoundCall(state.lastRecoObj);   // lock the call for the new round
+      if (state.lastRecoObj) renderRoundCall(state.lastRecoObj);   // lock the call (consumes the locked next-round pick)
+      else { state.lockedNext = null; clearLocks(); }
       refresh();
       if (aiAvailable()) setTimeout(function () { callWorker(false); }, 4000);   // fresh AI read each new round
     }
@@ -853,21 +905,30 @@
     return { level: "normal", note: null };
   }
   function updateBetWindow(remaining) {
-    var el = $("betWindow"), reco = state.lastRecoObj;
+    var el = $("betWindow");
     var ns = currentRoundEnd, ne = new Date(currentRoundEnd.getTime() + 15 * 60000);
     var nextLabel = pad(ns.getHours()) + ":" + pad(ns.getMinutes()) + "–" + pad(ne.getHours()) + ":" + pad(ne.getMinutes());
-    if (remaining <= BET_WINDOW && reco) {
-      if (!state.betWindowFired && aiAvailable()) { state.betWindowFired = true; callWorker(false); }   // fresh AI read at decision time
-      var conv = convictionFor(reco);
-      var odds = combinedOdds(reco);
-      var dir = odds.dir, pct = pctFor(odds.pOver, dir);
-      var cls = dir === "OVER" ? "over" : "under";
-      var dirTxt = dir === "OVER" ? "BUY OVER ↑" : "BUY UNDER ↓";
-      var head = conv.level === "strong" ? "&#11088; STRONG SIGNAL" : conv.level === "edge" ? "&#9889; EDGE vs CROWD" : "&#128276; GET READY";
-      el.className = "betwin active " + cls + (conv.level !== "normal" ? " " + conv.level : "");
+    if (remaining <= BET_WINDOW) {
+      ensureLockedNext();
+      var L = state.lockedNext;
+      if (!L) { el.className = "betwin"; el.innerHTML = "&#128274; Locking next-round pick… <span style=\"opacity:.7;font-weight:500\">reading fresh signals</span>"; return; }
+      if (L.dir === "SKIP") {
+        el.className = "betwin skip";
+        el.innerHTML = "&#128274; LOCKED · NEXT round " + nextLabel +
+          "<br><span class=\"big mono\">SKIP / SIT OUT</span>" +
+          "<br><span style=\"font-size:11px;opacity:.9;font-weight:600\">too close to call · locked " + L.atLabel + "</span>";
+        return;
+      }
+      var cls = L.dir === "OVER" ? "over" : "under";
+      var dirTxt = L.dir === "OVER" ? "BUY OVER ↑" : "BUY UNDER ↓";
+      var head = L.conv.level === "strong" ? "&#11088; STRONG · LOCKED" : L.conv.level === "edge" ? "&#9889; EDGE vs CROWD · LOCKED" : "&#128274; LOCKED PICK";
+      var dpct = state.lastRecoObj ? pctFor(combinedOdds(state.lastRecoObj).pOver, L.dir) : L.pct;
+      var drift = dpct >= 50 ? "✓ live still agrees · " + dpct + "%" : "⚠ live drifted · " + dpct + "% now";
+      el.className = "betwin active " + cls + (L.conv.level !== "normal" ? " " + L.conv.level : "");
       el.innerHTML = head + " · NEXT round " + nextLabel +
-        "<br><span class=\"big mono\">" + dirTxt + "</span> · " + pct + "% likely " + (dir === "OVER" ? "UP" : "DOWN") +
-        (conv.note ? "<br><span style=\"font-size:11px;opacity:.9;font-weight:600\">" + conv.note + "</span>" : "");
+        "<br><span class=\"big mono\">" + dirTxt + "</span> · " + L.pct + "% likely " + (L.dir === "OVER" ? "UP" : "DOWN") +
+        "<br><span style=\"font-size:11px;opacity:.9;font-weight:600\">locked " + L.atLabel + (L.conv.note ? " · " + L.conv.note : "") + "</span>" +
+        "<br><span style=\"font-size:11px;font-weight:600;opacity:.85\">" + drift + "</span>";
     } else {
       el.className = "betwin";
       var t = Math.max(0, remaining - BET_WINDOW);
@@ -878,28 +939,45 @@
   // ---------- Pick accuracy tracker ----------
   function roundLabel(d) { return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
 
+  // The price at this round's opening boundary. The 15-min candle's OPEN is exactly that
+  // (candles are aligned to :00/:15/:30/:45), so it's right even when you join mid-round.
+  function roundOpenPrice() {
+    var rs = currentRoundEnd.getTime() - 900000;
+    if (state.candles) for (var i = state.candles.length - 1; i >= 0; i--) {
+      if (state.candles[i].t === rs) return state.candles[i].o;
+    }
+    return state.lastPrice;
+  }
   function openRound(partial) {
     state.pendingRound = {
       coin: state.coin,
-      openPrice: state.lastPrice,
+      openTime: currentRoundEnd.getTime() - 900000,
+      openPrice: roundOpenPrice(),
+      marketStrike: null,                 // real Kalshi strike — filled in when the crowd read returns
       pickDir: state.lastRecoDir || "SKIP",
       endLabel: roundLabel(currentRoundEnd),
       partial: !!partial
     };
+  }
+  // The line to beat: the real Kalshi strike when we have it, else the round's open price.
+  function roundStrike() {
+    var pr = state.pendingRound; if (!pr) return null;
+    return pr.marketStrike != null ? pr.marketStrike : pr.openPrice;
   }
 
   function gradeRound() {
     var pr = state.pendingRound;
     state.pendingRound = null;
     if (!pr || pr.partial) return;                                   // mid-session / coin-switch rounds aren't graded
-    if (pr.openPrice == null || state.lastPrice == null) return;
+    var refStrike = pr.marketStrike != null ? pr.marketStrike : pr.openPrice;   // grade against the same line we showed
+    if (refStrike == null || state.lastPrice == null) return;
     if (pr.pickDir !== "OVER" && pr.pickDir !== "UNDER") return;     // SKIP picks aren't graded
     var close = state.lastPrice;
-    var actual = close > pr.openPrice ? "OVER" : close < pr.openPrice ? "UNDER" : "FLAT";
+    var actual = close > refStrike ? "OVER" : close < refStrike ? "UNDER" : "FLAT";
     if (actual === "FLAT") return;                                   // no movement — push, ignore
     state.rounds.unshift({
       coin: pr.coin, time: pr.endLabel, pick: pr.pickDir, actual: actual,
-      correct: actual === pr.pickDir, pct: (close - pr.openPrice) / pr.openPrice * 100
+      correct: actual === pr.pickDir, pct: (close - refStrike) / refStrike * 100
     });
     if (state.rounds.length > 700) state.rounds.pop();   // ~7 days of 15-min rounds
     saveRounds(); renderAccuracy(); renderRounds();
@@ -951,6 +1029,7 @@
     $("recoConf").textContent = "Loading live indicators"; $("reco").className = "reco skip";
     state.candles = null; state.wsLive = false; state.aiPrimed = false; state.roundCall = null; state.lastRecoObj = null;
     state.lastAI = null; state.lastCrowd = null; state.betWindowFired = false;
+    state.lockedNext = null; state.thisRoundLock = null; state.leanDir = null; state.leanFlips = 0; clearLocks();
     state.priceHist = []; drawMiniChart();
     $("liveLean").textContent = "—"; $("liveLean").className = "lean mono";
     $("roundStatus").textContent = "Waiting for round open…";
@@ -964,7 +1043,7 @@
   });
   // ---------- Help sheet ----------
   var EXPLAIN = {
-    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — it combines the indicators, the AI Co-Pilot, and the live Kalshi crowd into a single number. MOST of the round it shows the pick for THIS round ('place it on Coinbase now'). In the final 2 minutes the current round is basically decided, so it flips to your best guess for the NEXT round ('get ready to buy when it opens'). The little chart shows the live price racing against the line you must beat: green/above = OVER is winning, red/below = UNDER is winning. SKIP or CAUTION means there's no clear edge — sitting out is fine." },
+    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. SKIP means there's no clear edge — sitting out is fine." },
     indicators: { t: "Live Indicators", d: "Classic technical indicators recomputed live from 15-minute candles. Each shows its current value and a bull / bear / neutral tag. Tap any indicator row to learn what it means." },
     accuracy: { t: "Pick Accuracy", d: "When each 15-minute round closes, the app checks whether the auto pick was right — did price end above or below the round's opening 'price to beat'? It tracks your hit rate, streak, and the last ~7 days of rounds, saved on this device." },
     ai: { t: "AI Co-Pilot", d: "Optional. Connects to a small Cloudflare Worker you deploy. The worker fetches the live Kalshi crowd odds (the regulated market behind Coinbase's Over/Under) and asks Claude to weigh your indicators AND your recent track record against the crowd. The biggest edge is when a well-supported read disagrees with the crowd." },
@@ -1023,7 +1102,7 @@
     var payload = {
       coin: state.coin,
       price: state.lastPrice,
-      strike: state.pendingRound ? state.pendingRound.openPrice : null,
+      strike: roundStrike(),
       pick: state.lastRecoDir,
       model: getModel(),
       secondsLeft: secondsLeft,          // lets the worker recommend the NEXT round near the limit
@@ -1055,7 +1134,9 @@
 
   function renderAI(d, scope) {
     state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null;   // feed the Bet Window + combined odds
-    renderPickCard();
+    if (state.pendingRound && d.crowd && typeof d.crowd.strike === "number") state.pendingRound.marketStrike = d.crowd.strike;   // real line to beat
+    if (state.lockingNext && !state.lockedNext) commitLockedNext();   // settle the locked next-round pick on this fresh read
+    renderPickCard(); updateRoundStatus(); drawMiniChart();
     var el = $("aiResult"); el.classList.remove("hidden");
     $("aiIntro").classList.add("hidden");
     var crowd = d.crowd, ai = d.ai || {};

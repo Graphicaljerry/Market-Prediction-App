@@ -65,8 +65,9 @@ export default {
           const ms = (b.markets || []).filter((m) => m.close_time).sort((a, c) => new Date(a.close_time) - new Date(c.close_time));
           const m = ms[0];
           const over = m ? overFromMarket(m) : null;
-          if (over != null && env.CROWD_KV) await kvPut(env, t, { t: Date.now(), data: { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time } });
-          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, rawMarket: m || null, overPct: over, kvCached });
+          const strike = m ? strikeFromMarket(m) : null;
+          if (over != null && env.CROWD_KV) await kvPut(env, t, { t: Date.now(), data: { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time, strike } });
+          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, rawMarket: m || null, overPct: over, strike, kvCached });
         } catch (e) { return json({ coin, seriesTicker: t, error: e.message, kvCached }, 502); }
       }
       // Quick health check: shows which provider is wired up.
@@ -158,7 +159,18 @@ async function fetchCrowd(seriesTicker) {
   const m = markets[0];
   const over = overFromMarket(m);
   if (over == null) return null;   // quotes not posted yet (e.g. right at round open) → caller serves stale
-  return { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
+  return { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time, strike: strikeFromMarket(m) };
+}
+
+// The market's strike — the real "line to beat". Kalshi 15-min "above" markets carry a
+// numeric floor_strike; fall back to parsing the subtitle ("$4,110 or above" → 4110).
+function strikeFromMarket(m) {
+  if (!m) return null;
+  if (typeof m.floor_strike === "number") return m.floor_strike;
+  if (typeof m.cap_strike === "number") return m.cap_strike;
+  const s = m.yes_sub_title || m.subtitle || m.title || "";
+  const mm = String(s).replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+  return mm ? parseFloat(mm[1]) : null;
 }
 
 function staleOrNull(cached, now) {
