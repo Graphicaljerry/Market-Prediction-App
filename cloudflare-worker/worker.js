@@ -58,9 +58,10 @@ export default {
           const b = await r.json().catch(() => ({}));
           const ms = (b.markets || []).filter((m) => m.close_time).sort((a, c) => new Date(a.close_time) - new Date(c.close_time));
           const m = ms[0];
-          let over = m ? avg(m.yes_bid, m.yes_ask) : null;
-          if (over == null && m && typeof m.last_price === "number") over = m.last_price;
-          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, nearest: m ? { ticker: m.ticker, close_time: m.close_time, yes_bid: m.yes_bid, yes_ask: m.yes_ask, last_price: m.last_price } : null, overPct: over });
+          let over = m ? overFromMarket(m) : null;
+          let obOver = null;
+          if (over == null && m) obOver = await overFromOrderbook(m.ticker);   // list row had no quotes → try the book
+          return json({ coin, seriesTicker: t, httpStatus: r.status, openMarkets: (b.markets || []).length, rawMarket: m || null, overFromMarket: over, overFromOrderbook: obOver, overPct: over != null ? over : obOver });
         } catch (e) { return json({ coin, seriesTicker: t, error: e.message }, 502); }
       }
       // Quick health check: shows which provider is wired up.
@@ -124,8 +125,8 @@ async function getKalshiCrowd(seriesTicker) {
     if (!markets.length) return staleOrNull(cached);
     markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
     const m = markets[0];
-    let over = avg(m.yes_bid, m.yes_ask);
-    if (over == null && typeof m.last_price === "number") over = m.last_price;
+    let over = overFromMarket(m);
+    if (over == null) over = await overFromOrderbook(m.ticker);   // illiquid list row → derive mid from the order book
     if (over == null) return staleOrNull(cached);
     const result = { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
     crowdCache.set(seriesTicker, { t: Date.now(), data: result });
@@ -145,6 +146,39 @@ function staleOrNull(cached) {
 function avg(a, b) {
   const xs = [a, b].filter((v) => typeof v === "number");
   return xs.length ? xs.reduce((s, v) => s + v, 0) / xs.length : null;
+}
+
+// Implied OVER % straight from a market row's quote fields (cents = probability).
+function overFromMarket(m) {
+  if (!m) return null;
+  let over = avg(m.yes_bid, m.yes_ask);
+  if (over == null && typeof m.last_price === "number" && m.last_price > 0) over = m.last_price;
+  return over;
+}
+
+// Fallback when the list row carries no quotes: pull the order book and take the
+// YES midpoint. Kalshi books are priced in cents; yes_ask ≈ 100 − best NO bid.
+async function overFromOrderbook(ticker) {
+  try {
+    const r = await fetch(`${KALSHI_BASE}/markets/${encodeURIComponent(ticker)}/orderbook?depth=1`, { headers: KALSHI_HEADERS });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const ob = (d && d.orderbook) || {};
+    const yesBid = bestPrice(ob.yes);
+    const noBid = bestPrice(ob.no);
+    const yesAsk = noBid != null ? 100 - noBid : null;
+    return avg(yesBid, yesAsk);
+  } catch (_) { return null; }
+}
+// Best bid on one side: rows are [price_cents, size]; the highest price is the top bid.
+function bestPrice(side) {
+  if (!Array.isArray(side) || !side.length) return null;
+  let best = null;
+  for (const lvl of side) {
+    const p = Array.isArray(lvl) ? lvl[0] : null;
+    if (typeof p === "number" && (best == null || p > best)) best = p;
+  }
+  return best;
 }
 
 // Lists candidate Kalshi crypto series so you can pick the 15-minute one and set
