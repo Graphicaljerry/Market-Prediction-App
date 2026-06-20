@@ -200,8 +200,15 @@
   .lean.over { color: var(--green); } .lean.under { color: var(--red); } .lean.skip { color: var(--orange); }
 
   /* ---------- Mini live chart ---------- */
-  .miniChart { width: 100%; height: 96px; display: block; margin-top: 16px; border-radius: 10px; background: rgba(44,44,46,0.50); }
+  .miniChart { width: 100%; height: 120px; display: block; margin-top: 12px; border-radius: 10px; background: rgba(44,44,46,0.50); }
   .miniChartLbl { font-size: 11.5px; color: var(--label-3); text-align: center; margin-top: 7px; font-weight: 500; }
+  /* timeframe zoom selector above the chart */
+  .tfBar { display: flex; gap: 4px; margin-top: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tfBar::-webkit-scrollbar { display: none; }
+  .tfBtn { flex: 0 0 auto; min-height: 28px; padding: 4px 11px; border-radius: 8px; background: transparent; color: var(--label-2);
+    border: 1px solid var(--separator); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .18s ease; }
+  .tfBtn.active { background: var(--surface-3); color: var(--label); border-color: transparent; }
+  .tfBtn:active { opacity: .6; }
 
 
   /* ---------- Indicators ---------- */
@@ -379,6 +386,16 @@
       <div class="tally mono" id="recoTally">—</div>
       <div class="lean mono" id="liveLean">—</div>
     </div>
+    <div class="tfBar" id="tfBar">
+      <button class="tfBtn active" data-tf="live">Live</button>
+      <button class="tfBtn" data-tf="1m">1m</button>
+      <button class="tfBtn" data-tf="5m">5m</button>
+      <button class="tfBtn" data-tf="10m">10m</button>
+      <button class="tfBtn" data-tf="15m">15m</button>
+      <button class="tfBtn" data-tf="30m">30m</button>
+      <button class="tfBtn" data-tf="1h">1h</button>
+      <button class="tfBtn" data-tf="1d">1d</button>
+    </div>
     <canvas id="miniChart" class="miniChart"></canvas>
     <div class="miniChartLbl" id="miniChartLbl">Live price vs the line you must beat</div>
 
@@ -476,7 +493,8 @@
   };
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
-    lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null };
+    lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null,
+    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0 };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -841,6 +859,7 @@
   function refresh() {
     var myReq = ++state.reqId, coin = state.coin;
     refreshOrderBook(coin);
+    if (state.chartTF !== "live") loadCurrentTF(false);   // keep the zoomed chart fresh
     loadCandles(coin).then(function (res) {
       if (myReq !== state.reqId) return;
       var candles = res.candles, a = analyze(candles);
@@ -944,9 +963,114 @@
     else h.push({ t: now, p: state.lastPrice });
     if (h.length > 1000) h.shift();
   }
+  // ---------- Timeframe zoom (1m … 1d) ----------
+  // "live" = the intra-round price trace (default). Every other key pulls Coinbase candles
+  // at that granularity and draws closes against the SAME line-to-beat, so you can zoom out
+  // and see how far price sits from the line over a minute, an hour, or a day.
+  var TF_DEFS = [
+    { k: "live", label: "Live" },
+    { k: "1m",  g: 60,    bars: 60, span: "last hour" },
+    { k: "5m",  g: 300,   bars: 60, span: "last 5 hours" },
+    { k: "10m", g: 300, agg: 2, bars: 60, span: "last 10 hours" },
+    { k: "15m", g: 900,   bars: 60, span: "last 15 hours" },
+    { k: "30m", g: 900, agg: 2, bars: 48, span: "last day" },
+    { k: "1h",  g: 3600,  bars: 48, span: "last 2 days" },
+    { k: "1d",  g: 86400, bars: 60, span: "last 2 months" }
+  ];
+  function tfDef(k) { for (var i = 0; i < TF_DEFS.length; i++) if (TF_DEFS[i].k === k) return TF_DEFS[i]; return TF_DEFS[0]; }
+  function aggClosesByTime(candles, stepMs) {
+    var buckets = {}, order = [];
+    candles.forEach(function (c) { var key = Math.floor(c.t / stepMs); if (!(key in buckets)) order.push(key); buckets[key] = { t: c.t, p: c.c }; });
+    order.sort(function (a, b) { return a - b; });
+    return order.map(function (k) { return buckets[k]; });
+  }
+  function loadTFCloses(coin, def) {
+    var ck = coin + "|" + def.k, cached = state.tfCache[ck];
+    if (cached && Date.now() - cached.ts < 25000) return Promise.resolve(cached.data);
+    var url = "https://api.exchange.coinbase.com/products/" + COINS[coin].cbProduct + "/candles?granularity=" + def.g;
+    return fetch(url, { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (rows) {
+      if (!Array.isArray(rows) || !rows.length) throw 0;
+      var cs = rows.map(function (x) { return { t: x[0] * 1000, c: x[4] }; }).sort(function (a, b) { return a.t - b.t; });
+      var series = def.agg ? aggClosesByTime(cs, def.g * def.agg * 1000) : cs.map(function (c) { return { t: c.t, p: c.c }; });
+      if (series.length > def.bars) series = series.slice(series.length - def.bars);
+      state.tfCache[ck] = { ts: Date.now(), data: series };
+      return series;
+    });
+  }
+  function setChartTF(k) {
+    state.chartTF = k;
+    Array.prototype.forEach.call(document.querySelectorAll("#tfBar .tfBtn"), function (b) { b.classList.toggle("active", b.getAttribute("data-tf") === k); });
+    if (k === "live") { state.tfData = null; drawMiniChart(); return; }
+    loadCurrentTF(true);
+  }
+  function loadCurrentTF(showLoading) {
+    var k = state.chartTF; if (k === "live") return;
+    var def = tfDef(k), coin = state.coin, my = ++state.tfReq;
+    if (showLoading) { var lbl = $("miniChartLbl"); if (lbl) lbl.textContent = "Loading " + k + "…"; }
+    loadTFCloses(coin, def).then(function (series) {
+      if (my !== state.tfReq || coin !== state.coin) return;     // superseded by a newer pick / coin
+      state.tfData = series; drawMiniChart();
+    }).catch(function () {
+      if (my !== state.tfReq) return;
+      state.tfData = null; var lbl = $("miniChartLbl"); if (lbl) lbl.textContent = "Couldn't load " + k + " data — try again";
+    });
+  }
+  // Historical-closes chart for a chosen timeframe, sharing the look of the live chart.
+  function drawTFChart(cv, ctx, W, H, dpr) {
+    var strike = roundStrike(), data = state.tfData, lbl = $("miniChartLbl"), def = tfDef(state.chartTF);
+    if (!data || data.length < 2) {
+      ctx.fillStyle = "rgba(235,235,245,.3)"; ctx.font = "12px -apple-system, system-ui, sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("Loading " + state.chartTF + "…", W / 2, H / 2); return;
+    }
+    var prices = data.map(function (x) { return x.p; });
+    if (strike != null) prices = prices.concat([strike]);
+    var min = Math.min.apply(null, prices), max = Math.max.apply(null, prices);
+    var padY = (max - min) * 0.18 || (max * 0.0004) || 1; min -= padY; max += padY;
+    var top = 8, bot = 8, n = data.length;
+    function X(i) { return n < 2 ? 0 : (i / (n - 1)) * W; }
+    function Y(p) { return top + (1 - (p - min) / (max - min)) * (H - top - bot); }
+    var hasStrike = strike != null, yS = hasStrike ? Y(strike) : null, i, above;
+    // area + line, green above the line / red below (when we have a line)
+    if (hasStrike) {
+      for (i = 0; i < n - 1; i++) {
+        above = (data[i].p + data[i + 1].p) / 2 >= strike;
+        ctx.beginPath(); ctx.moveTo(X(i), Y(data[i].p)); ctx.lineTo(X(i + 1), Y(data[i + 1].p)); ctx.lineTo(X(i + 1), yS); ctx.lineTo(X(i), yS); ctx.closePath();
+        ctx.fillStyle = above ? "rgba(48,209,88,.16)" : "rgba(255,69,58,.16)"; ctx.fill();
+      }
+      ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(235,235,245,.4)"; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(W, yS); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.lineWidth = 2; ctx.lineJoin = "round";
+    for (i = 0; i < n - 1; i++) {
+      above = hasStrike ? ((data[i].p + data[i + 1].p) / 2 >= strike) : true;
+      ctx.strokeStyle = !hasStrike ? "#0a84ff" : above ? "#30d158" : "#ff453a";
+      ctx.beginPath(); ctx.moveTo(X(i), Y(data[i].p)); ctx.lineTo(X(i + 1), Y(data[i + 1].p)); ctx.stroke();
+    }
+    var last = data[n - 1], lastAbove = hasStrike ? last.p >= strike : true;
+    ctx.fillStyle = !hasStrike ? "#0a84ff" : lastAbove ? "#30d158" : "#ff453a";
+    ctx.beginPath(); ctx.arc(X(n - 1), Y(last.p), 3.5, 0, Math.PI * 2); ctx.fill();
+    if (hasStrike) {
+      ctx.fillStyle = "rgba(235,235,245,.55)"; ctx.font = "10px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
+      var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
+      ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
+    }
+    if (lbl) {
+      var d = hasStrike ? last.p - strike : 0;
+      lbl.textContent = !hasStrike ? (state.chartTF + " · " + def.span)
+        : (state.chartTF + " · " + def.span + " — now " + (d >= 0 ? "+" : "−") + fmtMoney(Math.abs(d)) + " " + (d >= 0 ? "above" : "below") + " the line");
+    }
+  }
   function drawMiniChart() {
     var cv = $("miniChart"); if (!cv || !cv.getContext) return;
-    var W = cv.clientWidth || cv.offsetWidth || 300, H = 96, dpr = window.devicePixelRatio || 1;
+    var W = cv.clientWidth || cv.offsetWidth || 300, H = 120, dpr = window.devicePixelRatio || 1;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    if (state.chartTF && state.chartTF !== "live") {
+      var ctx2 = cv.getContext("2d"); ctx2.setTransform(dpr, 0, 0, dpr, 0, 0); ctx2.clearRect(0, 0, W, H);
+      return drawTFChart(cv, ctx2, W, H, dpr);
+    }
+    return drawLiveChart(cv, W, H, dpr);
+  }
+  function drawLiveChart(cv, W, H, dpr) {
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     var ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
     var strike = roundStrike(), hist = state.priceHist, lbl = $("miniChartLbl");
@@ -1176,6 +1300,7 @@
     state.lastAI = null; state.lastCrowd = null; state.betWindowFired = false;
     state.lockedNext = null; state.thisRoundLock = null; state.leanDir = null; state.leanFlips = 0; clearLocks();
     state.obi = null;
+    state.tfData = null; if (state.chartTF !== "live") loadCurrentTF(true);   // reload zoom for the new coin
     state.priceHist = []; drawMiniChart();
     $("liveLean").textContent = "—"; $("liveLean").className = "lean mono";
     $("roundStatus").textContent = "Waiting for round open…";
@@ -1188,9 +1313,12 @@
     b.addEventListener("click", function () { setCoin(b.getAttribute("data-coin")); });
   });
   (function () { var s = $("coinSelect"); if (s) s.addEventListener("change", function () { setCoin(s.value); }); })();
+  Array.prototype.forEach.call(document.querySelectorAll("#tfBar .tfBtn"), function (b) {
+    b.addEventListener("click", function () { setChartTF(b.getAttribute("data-tf")); });
+  });
   // ---------- Help sheet ----------
   var EXPLAIN = {
-    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. SKIP means there's no clear edge — sitting out is fine." },
+    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine." },
     indicators: { t: "Live Indicators", d: "Classic technical indicators recomputed live from 15-minute candles. Each shows its current value and a bull / bear / neutral tag. Tap any indicator row to learn what it means." },
     accuracy: { t: "Pick Accuracy", d: "When each 15-minute round closes, the app checks whether the auto pick was right — did price end above or below the round's opening 'price to beat'? It tracks your hit rate, streak, and the last ~7 days of rounds, saved on this device." },
     ai: { t: "AI Co-Pilot", d: "Optional. Connects to a small Cloudflare Worker you deploy. The worker fetches the live Kalshi crowd odds (the regulated market behind Coinbase's Over/Under) and asks Claude to weigh your indicators AND your recent track record against the crowd. The biggest edge is when a well-supported read disagrees with the crowd." },
