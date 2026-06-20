@@ -101,8 +101,13 @@ export default {
     // for an LLM call. Used between decisions and when the tab isn't actively watched.
     if (body.noAI) return json({ crowd, ai: null, provider });
 
+    // Give the AI the full picture: the 24/7 auto-tracker's own record (its market-anchored
+    // guesses + how they actually settled) on top of the client's live history.
+    let autopicks = null;
+    try { autopicks = await kvGetRaw(env, "picks:" + coin); } catch (_) {}
+
     let ai;
-    try { ai = await getAIRead(env, provider, body, crowd); }
+    try { ai = await getAIRead(env, provider, body, crowd, autopicks); }
     catch (e) { ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", probOver: 50, rationale: "AI error: " + e.message }; }
 
     return json({ crowd, ai, provider });
@@ -277,7 +282,7 @@ async function discover(coin) {
 // --- Prompt (shared across providers) ----------------------------------
 const fnum = (v, d = 2) => (typeof v === "number" && isFinite(v)) ? (v >= 0 && d > 0 ? v.toFixed(d) : v.toFixed(d)) : null;
 
-function buildPrompt(body, crowd) {
+function buildPrompt(body, crowd, autopicks) {
   const secs = typeof body.secondsLeft === "number" ? body.secondsLeft : null;
   const nextRound = secs != null && secs <= 120;
   const m = body.market || {};
@@ -323,6 +328,15 @@ function buildPrompt(body, crowd) {
 Recent (pick->result [signals]): ${recent}.`
     : `No graded history yet — keep confidence modest.`;
 
+  // The always-on auto-tracker's own record: a simpler market-anchored system (Kalshi price +
+  // momentum + order book, no AI) that has been guessing + getting graded every round, 24/7.
+  const ap = autopicks || null;
+  const apHist = ap && Array.isArray(ap.history) ? ap.history : [];
+  const apRecent = apHist.slice(0, 14).map((x) => `${x.time} ${x.side}->${x.actual} ${x.correct ? "OK" : "X"}`).join(", ");
+  const autoLine = (ap && (ap.graded || apHist.length))
+    ? `24/7 AUTO-TRACKER (an independent, market-anchored system — Kalshi price + momentum + order book, NO AI — that picks and is graded every round even while the user is away): ${ap.hitRatePct ?? "n/a"}% over ${ap.graded || apHist.length} rounds.${ap.pending ? ` Its current pick: ${ap.pending.side}${ap.pending.side !== "SKIP" ? " " + ap.pending.prob + "%" : ""} (crowd ${ap.pending.signals && ap.pending.signals.crowdOver}% over).` : ""} Recent guesses->results: ${apRecent}. Treat it as a reality check on the market: where this dumb-but-honest system keeps winning, the market is efficient — agree with it; where it has been wrong lately, look for the edge it's missing.`
+    : (ap && ap.pending ? `24/7 auto-tracker current pick: ${ap.pending.side}${ap.pending.side !== "SKIP" ? " " + ap.pending.prob + "%" : ""} (not enough graded rounds yet).` : "");
+
   const scopeLine = nextRound
     ? `Only ~${secs}s remain in THIS round, so treat it as settled — do NOT advise on it. Judge the NEXT 15-minute round, which opens in ~${secs}s at ≈ the current price (${body.price}). At that open the line resets to ~the live price, so the position model is ~50% by design — your ONLY edge for the next round is which way it drifts from here.`
     : `Judge THIS round: will ${body.coin} be ABOVE the line (${body.strike}) at the close, ~${secs ?? "?"}s from now? The position model already reflects how far you are from the line and how little time is left — respect it.`;
@@ -342,7 +356,7 @@ ${indicators}
 
 YOUR TRACK RECORD ON THIS DEVICE:
 ${historyLine}
-
+${autoLine ? "\n" + autoLine + "\n" : ""}
 HOW TO DECIDE — reason in this order, then output only JSON:
 1. Anchor on the market price. It is hard to beat; do not re-derive it. Your job is to spot the rare moments it's wrong or slow.
 2. THIS round: the position model P(OVER) is usually the best estimate. If price is well above/below the line with little time left, it's nearly decided — do not fight it on a hunch.
@@ -384,8 +398,8 @@ function extractJson(text) {
 }
 
 // --- Providers ----------------------------------------------------------
-async function getAIRead(env, provider, body, crowd) {
-  const prompt = buildPrompt(body, crowd);
+async function getAIRead(env, provider, body, crowd, autopicks) {
+  const prompt = buildPrompt(body, crowd, autopicks);
   const model = (body.model && String(body.model).trim()) || env.AI_MODEL || DEFAULT_MODELS[provider];
   if (provider === "anthropic") return readAnthropic(env.ANTHROPIC_API_KEY, model, prompt);
   if (provider === "gemini") return readGemini(env.GEMINI_API_KEY, model, prompt);
@@ -544,7 +558,7 @@ async function runCoinPick(env, coin) {
       const actual = micro.price > p.strike ? "OVER" : micro.price < p.strike ? "UNDER" : "FLAT";
       if (actual !== "FLAT") {
         const correct = actual === p.side;
-        rec.history.unshift({ time: p.label, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: micro.price });
+        rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: micro.price });
         if (rec.history.length > 200) rec.history.pop();
         rec.graded++; if (correct) rec.correct++;
       }
@@ -562,7 +576,8 @@ async function runCoinPick(env, coin) {
         pOver: Math.round(fp.pOver * 100),
         prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
         closeMs: crowd.closeTime ? new Date(crowd.closeTime).getTime() : Date.now() + 900000,
-        label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",
+        ts: Date.now(),                                              // client formats this to 12-hour local time
+        label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",   // fallback for older clients
         signals: { crowdOver: Math.round(crowd.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null },
       };
     }

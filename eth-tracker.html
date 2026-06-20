@@ -46,32 +46,29 @@
      independently so the background feels alive without distracting. Centre stays near-black. */
   #aura { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
   #aura .lyr { position: absolute; inset: -14%; opacity: 0; transition: opacity 1.8s ease; will-change: transform, opacity; }
+  /* GREEN is the signature glow — always present so the background never looks flat */
   #aura .lyr.over {
+    opacity: .85;
     background:
-      radial-gradient(46% 34% at 0% 0%,     rgba(13,224,89,0.34), transparent 66%),
-      radial-gradient(52% 40% at 100% 100%, rgba(13,224,89,0.26), transparent 68%);
+      radial-gradient(48% 36% at 0% 0%,     rgba(13,224,89,0.42), transparent 66%),
+      radial-gradient(54% 42% at 100% 100%, rgba(13,224,89,0.34), transparent 68%);
     animation: auraDriftA 44s ease-in-out infinite alternate;
   }
+  /* RED only crossfades in when the pick is UNDER */
   #aura .lyr.under {
     background:
-      radial-gradient(46% 34% at 0% 0%,     rgba(255,69,58,0.32), transparent 66%),
-      radial-gradient(52% 40% at 100% 100%, rgba(255,69,58,0.24), transparent 68%);
+      radial-gradient(48% 36% at 0% 0%,     rgba(255,69,58,0.40), transparent 66%),
+      radial-gradient(54% 42% at 100% 100%, rgba(255,69,58,0.32), transparent 68%);
     animation: auraDriftB 52s ease-in-out infinite alternate;
   }
-  #aura .lyr.skip {
-    background:
-      radial-gradient(44% 32% at 2% 0%,      rgba(255,159,10,0.20), transparent 66%),
-      radial-gradient(50% 38% at 100% 100%,  rgba(255,159,10,0.15), transparent 68%);
-    animation: auraDriftA 60s ease-in-out infinite alternate;
-  }
-  /* before any call lands, a calm green presence */
-  body .lyr.over { opacity: .5; }
-  body.glow-over  .lyr.over  { opacity: 1; }
-  body.glow-over  .lyr.under, body.glow-over  .lyr.skip  { opacity: 0; }
-  body.glow-under .lyr.under { opacity: 1; }
-  body.glow-under .lyr.over,  body.glow-under .lyr.skip  { opacity: 0; }
-  body.glow-skip  .lyr.skip  { opacity: .85; }
-  body.glow-skip  .lyr.over,  body.glow-skip  .lyr.under { opacity: 0; }
+  #aura .lyr.skip { opacity: 0; }   /* unused — SKIP just keeps the calm green */
+  /* state overrides are scoped under #aura so they outrank the #aura base specificity */
+  body.glow-over  #aura .lyr.over  { opacity: 1; }
+  body.glow-over  #aura .lyr.under { opacity: 0; }
+  body.glow-under #aura .lyr.over  { opacity: 0; }
+  body.glow-under #aura .lyr.under { opacity: 1; }
+  body.glow-skip  #aura .lyr.over  { opacity: .8; }   /* no clear pick → stay green, just a touch calmer */
+  body.glow-skip  #aura .lyr.under { opacity: 0; }
   @keyframes auraDriftA { from { transform: translate3d(0,0,0) scale(1); }    to { transform: translate3d(2%,-1.6%,0) scale(1.05); } }
   @keyframes auraDriftB { from { transform: translate3d(0,0,0) scale(1.03); } to { transform: translate3d(-2%,1.6%,0) scale(1); } }
   @media (prefers-reduced-motion: reduce) { #aura .lyr { animation: none; } }
@@ -282,6 +279,10 @@
   .hrow .hmeta { grid-column: 1 / -1; font-size: 12px; color: var(--label-3); }
   .empty { text-align: center; color: var(--label-3); font-size: 14px; padding: 24px 0; }
   .accNote { font-size: 12px; color: var(--label-3); margin-top: 14px; text-align: center; }
+  /* 24/7 auto-tracker latest pick banner */
+  .autoLatest { text-align: center; font-size: 15px; font-weight: 800; margin-bottom: 14px; padding: 12px 10px; border-radius: 13px; background: var(--surface-2); }
+  .autoLatest.over { color: var(--green); } .autoLatest.under { color: var(--red); } .autoLatest.skip { color: var(--orange); }
+  .autoLatest .sub { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); margin-top: 4px; letter-spacing: 0; }
 
   /* ---------- Help / info sheet ---------- */
   .ihelp { display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:50%; background:var(--surface-3); color:var(--label-2); font-size:11px; font-weight:700; margin-left:7px; cursor:pointer; border:none; vertical-align:middle; padding:0; }
@@ -490,6 +491,23 @@
   </div>
 
   </div>
+
+  <!-- 24/7 AUTO-TRACKER (server-side, free, runs even when the app is closed) -->
+  <div class="module" id="autoMod" style="display:none">
+  <div class="sec">24/7 Auto-Tracker <span class="tiny">· market + flow, always on</span> <button class="ihelp" data-info="autotracker">?</button></div>
+  <div class="card flat">
+    <div id="autoLatest" class="autoLatest"></div>
+    <div class="scoreGrid">
+      <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
+      <div class="stat"><div class="v mono" id="aCorrect">0</div><div class="k">Correct</div></div>
+      <div class="stat"><div class="v mono" id="aHit">—</div><div class="k">Hit Rate</div></div>
+      <div class="stat"><div class="v mono" id="aPick">—</div><div class="k">Now</div></div>
+    </div>
+    <div id="autoHistory" class="history" style="margin-top:14px"></div>
+    <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. Claude reads this record too.</div>
+  </div>
+
+  </div>
   </main>
 
   <div id="infoSheet"><div class="infoCard"><h3 id="infoTitle">—</h3><p id="infoText">—</p><button class="closeBtn" id="infoClose">Got it</button></div></div>
@@ -527,6 +545,13 @@
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
+  // ---- 12-hour clock helpers (with AM/PM) ----
+  function ampm(h){ return h < 12 ? "AM" : "PM"; }
+  function h12(h){ var x = h % 12; return x === 0 ? 12 : x; }
+  function hm(d){ return h12(d.getHours()) + ":" + pad(d.getMinutes()); }                         // 2:45
+  function hma(d){ return hm(d) + " " + ampm(d.getHours()); }                                     // 2:45 PM
+  function hms(d){ return hm(d) + ":" + pad(d.getSeconds()) + " " + ampm(d.getHours()); }         // 2:45:09 PM
+  function rangeHM(a, b){ return hm(a) + "–" + hm(b) + " " + ampm(b.getHours()); }                 // 2:45–3:00 PM
   function fmtMoney(n){ var a = Math.abs(n), d = a >= 1 ? 2 : a >= 0.1 ? 4 : a >= 0.01 ? 5 : a >= 0.0001 ? 6 : 8; return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
 
   // ---------- Indicator math ----------
@@ -845,7 +870,7 @@
   }
 
   // ---------- Locked, committed picks (stable — they don't twitch second-to-second) ----------
-  function nowClock() { var t = new Date(); return pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds()); }
+  function nowClock() { return hms(new Date()); }
   // Freeze a blended call (dir + % + conviction) from an indicator reco.
   function makeCall(reco) {
     if (!reco) return null;
@@ -871,7 +896,7 @@
     var o = combinedOdds(reco), dir = o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP";
     state.lockedNext = {
       dir: dir, pct: dir === "SKIP" ? 50 : pctFor(o.pOver, dir), conv: convictionFor(reco),
-      atLabel: nowClock(), forLabel: pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes())
+      atLabel: nowClock(), forLabel: hma(currentRoundEnd)
     };
     state.lockingNext = false;
     renderPickCard(); updateBetWindow(state.remaining == null ? 999 : state.remaining);
@@ -907,8 +932,8 @@
     var nextMode = remaining <= BET_WINDOW;
     var el = $("reco"), scopeEl = $("recoScope"), buyEl = $("buyLine"), hintEl = $("buyHint"),
         pctEl = $("oddsPct"), lblEl = $("oddsLbl"), leanEl = $("liveLean");
-    var nsH = pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes());
-    var ne = new Date(currentRoundEnd.getTime() + 15 * 60000), neH = pad(ne.getHours()) + ":" + pad(ne.getMinutes());
+    var nsH = hma(currentRoundEnd);
+    var ne = new Date(currentRoundEnd.getTime() + 15 * 60000), neH = hma(ne);
 
     var call = null, locking = false;
     if (nextMode) { ensureLockedNext(); call = state.lockedNext; locking = !call && state.lockingNext; }
@@ -1027,6 +1052,7 @@
     refreshOrderBook(coin);
     refreshMicro(coin);
     refreshCrowd();                                       // free market/strike refresh (throttled, visible-only)
+    fetchAutoTracker(coin);                               // free 24/7 auto-tracker record (throttled)
     if (state.chartTF !== "live") loadCurrentTF(false);   // keep the zoomed chart fresh
     loadCandles(coin).then(function (res) {
       if (myReq !== state.reqId) return;
@@ -1042,7 +1068,7 @@
         renderPrice(a.price, change24);
         var t = new Date();
         elUpdated.classList.remove("err");
-        elUpdated.textContent = "Updated " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
+        elUpdated.textContent = "Updated " + hms(t);
         elSrc.textContent = res.src + " · 15m";
       }
       renderIndicators(a.list); renderLean(buildReco(a.list));
@@ -1108,7 +1134,7 @@
       pushPricePoint(); drawMiniChart();
       var t = new Date();
       elUpdated.classList.remove("err");
-      elUpdated.textContent = "Live · " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
+      elUpdated.textContent = "Live · " + hms(t);
       elSrc.textContent = "Coinbase · live";
       maybeAutoAI();
     }, 1000);
@@ -1310,6 +1336,7 @@
       // Round open: just refresh the free market price/strike. The paid AI read happens once
       // per round at the 2-min lock (the actionable moment) — no redundant spend here.
       if (aiAvailable()) setTimeout(function () { refreshCrowd(true); }, 4000);
+      setTimeout(function () { fetchAutoTracker(state.coin, true); }, 8000);   // let the cron post the new round's pick
     }
     var remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
     state.remaining = remaining;
@@ -1318,7 +1345,7 @@
     elTimer.classList.toggle("warn", warn);
     elTimerBar.classList.toggle("warn", warn);
     elTimerBar.style.width = (remaining / 900 * 100) + "%";
-    elTimerSub.textContent = "Round closes at " + pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes());
+    elTimerSub.textContent = "Round closes at " + hma(currentRoundEnd);
     updateBetWindow(remaining);
     renderPickCard();
     drawMiniChart();
@@ -1343,7 +1370,7 @@
     var el = $("betWindow");
     if (!el) return;   // banner removed — the locked next-round pick now lives in the Auto Pick card
     var ns = currentRoundEnd, ne = new Date(currentRoundEnd.getTime() + 15 * 60000);
-    var nextLabel = pad(ns.getHours()) + ":" + pad(ns.getMinutes()) + "–" + pad(ne.getHours()) + ":" + pad(ne.getMinutes());
+    var nextLabel = rangeHM(ns, ne);
     if (remaining <= BET_WINDOW) {
       ensureLockedNext();
       var L = state.lockedNext;
@@ -1373,7 +1400,7 @@
   }
 
   // ---------- Pick accuracy tracker ----------
-  function roundLabel(d) { return pad(d.getHours()) + ":" + pad(d.getMinutes()); }
+  function roundLabel(d) { return hma(d); }
 
   // The price at this round's opening boundary. The 15-min candle's OPEN is exactly that
   // (candles are aligned to :00/:15/:30/:45), so it's right even when you join mid-round.
@@ -1474,6 +1501,7 @@
     state.lastAI = null; state.lastCrowd = null; state.betWindowFired = false;
     state.lockedNext = null; state.thisRoundLock = null; state.leanDir = null; state.leanFlips = 0; clearLocks();
     state.obi = null; state.micro = null;
+    var _am = $("autoMod"); if (_am) _am.style.display = "none"; fetchAutoTracker(coin, true);   // 24/7 record for the new coin
     state.tfData = null; if (state.chartTF !== "live") loadCurrentTF(true);   // reload zoom for the new coin
     state.priceHist = []; drawMiniChart();
     $("liveLean").textContent = "—"; $("liveLean").className = "lean mono";
@@ -1495,6 +1523,7 @@
     autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine." },
     indicators: { t: "Live Indicators", d: "Classic technical indicators recomputed live from 15-minute candles. Each shows its current value and a bull / bear / neutral tag. Tap any indicator row to learn what it means." },
     accuracy: { t: "Pick Accuracy", d: "When each 15-minute round closes, the app checks whether the auto pick was right — did price end above or below the round's opening 'price to beat'? It tracks your hit rate, streak, and the last ~7 days of rounds, saved on this device." },
+    autotracker: { t: "24/7 Auto-Tracker", d: "A second, simpler picker that runs on the server every 15 minutes — even when this app is closed. It uses only free data (the Kalshi market price, short-term momentum, and the order book) with no AI, so it costs nothing. Every round it makes a pick and grades the last one, building an always-on track record. It's a reality check on the market: where this honest, no-frills system keeps winning, the market is efficient; where it slips, there may be an edge. The AI Co-Pilot reads this record too when it makes your live call." },
     ai: { t: "AI Co-Pilot", d: "Optional. Connects to a small Cloudflare Worker you deploy. The worker fetches the live Kalshi crowd odds (the regulated market behind Coinbase's Over/Under) and asks Claude to weigh your indicators AND your recent track record against the crowd. The biggest edge is when a well-supported read disagrees with the crowd." },
     "RSI (14)": { t: "RSI (14)", d: "Relative Strength Index — momentum on a 0–100 scale. Above ~55 = buyers in control (bullish); below ~45 = sellers (bearish). Above 70 is overbought (stretched up), below 30 is oversold (stretched down)." },
     "MACD (12,26,9)": { t: "MACD (12,26,9)", d: "Moving Average Convergence Divergence. The histogram measures momentum: positive/green = upward push (bullish), negative/red = downward (bearish). Rising bars mean momentum is building in that direction." },
@@ -1652,6 +1681,51 @@
     renderPickCard(); updateRoundStatus(); drawMiniChart(); renderBlend();
   }
 
+  // ---------- 24/7 auto-tracker (server-side, free) ----------
+  function workerGet(params) {
+    var base = getWorkerUrl(); if (!base) return null;
+    try { var u = new URL(base); Object.keys(params).forEach(function (k) { u.searchParams.set(k, params[k]); }); return u.toString(); }
+    catch (e) { return base + (base.indexOf("?") < 0 ? "?" : "&") + Object.keys(params).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&"); }
+  }
+  var _lastAutoAt = 0;
+  function fetchAutoTracker(coin, force) {
+    var url = workerGet({ picks: coin }); if (!url) return;
+    var now = Date.now();
+    if (!force && now - _lastAutoAt < 60000) return;   // cron only updates every 15 min — slow poll is plenty
+    _lastAutoAt = now;
+    fetch(url, { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (d) { if (coin === state.coin) renderAutoTracker(d); })
+      .catch(function () {});
+  }
+  function renderAutoTracker(d) {
+    var mod = $("autoMod"); if (!mod) return;
+    var has = d && !d.empty && (d.pending || (d.history && d.history.length));
+    if (!has) { mod.style.display = "none"; return; }
+    mod.style.display = "";
+    var graded = d.graded || 0, correct = d.correct || 0, p = d.pending;
+    $("aGraded").textContent = graded;
+    $("aCorrect").textContent = correct;
+    $("aHit").textContent = graded ? Math.round(correct / graded * 100) + "%" : "—";
+    $("aHit").className = "v mono " + (graded ? (correct / graded >= 0.5 ? "pos" : "neg") : "");
+    $("aPick").textContent = p ? p.side : "—";
+    $("aPick").className = "v mono " + (p && p.side === "OVER" ? "pos" : p && p.side === "UNDER" ? "neg" : "");
+    var lat = $("autoLatest");
+    if (p) {
+      var cls = p.side === "OVER" ? "over" : p.side === "UNDER" ? "under" : "skip", sig = p.signals || {};
+      var sub = "market " + (sig.crowdOver != null ? sig.crowdOver + "% over" : "n/a") + (sig.obi != null ? " · book " + (sig.obi > 0 ? "+" : "") + sig.obi : "");
+      lat.className = "autoLatest " + cls;
+      lat.innerHTML = (p.side === "SKIP" ? "SKIP — no clear edge" : "Auto pick: " + p.side + " · " + p.prob + "%") + '<span class="sub">' + sub + '</span>';
+    } else { lat.className = "autoLatest"; lat.textContent = ""; }
+    var rows = (d.history || []).slice(0, 10).map(function (h) {
+      var w = h.correct ? "w" : "l", tlabel = h.ts ? hma(new Date(h.ts)) : (h.time || "");
+      return '<div class="hrow ' + w + '"><span class="htime">' + tlabel + '</span>' +
+        '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
+        '<span class="hres ' + w + '">' + (h.correct ? "✓ " : "✗ ") + h.actual + '</span></div>';
+    }).join("");
+    $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet.</div>';
+  }
+
   // Which round does an AI read taken with `secondsLeft` apply to? In the final
   // BET_WINDOW seconds the worker reframes for the NEXT round, so label it that way.
   function scopeAt(secondsLeft) {
@@ -1661,8 +1735,8 @@
     var re = new Date(rs.getTime() + 15 * 60000);
     return {
       nextRound: nextRound,
-      asOf: pad(new Date().getHours()) + ":" + pad(new Date().getMinutes()),
-      label: (nextRound ? "Next round " : "This round ") + pad(rs.getHours()) + ":" + pad(rs.getMinutes()) + "–" + pad(re.getHours()) + ":" + pad(re.getMinutes())
+      asOf: hma(new Date()),
+      label: (nextRound ? "Next round " : "This round ") + rangeHM(rs, re)
     };
   }
 
@@ -1717,7 +1791,7 @@
 
   loadRounds();
   renderAccuracy(); renderRounds(); tickTimer(); refresh(); connectWS();
-  (function initAI() { $("aiModel").value = getModel(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); } })();
+  (function initAI() { $("aiModel").value = getModel(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); } })();
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { var im = b.querySelector(".cico"); if (im) im.src = COIN_ICONS[b.getAttribute("data-coin")] || ""; });
   $("coinBadge").innerHTML = COIN_ICONS[state.coin] ? '<img alt="" src="' + COIN_ICONS[state.coin] + '">' : "";
   (function () { var s = $("coinSelect"); if (s) s.value = state.coin; var si = $("coinSelIcon"); if (si) si.src = COIN_ICONS[state.coin] || ""; })();
