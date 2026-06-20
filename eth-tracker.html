@@ -113,12 +113,30 @@
   .reco.over .dir { color: var(--green); }
   .reco.under .dir { color: var(--red); }
   .reco.skip .dir { color: var(--orange); font-size: 30px; }
+
+  .scopeTag { font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--label-3); margin-bottom: 12px; }
+  .reco.over .scopeTag { color: var(--green); } .reco.under .scopeTag { color: var(--red); }
+  .buyLine { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; border-radius: 14px; padding: 14px 10px; }
+  .buyLine .buySub { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; margin-top: 4px; opacity: .85; }
+  .buyLine.over { color: var(--green); background: rgba(48,209,88,.13); }
+  .buyLine.under { color: var(--red); background: rgba(255,69,58,.13); }
+  .buyLine.skip { color: var(--orange); background: rgba(255,159,10,.11); font-size: 22px; }
+  .buyHint { font-size: 12.5px; color: var(--label-2); font-weight: 500; margin-top: 9px; }
+  .oddsRow { margin-top: 12px; display: flex; align-items: baseline; justify-content: center; gap: 8px; }
+  .oddsPct { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; }
+  .reco.over .oddsPct { color: var(--green); } .reco.under .oddsPct { color: var(--red); } .reco.skip .oddsPct { color: var(--orange); }
+  .oddsLbl { font-size: 12px; color: var(--label-3); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
+
   .meter { height: 6px; border-radius: 4px; background: rgba(118,118,128,0.24); margin-top: 18px; overflow: hidden; display: flex; }
   .meter .mbull { background: var(--green); height: 100%; transition: width .45s; }
   .meter .mbear { background: var(--red); height: 100%; transition: width .45s; margin-left: auto; }
   .tally { font-size: 13px; margin-top: 11px; color: var(--label-2); }
   .lean { font-size: 12px; margin-top: 9px; color: var(--label-3); }
   .lean.over { color: var(--green); } .lean.under { color: var(--red); } .lean.skip { color: var(--orange); }
+
+  /* ---------- Mini live chart ---------- */
+  .miniChart { width: 100%; height: 96px; display: block; margin-top: 16px; border-radius: 10px; background: rgba(118,118,128,0.10); }
+  .miniChartLbl { font-size: 11.5px; color: var(--label-3); text-align: center; margin-top: 7px; font-weight: 500; }
 
   /* ---------- Bet window banner ---------- */
   .betwin { border-radius: 14px; padding: 12px 16px; margin-bottom: 18px; text-align: center; font-size: 13px; font-weight: 600; background: var(--surface); color: var(--label-2); border: 1px solid var(--separator); transition: background .3s, border-color .3s; }
@@ -268,15 +286,20 @@
 
   <!-- RECOMMENDATION -->
   <div class="module">
-  <div class="sec">Auto Pick <span class="tiny">· locked per round</span> <button class="ihelp" data-info="autopick">?</button></div>
+  <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span> <button class="ihelp" data-info="autopick">?</button></div>
   <div class="card">
     <div id="reco" class="reco skip">
-      <div class="dir" id="recoDir">Analyzing…</div>
+      <div class="scopeTag" id="recoScope">Waiting for round…</div>
+      <div class="buyLine skip" id="buyLine">Analyzing…</div>
+      <div class="buyHint" id="buyHint">Loading live market data…</div>
+      <div class="oddsRow"><span class="oddsPct mono" id="oddsPct">—</span><span class="oddsLbl" id="oddsLbl"></span></div>
       <div class="conf" id="recoConf">Loading live indicators</div>
       <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
       <div class="tally mono" id="recoTally">—</div>
       <div class="lean mono" id="liveLean">—</div>
     </div>
+    <canvas id="miniChart" class="miniChart"></canvas>
+    <div class="miniChartLbl" id="miniChartLbl">Live price vs the line you must beat</div>
   </div>
 
   </div>
@@ -357,7 +380,7 @@
     SOL: { name: "Solana",   pair: "SOL · USD", sym: "◎", cgId: "solana",   cbProduct: "SOL-USD" }
   };
 
-  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false };
+  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -491,6 +514,93 @@
     return { dir: net > 0 ? "OVER" : "UNDER", cls: net > 0 ? "over" : "under", conf: conf, bull: bull, bear: bear, total: total };
   }
 
+  // ---------- Combined likelihood ----------
+  // Blend three views into ONE probability that price ends OVER (above the line):
+  // the indicator tally, the AI's verdict+confidence, and the live Kalshi crowd.
+  function indOver(reco) {
+    if (!reco) return 0.5;
+    var decisive = reco.bull + reco.bear;
+    if (!decisive) return 0.5;
+    return reco.bull / decisive;                 // share of decisive indicators that are bullish
+  }
+  function aiOver(ai) {
+    if (!ai || !ai.verdict || ai.verdict === "SKIP") return null;
+    var base = ai.confidence === "High" ? 0.80 : ai.confidence === "Medium" ? 0.68 : 0.58;
+    return ai.verdict === "OVER" ? base : 1 - base;
+  }
+  function crowdOver(crowd) {
+    return crowd && typeof crowd.overPct === "number" ? Math.max(0.02, Math.min(0.98, crowd.overPct / 100)) : null;
+  }
+  // Weighted blend; weights renormalize when a source is missing.
+  function combinedOdds(reco) {
+    var parts = [{ p: indOver(reco), w: 0.40 }];
+    var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: 0.35 });
+    var c = crowdOver(state.lastCrowd); if (c != null) parts.push({ p: c, w: 0.25 });
+    var wsum = 0, acc = 0;
+    parts.forEach(function (x) { wsum += x.w; acc += x.p * x.w; });
+    var pOver = wsum ? acc / wsum : 0.5;
+    return { pOver: pOver, dir: pOver >= 0.5 ? "OVER" : "UNDER" };
+  }
+  function pctFor(pOver, dir) { return Math.round((dir === "OVER" ? pOver : 1 - pOver) * 100); }
+
+  // The headline "what & when to buy" card. Phase-aware: most of the round it shows
+  // the LOCKED pick for THIS round; in the final 2 min it shows the best guess for the NEXT round.
+  function renderPickCard() {
+    var locked = state.roundCall, live = state.lastRecoObj, base = locked || live;
+    if (!base) return;
+    var el = $("reco"), scopeEl = $("recoScope"), buyEl = $("buyLine"), hintEl = $("buyHint"), pctEl = $("oddsPct"), lblEl = $("oddsLbl");
+    var remaining = state.remaining == null ? 999 : state.remaining;
+    var nextMode = remaining <= BET_WINDOW;
+    var odds = combinedOdds(live || base);
+
+    var nsH = pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes());
+    var ne = new Date(currentRoundEnd.getTime() + 15 * 60000);
+    var neH = pad(ne.getHours()) + ":" + pad(ne.getMinutes());
+
+    // In the last 2 min we always give a forward-looking best guess for the next round;
+    // earlier, we show the stable locked pick (which may itself be SKIP).
+    var dir = nextMode ? odds.dir : base.dir;
+    var pct = pctFor(odds.pOver, dir);
+
+    // SKIP: the locked pick had no clear side. (Can't happen in next-round mode.)
+    if (dir === "SKIP") {
+      el.className = "reco skip";
+      scopeEl.textContent = "For this round · closes " + nsH;
+      buyEl.className = "buyLine skip"; buyEl.textContent = "SKIP — signals are split";
+      hintEl.textContent = "No clear edge right now. Sitting out is a position too.";
+      pctEl.textContent = "—"; lblEl.textContent = "no clear side";
+      return;
+    }
+
+    // THIS-round pick whose live blend has flipped against it → caution, don't say "BUY".
+    if (!nextMode && pct < 50) {
+      el.className = "reco skip";
+      scopeEl.textContent = "For this round · closes " + nsH;
+      buyEl.className = "buyLine skip";
+      buyEl.innerHTML = "CAUTION · your " + dir + " pick weakened";
+      hintEl.textContent = "Live signals now lean " + odds.dir + ". Consider skipping or smaller size.";
+      pctEl.textContent = pctFor(odds.pOver, odds.dir) + "%";
+      lblEl.textContent = "now lean " + (odds.dir === "OVER" ? "UP" : "DOWN");
+      return;
+    }
+
+    var cls = dir === "OVER" ? "over" : "under";
+    el.className = "reco " + cls;
+    buyEl.className = "buyLine " + cls;
+    buyEl.innerHTML = "BUY " + (dir === "OVER" ? "OVER ↑" : "UNDER ↓") +
+      '<span class="buySub">' + (dir === "OVER" ? "betting the price goes UP" : "betting the price goes DOWN") + "</span>";
+    pctEl.textContent = pct + "%";
+    if (nextMode) {
+      scopeEl.textContent = "⏭ Best guess · NEXT round " + nsH + "–" + neH;
+      hintEl.textContent = "This round's almost over — get ready to buy " + dir + " when the next round opens.";
+      lblEl.textContent = "likely " + (dir === "OVER" ? "UP" : "DOWN");
+    } else {
+      scopeEl.textContent = "✅ For THIS round · closes " + nsH;
+      hintEl.textContent = pct >= 60 ? "Solid signal — place BUY " + dir + " on Coinbase now." : "Place BUY " + dir + " on Coinbase now (modest confidence).";
+      lblEl.textContent = "chance " + (dir === "OVER" ? "UP" : "DOWN");
+    }
+  }
+
   // ---------- Rendering ----------
   var elPrice = $("price"), elChange = $("change"), elUpdated = $("updated"), elSrc = $("srcTag");
   function flash(el){ el.classList.remove("flash"); void el.offsetWidth; el.classList.add("flash"); }
@@ -518,13 +628,12 @@
   // The big card = the LOCKED call for the round (set only at each round open).
   function renderRoundCall(reco) {
     state.roundCall = reco;
-    var el = $("reco"); el.className = "reco " + reco.cls;
-    $("recoDir").textContent = reco.dir === "OVER" ? "OVER ↑" : reco.dir === "UNDER" ? "UNDER ↓" : "SKIP";
     $("recoConf").textContent = reco.conf;
     $("recoTally").textContent = reco.bull + "↑   " + reco.bear + "↓   of " + reco.total + " indicators";
     var denom = reco.total || 1;
     $("mBull").style.width = (reco.bull / denom * 100) + "%";
     $("mBear").style.width = (reco.bear / denom * 100) + "%";
+    renderPickCard();
   }
   // The live, twitchy reading — shown small, and used for bets/AI. Locks the
   // round call on first load; after that the big card changes only at boundaries.
@@ -535,6 +644,7 @@
     $("liveLean").textContent = "Live lean: " + reco.dir + " · " + reco.bull + "↑ " + reco.bear + "↓";
     $("liveLean").className = "lean mono " + reco.cls;
     if (!state.roundCall) renderRoundCall(reco);
+    renderPickCard();
   }
 
   function refresh() {
@@ -557,8 +667,9 @@
         elSrc.textContent = res.src + " · 15m";
       }
       renderIndicators(a.list); renderLean(buildReco(a.list));
-      if (!state.pendingRound) openRound(true);
+      if (!state.pendingRound) { openRound(true); resetChart(); }
       updateRoundStatus();
+      pushPricePoint(); drawMiniChart();
       maybeAutoAI();
     }).catch(function () {
       if (myReq !== state.reqId) return;
@@ -566,7 +677,7 @@
       elPrice.textContent = "Price unavailable"; elPrice.classList.add("err");
       elUpdated.textContent = "Data unavailable — retrying…"; elUpdated.classList.add("err");
       $("indicators").innerHTML = '<div class="empty err">Could not load market data.</div>';
-      $("recoDir").textContent = "—"; $("recoConf").textContent = "Waiting for data";
+      $("buyLine").textContent = "—"; $("recoConf").textContent = "Waiting for data";
     });
   }
 
@@ -615,12 +726,67 @@
       var a = analyze(c);
       state.lastList = a.list;
       renderIndicators(a.list); renderLean(buildReco(a.list));
+      pushPricePoint(); drawMiniChart();
       var t = new Date();
       elUpdated.classList.remove("err");
       elUpdated.textContent = "Live · " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
       elSrc.textContent = "Coinbase · live";
       maybeAutoAI();
     }, 1000);
+  }
+
+  // ---------- Mini live chart (price vs the line to beat) ----------
+  function resetChart() {
+    state.priceHist = [];
+    if (state.lastPrice != null) state.priceHist.push({ t: Date.now(), p: state.lastPrice });
+    drawMiniChart();
+  }
+  function pushPricePoint() {
+    if (state.lastPrice == null) return;
+    var now = Date.now(), h = state.priceHist;
+    if (h.length && now - h[h.length - 1].t < 900) h[h.length - 1] = { t: now, p: state.lastPrice };  // ~1 pt/sec
+    else h.push({ t: now, p: state.lastPrice });
+    if (h.length > 1000) h.shift();
+  }
+  function drawMiniChart() {
+    var cv = $("miniChart"); if (!cv || !cv.getContext) return;
+    var W = cv.clientWidth || cv.offsetWidth || 300, H = 96, dpr = window.devicePixelRatio || 1;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    var ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    var strike = state.pendingRound ? state.pendingRound.openPrice : null, hist = state.priceHist, lbl = $("miniChartLbl");
+    if (strike == null || hist.length < 2) {
+      ctx.fillStyle = "rgba(235,235,245,.3)"; ctx.font = "12px -apple-system, system-ui, sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("Waiting for live price…", W / 2, H / 2);
+      if (lbl) lbl.textContent = "Live price vs the line you must beat";
+      return;
+    }
+    var roundStart = currentRoundEnd.getTime() - 900000, roundEnd = currentRoundEnd.getTime();
+    var prices = hist.map(function (x) { return x.p; }); prices.push(strike);
+    var min = Math.min.apply(null, prices), max = Math.max.apply(null, prices);
+    var padY = (max - min) * 0.25 || (strike * 0.0004) || 1; min -= padY; max += padY;
+    var top = 8, bot = 8;
+    function X(t) { return Math.max(0, Math.min(1, (t - roundStart) / (roundEnd - roundStart))) * W; }
+    function Y(p) { return top + (1 - (p - min) / (max - min)) * (H - top - bot); }
+    var yS = Y(strike), i, a, b, above;
+    for (i = 0; i < hist.length - 1; i++) {
+      a = hist[i]; b = hist[i + 1]; above = (a.p + b.p) / 2 >= strike;
+      ctx.beginPath(); ctx.moveTo(X(a.t), Y(a.p)); ctx.lineTo(X(b.t), Y(b.p)); ctx.lineTo(X(b.t), yS); ctx.lineTo(X(a.t), yS); ctx.closePath();
+      ctx.fillStyle = above ? "rgba(48,209,88,.16)" : "rgba(255,69,58,.16)"; ctx.fill();
+    }
+    ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(235,235,245,.4)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(W, yS); ctx.stroke(); ctx.setLineDash([]);
+    ctx.lineWidth = 2; ctx.lineJoin = "round";
+    for (i = 0; i < hist.length - 1; i++) {
+      a = hist[i]; b = hist[i + 1]; above = (a.p + b.p) / 2 >= strike;
+      ctx.strokeStyle = above ? "#30d158" : "#ff453a";
+      ctx.beginPath(); ctx.moveTo(X(a.t), Y(a.p)); ctx.lineTo(X(b.t), Y(b.p)); ctx.stroke();
+    }
+    var last = hist[hist.length - 1], lastAbove = last.p >= strike;
+    ctx.fillStyle = lastAbove ? "#30d158" : "#ff453a";
+    ctx.beginPath(); ctx.arc(X(last.t), Y(last.p), 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "rgba(235,235,245,.55)"; ctx.font = "10px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
+    ctx.fillText("beat " + fmtMoney(strike), 5, yS - 4 < 11 ? yS + 13 : yS - 4);
+    if (lbl) lbl.textContent = lastAbove ? "Above the line → OVER is winning right now" : "Below the line → UNDER is winning right now";
   }
 
   // Live "Price to beat" / Over-Under status vs the strike captured at round open.
@@ -647,11 +813,13 @@
       currentRoundEnd = nextBoundary(now);
       openRound(false);
       state.betWindowFired = false;
+      resetChart();                                                // fresh price track for the new round
       if (state.lastRecoObj) renderRoundCall(state.lastRecoObj);   // lock the call for the new round
       refresh();
       if (aiAvailable()) setTimeout(function () { callWorker(false); }, 4000);   // fresh AI read each new round
     }
     var remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
+    state.remaining = remaining;
     elTimer.textContent = pad(Math.floor(remaining / 60)) + ":" + pad(remaining % 60);
     var warn = remaining <= 120;
     elTimer.classList.toggle("warn", warn);
@@ -659,6 +827,8 @@
     elTimerBar.style.width = (remaining / 900 * 100) + "%";
     elTimerSub.textContent = "Round closes at " + pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes());
     updateBetWindow(remaining);
+    renderPickCard();
+    drawMiniChart();
   }
 
   // In the final BET_WINDOW seconds, surface the freshest call for the NEXT round.
@@ -683,11 +853,14 @@
     if (remaining <= BET_WINDOW && reco) {
       if (!state.betWindowFired && aiAvailable()) { state.betWindowFired = true; callWorker(false); }   // fresh AI read at decision time
       var conv = convictionFor(reco);
-      var dirTxt = reco.dir === "OVER" ? "OVER ↑" : reco.dir === "UNDER" ? "UNDER ↓" : "SKIP";
-      var head = conv.level === "strong" ? "&#11088; STRONG SIGNAL" : conv.level === "edge" ? "&#9889; EDGE vs CROWD" : "&#128276; BET WINDOW";
-      el.className = "betwin active " + reco.cls + (conv.level !== "normal" ? " " + conv.level : "");
-      el.innerHTML = head + " · next round " + nextLabel +
-        "<br><span class=\"big mono\">" + dirTxt + "</span> · " + reco.bull + "&#8593; " + reco.bear + "&#8595;" +
+      var odds = combinedOdds(reco);
+      var dir = odds.dir, pct = pctFor(odds.pOver, dir);
+      var cls = dir === "OVER" ? "over" : "under";
+      var dirTxt = dir === "OVER" ? "BUY OVER ↑" : "BUY UNDER ↓";
+      var head = conv.level === "strong" ? "&#11088; STRONG SIGNAL" : conv.level === "edge" ? "&#9889; EDGE vs CROWD" : "&#128276; GET READY";
+      el.className = "betwin active " + cls + (conv.level !== "normal" ? " " + conv.level : "");
+      el.innerHTML = head + " · NEXT round " + nextLabel +
+        "<br><span class=\"big mono\">" + dirTxt + "</span> · " + pct + "% likely " + (dir === "OVER" ? "UP" : "DOWN") +
         (conv.note ? "<br><span style=\"font-size:11px;opacity:.9;font-weight:600\">" + conv.note + "</span>" : "");
     } else {
       el.className = "betwin";
@@ -765,9 +938,14 @@
     Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { b.classList.toggle("active", b.getAttribute("data-coin") === coin); });
     elPrice.textContent = "—"; elChange.textContent = "—"; elChange.className = "changePill mono";
     $("indicators").innerHTML = '<div class="empty">Loading indicators…</div>';
-    $("recoDir").textContent = "Analyzing…"; $("recoConf").textContent = "Loading live indicators"; $("reco").className = "reco skip";
+    $("recoScope").textContent = "Waiting for round…";
+    $("buyLine").textContent = "Analyzing…"; $("buyLine").className = "buyLine skip";
+    $("buyHint").textContent = "Loading live market data…";
+    $("oddsPct").textContent = "—"; $("oddsLbl").textContent = "";
+    $("recoConf").textContent = "Loading live indicators"; $("reco").className = "reco skip";
     state.candles = null; state.wsLive = false; state.aiPrimed = false; state.roundCall = null; state.lastRecoObj = null;
     state.lastAI = null; state.lastCrowd = null; state.betWindowFired = false;
+    state.priceHist = []; drawMiniChart();
     $("liveLean").textContent = "—"; $("liveLean").className = "lean mono";
     $("roundStatus").textContent = "Waiting for round open…";
     connectWS();
@@ -780,7 +958,7 @@
   });
   // ---------- Help sheet ----------
   var EXPLAIN = {
-    autopick: { t: "Auto Pick (locked per round)", d: "Your single, stable call for the round. It LOCKS the moment a new 15-minute round opens and does not change until the next round — so you have one clear pick to act on instead of a number that flickers. The small 'Live lean' below shows where the 7 indicators are leaning right now (it moves intra-round); the locked call ignores that noise. Best practice: act on the locked call right when the timer flips to a new round. SKIP means the signals were split at lock time — no clear edge." },
+    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — it combines the indicators, the AI Co-Pilot, and the live Kalshi crowd into a single number. MOST of the round it shows the pick for THIS round ('place it on Coinbase now'). In the final 2 minutes the current round is basically decided, so it flips to your best guess for the NEXT round ('get ready to buy when it opens'). The little chart shows the live price racing against the line you must beat: green/above = OVER is winning, red/below = UNDER is winning. SKIP or CAUTION means there's no clear edge — sitting out is fine." },
     indicators: { t: "Live Indicators", d: "Classic technical indicators recomputed live from 15-minute candles. Each shows its current value and a bull / bear / neutral tag. Tap any indicator row to learn what it means." },
     accuracy: { t: "Pick Accuracy", d: "When each 15-minute round closes, the app checks whether the auto pick was right — did price end above or below the round's opening 'price to beat'? It tracks your hit rate, streak, and the last ~7 days of rounds, saved on this device." },
     ai: { t: "AI Co-Pilot", d: "Optional. Connects to a small Cloudflare Worker you deploy. The worker fetches the live Kalshi crowd odds (the regulated market behind Coinbase's Over/Under) and asks Claude to weigh your indicators AND your recent track record against the crowd. The biggest edge is when a well-supported read disagrees with the crowd." },
@@ -870,7 +1048,8 @@
   }
 
   function renderAI(d, scope) {
-    state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null;   // feed the Bet Window conviction alerts
+    state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null;   // feed the Bet Window + combined odds
+    renderPickCard();
     var el = $("aiResult"); el.classList.remove("hidden");
     $("aiIntro").classList.add("hidden");
     var crowd = d.crowd, ai = d.ai || {};
@@ -905,6 +1084,7 @@
   renderAccuracy(); renderRounds(); tickTimer(); refresh(); connectWS();
   (function initAI() { $("aiModel").value = getModel(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); } })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
+  window.addEventListener("resize", drawMiniChart);
 })();
 </script>
 </body>
