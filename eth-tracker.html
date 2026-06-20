@@ -271,6 +271,14 @@
   <div class="card">
     <div class="aiMuted" id="aiIntro">Optional. Connects to your own Cloudflare Worker, which pulls the live <b>Kalshi crowd odds</b> (the market behind Coinbase) and asks <b>Claude</b> to weigh your indicators + your 7-day track record against the crowd — and flag when your read disagrees with it.</div>
     <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <select id="aiModel" class="settingsInput">
+      <option value="">Model · provider default</option>
+      <option value="claude-haiku-4-5">Claude Haiku 4.5 · cheapest</option>
+      <option value="claude-sonnet-4-6">Claude Sonnet 4.6 · balanced</option>
+      <option value="claude-opus-4-8">Claude Opus 4.8 · smartest</option>
+      <option value="gemini-2.0-flash">Gemini 2.0 Flash · free</option>
+      <option value="llama-3.3-70b-versatile">Groq Llama 3.3 70B · free</option>
+    </select>
     <button id="aiRun" class="aiBtn">Save &amp; Get AI Read</button>
     <div id="aiResult" class="hidden" style="margin-top:14px;"></div>
   </div>
@@ -719,8 +727,9 @@
   $("infoSheet").addEventListener("click", function (e) { if (e.target === $("infoSheet")) $("infoSheet").classList.remove("open"); });
 
   // ---------- AI Co-Pilot (optional Cloudflare Worker) ----------
-  var WORKER_KEY = "workerUrl_v1";
+  var WORKER_KEY = "workerUrl_v1", AI_MODEL_KEY = "aiModel_v1";
   function getWorkerUrl() { try { return localStorage.getItem(WORKER_KEY) || ""; } catch (e) { return ""; } }
+  function getModel() { try { return localStorage.getItem(AI_MODEL_KEY) || ""; } catch (e) { return ""; } }
   function aiAvailable() { return !!getWorkerUrl(); }
 
   function historySummary() {
@@ -750,6 +759,7 @@
       price: state.lastPrice,
       strike: state.pendingRound ? state.pendingRound.openPrice : null,
       pick: state.lastRecoDir,
+      model: getModel(),
       indicators: (state.lastList || []).map(function (x) { return { name: x.name, value: x.val, signal: x.vote, label: x.chip }; }),
       history: historySummary()
     };
@@ -782,14 +792,14 @@
     el.innerHTML = '<div class="aiMuted err" style="color:var(--red)">AI unavailable: ' + msg + '</div>';
   }
   $("aiRun").addEventListener("click", function () {
-    var v = $("workerUrl").value.trim();
-    try { localStorage.setItem(WORKER_KEY, v); } catch (e) {}
+    try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {}
     callWorker(true);
   });
+  $("aiModel").addEventListener("change", function () { try { localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {} });
 
   loadRounds();
   renderAccuracy(); renderRounds(); tickTimer(); refresh(); connectWS();
-  (function initAI() { var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); callWorker(false); } })();
+  (function initAI() { $("aiModel").value = getModel(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); callWorker(false); } })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
 })();
 </script>

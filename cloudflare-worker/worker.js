@@ -150,7 +150,7 @@ function extractJson(text) {
 // --- Providers ----------------------------------------------------------
 async function getAIRead(env, provider, body, crowd) {
   const prompt = buildPrompt(body, crowd);
-  const model = env.AI_MODEL || DEFAULT_MODELS[provider];
+  const model = (body.model && String(body.model).trim()) || env.AI_MODEL || DEFAULT_MODELS[provider];
   if (provider === "anthropic") return readAnthropic(env.ANTHROPIC_API_KEY, model, prompt);
   if (provider === "gemini") return readGemini(env.GEMINI_API_KEY, model, prompt);
   if (provider === "groq") return readGroq(env.GROQ_API_KEY, model, prompt);
