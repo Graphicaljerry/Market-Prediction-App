@@ -54,7 +54,7 @@ export default {
         if (!t) return json({ coin, seriesVarSet: false, hint: "Add KALSHI_SERIES_" + coin + " as a Text variable (Settings → Variables and Secrets)." });
         try {
           // single Kalshi call to keep rate-limit pressure low
-          const r = await fetch(`${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(t)}&status=open&limit=200`, { headers: { Accept: "application/json" } });
+          const r = await fetch(`${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(t)}&status=open&limit=200`, { headers: KALSHI_HEADERS });
           const b = await r.json().catch(() => ({}));
           const ms = (b.markets || []).filter((m) => m.close_time).sort((a, c) => new Date(a.close_time) - new Date(c.close_time));
           const m = ms[0];
@@ -104,24 +104,43 @@ function pickProvider(env) {
 }
 
 // --- Kalshi -------------------------------------------------------------
+// A browser-like User-Agent: Kalshi throttles the default bot UA hard (429s).
+const KALSHI_HEADERS = {
+  Accept: "application/json",
+  "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+};
 const crowdCache = new Map(); // seriesTicker -> { t, data } : avoid hammering Kalshi
+const FRESH_MS = 60000;   // serve cache without re-fetching for 60s
+const STALE_MS = 600000;  // on error, keep serving the last good value for up to 10 min
 async function getKalshiCrowd(seriesTicker) {
   const cached = crowdCache.get(seriesTicker);
-  if (cached && Date.now() - cached.t < 60000) return cached.data; // 60s cache
+  if (cached && Date.now() - cached.t < FRESH_MS) return cached.data; // 60s fresh cache
   const url = `${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(seriesTicker)}&status=open&limit=200`;
-  const r = await fetch(url, { headers: { Accept: "application/json" } });
-  if (!r.ok) throw new Error("kalshi " + r.status);
-  const data = await r.json();
-  const markets = (data.markets || []).filter((m) => m.close_time);
-  if (!markets.length) return null;
-  markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
-  const m = markets[0];
-  let over = avg(m.yes_bid, m.yes_ask);
-  if (over == null && typeof m.last_price === "number") over = m.last_price;
-  if (over == null) return null;
-  const result = { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
-  crowdCache.set(seriesTicker, { t: Date.now(), data: result });
-  return result;
+  try {
+    const r = await fetch(url, { headers: KALSHI_HEADERS });
+    if (!r.ok) throw new Error("kalshi " + r.status);
+    const data = await r.json();
+    const markets = (data.markets || []).filter((m) => m.close_time);
+    if (!markets.length) return staleOrNull(cached);
+    markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
+    const m = markets[0];
+    let over = avg(m.yes_bid, m.yes_ask);
+    if (over == null && typeof m.last_price === "number") over = m.last_price;
+    if (over == null) return staleOrNull(cached);
+    const result = { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time };
+    crowdCache.set(seriesTicker, { t: Date.now(), data: result });
+    return result;
+  } catch (e) {
+    // Rate-limited or down: serve the last good value (marked stale) instead of n/a.
+    const stale = staleOrNull(cached);
+    if (stale) return stale;
+    throw e;
+  }
+}
+// Returns the cached value (flagged stale) if it's still within the stale window, else null.
+function staleOrNull(cached) {
+  if (cached && Date.now() - cached.t < STALE_MS) return { ...cached.data, stale: true };
+  return null;
 }
 function avg(a, b) {
   const xs = [a, b].filter((v) => typeof v === "number");
@@ -132,7 +151,7 @@ function avg(a, b) {
 // KALSHI_SERIES_<COIN> to its ticker. Open ?discover=ETH (or BTC/SOL) in a browser.
 async function discover(coin) {
   // Try the series catalog first.
-  let r = await fetch(`${KALSHI_BASE}/series?category=Crypto`, { headers: { Accept: "application/json" } });
+  let r = await fetch(`${KALSHI_BASE}/series?category=Crypto`, { headers: KALSHI_HEADERS });
   if (r.ok) {
     const data = await r.json();
     const all = (data.series || []).map((s) => ({ ticker: s.ticker, title: s.title || s.name || "" }));
@@ -140,7 +159,7 @@ async function discover(coin) {
     return { kind: "series", hint: "Set KALSHI_SERIES_" + (coin || "ETH") + " to the 15-minute series ticker below.", count: hit.length, series: hit.slice(0, 60) };
   }
   // Fallback: scan open markets and collect distinct series tickers.
-  r = await fetch(`${KALSHI_BASE}/markets?status=open&limit=1000`, { headers: { Accept: "application/json" } });
+  r = await fetch(`${KALSHI_BASE}/markets?status=open&limit=1000`, { headers: KALSHI_HEADERS });
   if (!r.ok) throw new Error("kalshi " + r.status);
   const d2 = await r.json();
   const seen = {}, out = [];
@@ -164,13 +183,26 @@ function buildPrompt(body, crowd) {
     ? `Track record (last ${h.graded} graded rounds): overall hit rate ${h.hitRatePct}%, current streak ${h.currentStreak}, OVER picks ${h.overHitPct ?? "n/a"}% right, UNDER picks ${h.underHitPct ?? "n/a"}% right. Recent: ${recent}.`
     : `No graded history yet.`;
   const crowdLine = crowd && typeof crowd.overPct === "number"
-    ? `The Kalshi crowd currently prices OVER at ~${crowd.overPct.toFixed(0)}% probability.`
+    ? `The Kalshi crowd currently prices OVER at ~${crowd.overPct.toFixed(0)}% probability${crowd.stale ? " (last known, odds feed briefly stale)" : ""}.`
     : `Live crowd odds are unavailable for this round.`;
 
-  return `You are a disciplined short-term trading assistant for a 15-minute OVER/UNDER market: will ${body.coin} close ABOVE its round-open "price to beat" 15 minutes from now?
+  // Phase awareness: in the final stretch of a round the current market is all but
+  // decided, so the useful question is the NEXT round, which opens at ~the current price.
+  const secs = typeof body.secondsLeft === "number" ? body.secondsLeft : null;
+  const nextRound = secs != null && secs <= 120;
+  const scopeLine = nextRound
+    ? `IMPORTANT: only ~${secs}s remain in the CURRENT round, so it is effectively settled — DO NOT advise on it. Make your call for the NEXT 15-minute round, which opens in ~${secs}s. At that open the "price to beat" resets to roughly the current live price (${body.price}), so judge whether ${body.coin} will be ABOVE ~${body.price} fifteen minutes after the next round begins. Use the live indicators below as your most-recent read of momentum into that open.`
+    : `Judge the CURRENT round: will ${body.coin} close ABOVE its round-open "price to beat" by the time this round ends?`;
+  const question = nextRound
+    ? `You are a disciplined short-term trading assistant for a 15-minute OVER/UNDER market on ${body.coin}, recommending the NEXT round before it begins.`
+    : `You are a disciplined short-term trading assistant for a 15-minute OVER/UNDER market: will ${body.coin} close ABOVE its round-open "price to beat" 15 minutes from now?`;
+
+  return `${question}
+
+${scopeLine}
 
 Live price: ${body.price}
-Price to beat (strike): ${body.strike}
+Price to beat (strike)${nextRound ? " for the current round (already settling)" : ""}: ${body.strike}
 The user's indicator engine pick: ${body.pick}
 
 Live 15-minute indicators:
@@ -180,7 +212,7 @@ ${historyLine}
 
 ${crowdLine}
 
-Decide OVER, UNDER, or SKIP. Weigh the technicals, the user's historical hit rate (trust directions that have actually worked for them), AND the crowd. The strongest opportunities are when a well-supported technical read DISAGREES with the crowd (the crowd may be overreacting). If signals are mixed, the edge is small, or the crowd already strongly agrees with a weak technical case, prefer SKIP. Set "edge" to "against-crowd" if your verdict opposes the crowd's lean, "with-crowd" if it matches, else "n/a".
+Decide OVER, UNDER, or SKIP${nextRound ? " for the NEXT round" : ""}. Weigh the technicals, the user's historical hit rate (trust directions that have actually worked for them), AND the crowd. The strongest opportunities are when a well-supported technical read DISAGREES with the crowd (the crowd may be overreacting). If signals are mixed, the edge is small, or the crowd already strongly agrees with a weak technical case, prefer SKIP. Set "edge" to "against-crowd" if your verdict opposes the crowd's lean, "with-crowd" if it matches, else "n/a".
 
 Be blunt and terse. The "rationale" is ONE short sentence, max ~100 characters — name the single deciding factor only. No preamble, no hedging, no restating the question.
 

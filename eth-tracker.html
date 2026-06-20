@@ -198,6 +198,8 @@
   .aiRow:last-child { border-bottom:none; }
   .aiRow .k { color:var(--label-2); }
   .aiRow .v { font-weight:700; font-family:"Roboto Mono",monospace; }
+  .aiScope { font-size:11px; font-weight:600; text-align:center; color:var(--label-3); letter-spacing:.02em; text-transform:uppercase; margin-bottom:2px; }
+  .aiScope.next { color:var(--blue); }
   .aiVerdict { font-size:24px; font-weight:800; text-align:center; padding:4px 0 2px; }
   .aiVerdict.over{ color:var(--green); } .aiVerdict.under{ color:var(--red); } .aiVerdict.skip{ color:var(--orange); }
   .aiRationale { font-size:13px; color:var(--label-2); line-height:1.55; margin-top:12px; }
@@ -833,34 +835,56 @@
     if (!url) return;
     if (!aiDataReady()) { if (manual) renderAIError("Still loading market data — try again in a moment."); return; }
     var btn = $("aiRun"); if (btn) { btn.disabled = true; btn.textContent = "Analyzing…"; }
+    var secondsLeft = Math.max(0, Math.floor((currentRoundEnd - new Date()) / 1000));
     var payload = {
       coin: state.coin,
       price: state.lastPrice,
       strike: state.pendingRound ? state.pendingRound.openPrice : null,
       pick: state.lastRecoDir,
       model: getModel(),
+      secondsLeft: secondsLeft,          // lets the worker recommend the NEXT round near the limit
       indicators: (state.lastList || []).map(function (x) { return { name: x.name, value: x.val, signal: x.vote, label: x.chip }; }),
       history: historySummary()
     };
+    // Capture the scope this read was made under so the result can be labelled correctly.
+    var scope = scopeAt(secondsLeft);
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (d) { renderAI(d); })
+      .then(function (d) { renderAI(d, scope); })
       .catch(function (e) { renderAIError(e.message); })
       .then(function () { if (btn) { btn.disabled = false; btn.textContent = "Refresh AI Read"; } });
   }
 
-  function renderAI(d) {
+  // Which round does an AI read taken with `secondsLeft` apply to? In the final
+  // BET_WINDOW seconds the worker reframes for the NEXT round, so label it that way.
+  function scopeAt(secondsLeft) {
+    var nextRound = typeof secondsLeft === "number" && secondsLeft <= BET_WINDOW;
+    // "This round" spans [end-15m, end]; "next round" spans [end, end+15m].
+    var rs = nextRound ? currentRoundEnd : new Date(currentRoundEnd.getTime() - 15 * 60000);
+    var re = new Date(rs.getTime() + 15 * 60000);
+    return {
+      nextRound: nextRound,
+      asOf: pad(new Date().getHours()) + ":" + pad(new Date().getMinutes()),
+      label: (nextRound ? "Next round " : "This round ") + pad(rs.getHours()) + ":" + pad(rs.getMinutes()) + "–" + pad(re.getHours()) + ":" + pad(re.getMinutes())
+    };
+  }
+
+  function renderAI(d, scope) {
     state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null;   // feed the Bet Window conviction alerts
     var el = $("aiResult"); el.classList.remove("hidden");
     $("aiIntro").classList.add("hidden");
     var crowd = d.crowd, ai = d.ai || {};
     var dirCls = ai.verdict === "OVER" ? "over" : ai.verdict === "UNDER" ? "under" : "skip";
+    var scopeHtml = scope
+      ? '<div class="aiScope' + (scope.nextRound ? ' next' : '') + '">' + scope.label + ' · as of ' + scope.asOf + '</div>'
+      : '';
     var crowdLine = crowd && typeof crowd.overPct === "number"
-      ? '<div class="aiRow"><span class="k">Crowd (Kalshi)</span><span class="v">' + crowd.overPct.toFixed(0) + '% OVER</span></div>'
+      ? '<div class="aiRow"><span class="k">Crowd (Kalshi)</span><span class="v">' + crowd.overPct.toFixed(0) + '% OVER' + (crowd.stale ? ' <span style="color:var(--label-3);font-weight:500">(last known)</span>' : '') + '</span></div>'
       : '<div class="aiRow"><span class="k">Crowd (Kalshi)</span><span class="v" style="color:var(--label-3)">n/a</span></div>';
     var edgeHtml = ai.edge === "against-crowd" ? '<span class="aiEdge against">EDGE vs crowd</span>'
       : ai.edge === "with-crowd" ? '<span class="aiEdge with">agrees w/ crowd</span>' : '';
     el.innerHTML =
+      scopeHtml +
       '<div class="aiVerdict ' + dirCls + '">' + (ai.verdict || "—") + (ai.confidence ? ' · ' + ai.confidence : '') + '</div>' +
       crowdLine +
       '<div class="aiRow"><span class="k">Your indicators</span><span class="v">' + (state.lastRecoDir || "—") + '</span></div>' +
