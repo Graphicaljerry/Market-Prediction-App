@@ -7,7 +7,7 @@
  *
  * --- Env vars (Cloudflare dashboard → the Worker → Settings → Variables) ---
  * Pick ONE provider by adding its key (or force it with AI_PROVIDER):
- *   ANTHROPIC_API_KEY  (Secret) — Claude. console.anthropic.com  (paid, ~1–3¢/read)
+ *   ANTHROPIC_API_KEY  (Secret) — Claude. console.anthropic.com  (default Haiku 4.5, ~0.05–0.1¢/read)
  *   GEMINI_API_KEY     (Secret) — Google Gemini. aistudio.google.com/apikey  (free tier)
  *   GROQ_API_KEY       (Secret) — Groq. console.groq.com/keys  (free tier, very fast)
  *
@@ -28,7 +28,7 @@
 const KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2";
 
 const DEFAULT_MODELS = {
-  anthropic: "claude-opus-4-8",
+  anthropic: "claude-haiku-4-5",
   gemini: "gemini-2.0-flash",
   groq: "llama-3.3-70b-versatile",
 };
@@ -89,9 +89,13 @@ export default {
     const seriesTicker = env["KALSHI_SERIES_" + coin];
     if (seriesTicker) { try { crowd = await getKalshiCrowd(env, seriesTicker); } catch (_) { crowd = null; } }
 
+    // Cheap path: the client can refresh the (free) Kalshi crowd + strike without paying
+    // for an LLM call. Used between decisions and when the tab isn't actively watched.
+    if (body.noAI) return json({ crowd, ai: null, provider });
+
     let ai;
     try { ai = await getAIRead(env, provider, body, crowd); }
-    catch (e) { ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "AI error: " + e.message }; }
+    catch (e) { ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", probOver: 50, rationale: "AI error: " + e.message }; }
 
     return json({ crowd, ai, provider });
   },
@@ -159,7 +163,11 @@ async function fetchCrowd(seriesTicker) {
   const m = markets[0];
   const over = overFromMarket(m);
   if (over == null) return null;   // quotes not posted yet (e.g. right at round open) → caller serves stale
-  return { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time, strike: strikeFromMarket(m) };
+  // Also surface the NEXT round's market — that's the one the client locks a bet on in the
+  // final 2 minutes, when this round's price is already pinned near 0/100 and useless as a prior.
+  const m1 = markets[1];
+  const next1 = m1 ? { overPct: overFromMarket(m1), strike: strikeFromMarket(m1), closeTime: m1.close_time } : null;
+  return { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time, strike: strikeFromMarket(m), next: next1 };
 }
 
 // The market's strike — the real "line to beat". Kalshi 15-min "above" markets carry a
@@ -252,71 +260,103 @@ async function discover(coin) {
 }
 
 // --- Prompt (shared across providers) ----------------------------------
+const fnum = (v, d = 2) => (typeof v === "number" && isFinite(v)) ? (v >= 0 && d > 0 ? v.toFixed(d) : v.toFixed(d)) : null;
+
 function buildPrompt(body, crowd) {
+  const secs = typeof body.secondsLeft === "number" ? body.secondsLeft : null;
+  const nextRound = secs != null && secs <= 120;
+  const m = body.market || {};
+
+  // The right market prior: this round's price is near-settled in the final 2 min, so for the
+  // NEXT-round decision use the next market's price when we have it.
+  const cur = crowd && typeof crowd.overPct === "number" ? crowd : null;
+  const nxt = crowd && crowd.next && typeof crowd.next.overPct === "number" ? crowd.next : null;
+  const useCrowd = nextRound ? (nxt || cur) : cur;
+  const crowdLine = useCrowd
+    ? `Kalshi market price — real money, the crowd's best guess: OVER ≈ ${Number(useCrowd.overPct).toFixed(0)}%${crowd.stale ? " (briefly stale)" : ""}. This is a live prediction market and your single best prior; it already bakes in volatility, time left, and obvious flow.`
+    : `Kalshi market price: unavailable this round — lean on the math below and stay humble (assume ~50/50 unless a signal is strong).`;
+
+  // The math that actually decides an OVER/UNDER: where price sits vs the line, how much time
+  // is left, and how big a typical move is over that time.
+  const mathLines = [
+    `Live price: ${body.price}`,
+    `Line to beat: ${body.strike}`,
+    typeof m.distancePct === "number" ? `Distance to line: ${m.distancePct >= 0 ? "+" : ""}${fnum(m.distancePct, 3)}% — price is ${m.distancePct >= 0 ? "ABOVE (OVER winning now)" : "BELOW (UNDER winning now)"}` : null,
+    secs != null ? `Time left this round: ${secs}s of 900` : null,
+    typeof m.sigRoundPct === "number" ? `Typical full-round move (volatility): ±${fnum(m.sigRoundPct, 3)}%` : null,
+    typeof m.barrierOverPct === "number" ? `Position model P(OVER) — distance vs time-left vs volatility: ${Math.round(m.barrierOverPct)}%` : null,
+    typeof m.momentumPct === "number" ? `Short-term momentum (last few min): ${m.momentumPct >= 0 ? "+" : ""}${fnum(m.momentumPct, 4)}%/min` : null,
+  ].filter(Boolean).join("\n");
+
   const indicators = (body.indicators || []).map((i) => `- ${i.name}: ${i.value} (${i.label})`).join("\n");
+
+  // --- track record / calibration ---
   const h = body.history || {};
   const recent = (h.recent || []).map((x) => {
     const extra = [x.net != null ? `net ${x.net > 0 ? "+" : ""}${x.net}` : null, x.said ? `said ${x.said}` : null, x.obi != null ? `book ${x.obi > 0 ? "+" : ""}${x.obi}` : null].filter(Boolean).join("/");
     return `${x.time} ${x.pick}->${x.actual} ${x.correct ? "OK" : "X"}${extra ? " [" + extra + "]" : ""}`;
   }).join(", ");
-  // Calibration: when the model said a side was N% likely, how often did that side actually win?
   const calLine = (h.confidenceCalibration || []).length
-    ? "Calibration of past confidence — " + h.confidenceCalibration.map((c) => `when it said ${c.saidLikely} likely, that side actually won ${c.actuallyWonPct}% (n=${c.n})`).join("; ") + "."
+    ? "Confidence calibration — " + h.confidenceCalibration.map((c) => `when it claimed ${c.saidLikely}, that side truly won ${c.actuallyWonPct}% (n=${c.n})`).join("; ") + "."
     : "";
   const condBits = [];
-  if (h.whenIndicatorsStronglyAgree) condBits.push(`when the indicators strongly agreed, picks hit ${h.whenIndicatorsStronglyAgree.hitPct}% (n=${h.whenIndicatorsStronglyAgree.n})`);
-  if (h.whenOrderBookAgrees) condBits.push(`when the order book agreed with the pick, it hit ${h.whenOrderBookAgrees.hitPct}% (n=${h.whenOrderBookAgrees.n})`);
-  const condLine = condBits.length ? "Conditional accuracy — " + condBits.join("; ") + "." : "";
+  if (h.whenIndicatorsStronglyAgree) condBits.push(`indicators strongly agreeing → ${h.whenIndicatorsStronglyAgree.hitPct}% (n=${h.whenIndicatorsStronglyAgree.n})`);
+  if (h.whenOrderBookAgrees) condBits.push(`order book agreeing with the pick → ${h.whenOrderBookAgrees.hitPct}% (n=${h.whenOrderBookAgrees.n})`);
+  const condLine = condBits.length ? "Conditional hit-rates — " + condBits.join("; ") + "." : "";
   const historyLine = h.graded
-    ? `Track record (last ${h.graded} graded rounds): overall hit rate ${h.hitRatePct}%, current streak ${h.currentStreak}, OVER picks ${h.overHitPct ?? "n/a"}% right, UNDER picks ${h.underHitPct ?? "n/a"}% right.
-${calLine}
-${condLine}
-Recent rounds (pick->result, with the signals behind each): ${recent}.
-Use this record to calibrate your confidence: if a band has historically won LESS than it claimed, be more cautious there; if a setup (strong indicator agreement, or order-book agreement) has historically won often, lean into it. Trust patterns that have actually paid off for THIS user.`
-    : `No graded history yet — judge on the live signals alone and keep confidence modest.`;
-  const crowdLine = crowd && typeof crowd.overPct === "number"
-    ? `The Kalshi crowd currently prices OVER at ~${crowd.overPct.toFixed(0)}% probability${crowd.stale ? " (last known, odds feed briefly stale)" : ""}.`
-    : `Live crowd odds are unavailable for this round.`;
+    ? `Last ${h.graded} graded rounds: overall ${h.hitRatePct}% right, streak ${h.currentStreak}, OVER ${h.overHitPct ?? "n/a"}% / UNDER ${h.underHitPct ?? "n/a"}%. ${calLine} ${condLine}
+Recent (pick->result [signals]): ${recent}.`
+    : `No graded history yet — keep confidence modest.`;
 
-  // Phase awareness: in the final stretch of a round the current market is all but
-  // decided, so the useful question is the NEXT round, which opens at ~the current price.
-  const secs = typeof body.secondsLeft === "number" ? body.secondsLeft : null;
-  const nextRound = secs != null && secs <= 120;
   const scopeLine = nextRound
-    ? `IMPORTANT: only ~${secs}s remain in the CURRENT round, so it is effectively settled — DO NOT advise on it. Make your call for the NEXT 15-minute round, which opens in ~${secs}s. At that open the "price to beat" resets to roughly the current live price (${body.price}), so judge whether ${body.coin} will be ABOVE ~${body.price} fifteen minutes after the next round begins. Use the live indicators below as your most-recent read of momentum into that open.`
-    : `Judge the CURRENT round: will ${body.coin} close ABOVE its round-open "price to beat" by the time this round ends?`;
-  const question = nextRound
-    ? `You are a disciplined short-term trading assistant for a 15-minute OVER/UNDER market on ${body.coin}, recommending the NEXT round before it begins.`
-    : `You are a disciplined short-term trading assistant for a 15-minute OVER/UNDER market: will ${body.coin} close ABOVE its round-open "price to beat" 15 minutes from now?`;
+    ? `Only ~${secs}s remain in THIS round, so treat it as settled — do NOT advise on it. Judge the NEXT 15-minute round, which opens in ~${secs}s at ≈ the current price (${body.price}). At that open the line resets to ~the live price, so the position model is ~50% by design — your ONLY edge for the next round is which way it drifts from here.`
+    : `Judge THIS round: will ${body.coin} be ABOVE the line (${body.strike}) at the close, ~${secs ?? "?"}s from now? The position model already reflects how far you are from the line and how little time is left — respect it.`;
 
-  return `${question}
+  return `You are a sharp, disciplined quant trading a 15-minute crypto OVER/UNDER market on ${body.coin}. OVER pays if the price is above the line at the close; UNDER if below.
 
 ${scopeLine}
 
-Live price: ${body.price}
-Price to beat (strike)${nextRound ? " for the current round (already settling)" : ""}: ${body.strike}
-The user's indicator engine pick: ${body.pick}
-
-Live 15-minute indicators:
-${indicators}
-
-${historyLine}
-
+THE MARKET (your prior):
 ${crowdLine}
 
-Decide OVER, UNDER, or SKIP${nextRound ? " for the NEXT round" : ""}. Weigh the technicals, the user's historical hit rate (trust directions that have actually worked for them), AND the crowd. The strongest opportunities are when a well-supported technical read DISAGREES with the crowd (the crowd may be overreacting). If signals are mixed, the edge is small, or the crowd already strongly agrees with a weak technical case, prefer SKIP. Set "edge" to "against-crowd" if your verdict opposes the crowd's lean, "with-crowd" if it matches, else "n/a".
+THE MATH (what actually settles an OVER/UNDER):
+${mathLines}
 
-Write the "rationale" in plain, everyday English for someone who does NOT know trading jargon — like you're explaining your call to a friend. One or two short sentences. Tell the story: what price just did (e.g. "it just dropped hard the last few minutes" / "it's been grinding up all round"), then the ONE signal that decides it, named simply (say "momentum is fading", "buyers are stepping in", "the crowd is leaning the other way" — NOT "RSI is 71" or "MACD crossed"). End with how sure you are and the call, e.g. "...so I'm fairly confident it finishes above the line." Avoid raw indicator numbers and acronyms.
+LIVE SIGNALS (15-min candles + order book; note several trend lines are correlated, so don't count them as independent votes):
+${indicators}
 
-Respond with ONLY a JSON object, no markdown, exactly:
-{"verdict":"OVER|UNDER|SKIP","confidence":"Low|Medium|High","edge":"with-crowd|against-crowd|n/a","rationale":"one or two plain-English sentences a non-trader understands"}`;
+YOUR TRACK RECORD ON THIS DEVICE:
+${historyLine}
+
+HOW TO DECIDE — reason in this order, then output only JSON:
+1. Anchor on the market price. It is hard to beat; do not re-derive it. Your job is to spot the rare moments it's wrong or slow.
+2. THIS round: the position model P(OVER) is usually the best estimate. If price is well above/below the line with little time left, it's nearly decided — do not fight it on a hunch.
+3. NEXT round (≈50/50 by construction): only a real, fresh edge justifies a side — strong short-term momentum or order-book pressure the crowd hasn't priced yet, or a calibrated pattern from the track record. No edge → SKIP.
+4. Calibrate to the record: if a confidence band historically won LESS than it claimed, pull your number toward 50. Lean into setups that have actually paid off here.
+5. Output probOver = your probability OVER wins (0–100). Turn it into a side only past a real margin: probOver ≥ 58 → OVER, ≤ 42 → UNDER, else SKIP. Sitting out is winning when there's no edge — expect to SKIP often.
+
+"edge": "against-crowd" if your side opposes the market, "with-crowd" if it matches, else "n/a". (Agreeing with a confident crowd is rarely a real edge.)
+
+"rationale": plain, everyday English for a non-trader — ONE or two short sentences telling the story: what price just did, the ONE thing that decides it (friendly words, no jargon/acronyms/numbers), and how sure you are. e.g. "It jumped above the line and there's barely 3 minutes left, so it'd take a sharp drop to lose — I'm fairly confident it stays over."
+
+Respond with ONLY this JSON, no markdown:
+{"probOver":<0-100 integer>,"verdict":"OVER|UNDER|SKIP","confidence":"Low|Medium|High","edge":"with-crowd|against-crowd|n/a","rationale":"plain-English, 1-2 sentences"}`;
 }
 
 function normalize(o) {
   o = o || {};
+  const verdict = ["OVER", "UNDER", "SKIP"].includes(o.verdict) ? o.verdict : "SKIP";
+  const confidence = ["Low", "Medium", "High"].includes(o.confidence) ? o.confidence : "Low";
+  let p = Number(o.probOver);
+  if (!Number.isFinite(p)) {                       // model omitted it → derive from verdict + confidence
+    const base = confidence === "High" ? 80 : confidence === "Medium" ? 68 : 58;
+    p = verdict === "OVER" ? base : verdict === "UNDER" ? 100 - base : 50;
+  }
+  p = Math.max(0, Math.min(100, Math.round(p)));
   return {
-    verdict: ["OVER", "UNDER", "SKIP"].includes(o.verdict) ? o.verdict : "SKIP",
-    confidence: ["Low", "Medium", "High"].includes(o.confidence) ? o.confidence : "Low",
+    probOver: p,
+    verdict,
+    confidence,
     edge: ["with-crowd", "against-crowd", "n/a"].includes(o.edge) ? o.edge : "n/a",
     rationale: String(o.rationale || "").slice(0, 320),
   };
@@ -352,12 +392,13 @@ async function readAnthropic(key, model, prompt) {
           schema: {
             type: "object",
             properties: {
+              probOver: { type: "integer", minimum: 0, maximum: 100 },
               verdict: { type: "string", enum: ["OVER", "UNDER", "SKIP"] },
               confidence: { type: "string", enum: ["Low", "Medium", "High"] },
               edge: { type: "string", enum: ["with-crowd", "against-crowd", "n/a"] },
               rationale: { type: "string" },
             },
-            required: ["verdict", "confidence", "edge", "rationale"],
+            required: ["probOver", "verdict", "confidence", "edge", "rationale"],
             additionalProperties: false,
           },
         },

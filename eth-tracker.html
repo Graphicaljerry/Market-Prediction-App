@@ -433,13 +433,18 @@
       <div class="aiSetupBody">
         <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
         <select id="aiModel" class="settingsInput">
-          <option value="">Model · provider default</option>
-          <option value="claude-haiku-4-5">Claude Haiku 4.5 · cheapest</option>
+          <option value="claude-haiku-4-5">Claude Haiku 4.5 · cheapest (default)</option>
           <option value="claude-sonnet-4-6">Claude Sonnet 4.6 · balanced</option>
           <option value="claude-opus-4-8">Claude Opus 4.8 · smartest</option>
           <option value="gemini-2.0-flash">Gemini 2.0 Flash · free</option>
           <option value="llama-3.3-70b-versatile">Groq Llama 3.3 70B · free</option>
         </select>
+        <select id="aiBudget" class="settingsInput">
+          <option value="smart">AI spend · Smart — only close or contrarian calls (default)</option>
+          <option value="always">AI spend · Every round (most reads, costs more)</option>
+          <option value="manual">AI spend · Manual only — never auto-call</option>
+        </select>
+        <div class="aiMuted" style="margin:-2px 0 10px">The crowd price refreshes free; the paid AI read runs at most once per round, only while this tab is open.</div>
         <button id="aiRun" class="aiBtn">Save &amp; Get AI Read</button>
       </div>
     </details>
@@ -518,7 +523,7 @@
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null,
-    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0 };
+    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -600,6 +605,31 @@
     });
   }
   function loadCandles(coin) { return loadCoinbaseCandles(coin).catch(function () { return loadGeckoCandles(coin); }); }
+
+  // ---------- Micro: 1-minute volatility + short-term momentum ----------
+  // 15-min candles are far too coarse to judge a 15-min bet. Pull recent 1-minute candles to
+  // measure (a) realized volatility — the typical size of a move, which sets how likely price
+  // crosses the line — and (b) short-term drift. Free Coinbase call; no LLM cost.
+  function refreshMicro(coin) {
+    var product = COINS[coin].cbProduct;
+    fetch("https://api.exchange.coinbase.com/products/" + product + "/candles?granularity=60", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (rows) {
+        if (coin !== state.coin || !Array.isArray(rows) || rows.length < 20) return;
+        var cs = rows.map(function (x) { return { t: x[0] * 1000, c: x[4] }; }).sort(function (a, b) { return a.t - b.t; });
+        var closes = cs.map(function (x) { return x.c; }), L = closes.length;
+        var win = Math.min(30, L - 1), rets = [], i, a, b;       // per-minute log returns
+        for (i = L - win; i < L; i++) { a = closes[i - 1]; b = closes[i]; if (a > 0 && b > 0) rets.push(Math.log(b / a)); }
+        if (rets.length < 10) return;
+        var mean = rets.reduce(function (s, x) { return s + x; }, 0) / rets.length;
+        var v = rets.reduce(function (s, x) { return s + (x - mean) * (x - mean); }, 0) / (rets.length - 1);
+        var sigPerMin = Math.sqrt(v);                            // log-return stdev per minute
+        var lookback = Math.min(10, L - 1), p0 = closes[L - 1 - lookback], pN = closes[L - 1];
+        var momPerMin = (p0 > 0 && lookback > 0) ? (Math.log(pN / p0) / lookback) : 0;   // avg %/min drift, recent
+        state.micro = { sigPerMin: sigPerMin, sigRound: sigPerMin * Math.sqrt(15), mom: momPerMin, ts: Date.now() };
+      })
+      .catch(function () {});
+  }
 
   // ---------- Order-book imbalance ----------
   // The live bid/ask pressure right at the touch. It's a *short-horizon* signal (it can
@@ -706,24 +736,76 @@
     return reco.bull / decisive;                 // share of decisive indicators that are bullish
   }
   function aiOver(ai) {
-    if (!ai || !ai.verdict || ai.verdict === "SKIP") return null;
+    if (!ai) return null;
+    if (typeof ai.probOver === "number") return Math.max(0.02, Math.min(0.98, ai.probOver / 100));   // the AI's own probability
+    if (!ai.verdict || ai.verdict === "SKIP") return null;                                            // legacy: derive from verdict+confidence
     var base = ai.confidence === "High" ? 0.80 : ai.confidence === "Medium" ? 0.68 : 0.58;
     return ai.verdict === "OVER" ? base : 1 - base;
   }
   function crowdOver(crowd) {
     return crowd && typeof crowd.overPct === "number" ? Math.max(0.02, Math.min(0.98, crowd.overPct / 100)) : null;
   }
-  // Weighted blend; weights renormalize when a source is missing.
+  function nextModeNow() { var r = state.remaining; return r != null && r <= BET_WINDOW; }
+  // In the final 2 min we're betting the NEXT round, so anchor on the next market, not this
+  // round's price (which is already pinned near 0/100 and useless as a prior).
+  function activeCrowd() {
+    var c = state.lastCrowd; if (!c) return null;
+    if (nextModeNow() && c.next && typeof c.next.overPct === "number") return c.next;
+    return typeof c.overPct === "number" ? c : null;
+  }
   function obiOver() {
     var ob = state.obi;
     if (!ob || Date.now() - ob.ts > 120000) return null;
     return Math.max(0.2, Math.min(0.8, ob.pOver));   // clamp — it's a short-horizon nudge, not a verdict
   }
+  // Short-term drift from recent 1-min momentum — a gentle, short-lived tilt.
+  function momOver() {
+    var mo = state.micro && typeof state.micro.mom === "number" ? state.micro.mom : null;
+    if (mo == null) return null;
+    return Math.max(0.35, Math.min(0.65, 0.5 + 0.5 * Math.tanh(mo * 120)));
+  }
+  // Standard normal CDF (Abramowitz & Stegun 26.2.17) — for the position/barrier model.
+  function normCdf(z) {
+    var t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989422804 * Math.exp(-z * z / 2);
+    var p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+    return z >= 0 ? 1 - p : p;
+  }
+  // Fallback round volatility (per-15-min log-return stdev) from the 15-min candles.
+  function sigmaRoundFallback() {
+    var c = state.candles; if (!c || c.length < 12) return null;
+    var rets = [], i, a, b, n = Math.min(40, c.length);
+    for (i = c.length - n + 1; i < c.length; i++) { a = c[i - 1].c; b = c[i].c; if (a > 0 && b > 0) rets.push(Math.log(b / a)); }
+    if (rets.length < 8) return null;
+    var m = rets.reduce(function (s, x) { return s + x; }, 0) / rets.length;
+    var v = rets.reduce(function (s, x) { return s + (x - m) * (x - m); }, 0) / (rets.length - 1);
+    return Math.sqrt(v);
+  }
+  // THE position model: P(price > line at close) = Φ( ln(price/line) / (σ·√(timeLeft)) ).
+  // This is what actually settles an OVER/UNDER — distance to the line vs remaining time vs
+  // volatility. As time runs out it locks to ~1/0; at round open (price≈line) it's ~0.5.
+  function barrierOver() {
+    if (nextModeNow()) return null;   // next round opens at ≈the line — no distance edge yet; let drift signals decide
+    var strike = roundStrike(), price = state.lastPrice;
+    if (strike == null || price == null || price <= 0 || strike <= 0) return null;
+    var sigRound = (state.micro && state.micro.sigRound) ? state.micro.sigRound : sigmaRoundFallback();
+    if (!sigRound || sigRound <= 0) return null;
+    var remaining = state.remaining == null ? 900 : Math.max(0, Math.min(900, state.remaining));
+    if (remaining <= 1) return price >= strike ? 0.995 : 0.005;
+    var sigT = sigRound * Math.sqrt(remaining / 900);
+    if (sigT < 1e-9) return price >= strike ? 0.995 : 0.005;
+    var z = Math.log(price / strike) / sigT;
+    return Math.max(0.005, Math.min(0.995, normCdf(z)));
+  }
+  // Weighted blend, anchored on the market + the position model; weights renormalize when a
+  // source is missing. The barrier model's weight grows as the position becomes decisive.
   function rawCombinedOdds(reco) {
-    var parts = [{ p: indOver(reco), w: 0.40 }];
-    var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: 0.35 });
-    var c = crowdOver(state.lastCrowd); if (c != null) parts.push({ p: c, w: 0.25 });
-    var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.08 });   // gentle book-pressure tilt
+    var parts = [];
+    var b = barrierOver(); if (b != null) { var info = Math.abs(b - 0.5) * 2; parts.push({ p: b, w: 0.12 + 0.5 * info }); }
+    var c = crowdOver(activeCrowd()); if (c != null) parts.push({ p: c, w: 0.42 });   // the market — efficient prior
+    var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: 0.30 });        // AI reasoning
+    parts.push({ p: indOver(reco), w: 0.22 });                                         // TA indicators (correlated → modest)
+    var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.07 });                // order-book nudge
+    var mo = momOver(); if (mo != null) parts.push({ p: mo, w: 0.08 });                // short-term momentum
     var wsum = 0, acc = 0;
     parts.forEach(function (x) { wsum += x.w; acc += x.p * x.w; });
     return wsum ? acc / wsum : 0.5;
@@ -943,6 +1025,8 @@
   function refresh() {
     var myReq = ++state.reqId, coin = state.coin;
     refreshOrderBook(coin);
+    refreshMicro(coin);
+    refreshCrowd();                                       // free market/strike refresh (throttled, visible-only)
     if (state.chartTF !== "live") loadCurrentTF(false);   // keep the zoomed chart fresh
     loadCandles(coin).then(function (res) {
       if (myReq !== state.reqId) return;
@@ -1223,7 +1307,9 @@
       if (state.lastRecoObj) renderRoundCall(state.lastRecoObj);   // lock the call (consumes the locked next-round pick)
       else { state.lockedNext = null; clearLocks(); }
       refresh();
-      if (aiAvailable()) setTimeout(function () { callWorker(false); }, 4000);   // fresh AI read each new round
+      // Round open: just refresh the free market price/strike. The paid AI read happens once
+      // per round at the 2-min lock (the actionable moment) — no redundant spend here.
+      if (aiAvailable()) setTimeout(function () { refreshCrowd(true); }, 4000);
     }
     var remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
     state.remaining = remaining;
@@ -1387,7 +1473,7 @@
     state.candles = null; state.wsLive = false; state.aiPrimed = false; state.roundCall = null; state.lastRecoObj = null;
     state.lastAI = null; state.lastCrowd = null; state.betWindowFired = false;
     state.lockedNext = null; state.thisRoundLock = null; state.leanDir = null; state.leanFlips = 0; clearLocks();
-    state.obi = null;
+    state.obi = null; state.micro = null;
     state.tfData = null; if (state.chartTF !== "live") loadCurrentTF(true);   // reload zoom for the new coin
     state.priceHist = []; drawMiniChart();
     $("liveLean").textContent = "—"; $("liveLean").className = "lean mono";
@@ -1429,7 +1515,8 @@
   var WORKER_KEY = "workerUrl_v1", AI_MODEL_KEY = "aiModel_v1";
   var DEFAULT_WORKER = "https://market-prediction-app.jrodsuniverse.workers.dev";   // baked-in so you never retype it
   function getWorkerUrl() { try { return ((localStorage.getItem(WORKER_KEY) || "").trim()) || DEFAULT_WORKER; } catch (e) { return DEFAULT_WORKER; } }
-  function getModel() { try { return localStorage.getItem(AI_MODEL_KEY) || ""; } catch (e) { return ""; } }
+  var DEFAULT_AI_MODEL = "claude-haiku-4-5";   // cheap + plenty sharp for this; was defaulting to Opus on the backend
+  function getModel() { try { return localStorage.getItem(AI_MODEL_KEY) || DEFAULT_AI_MODEL; } catch (e) { return DEFAULT_AI_MODEL; } }
   function aiAvailable() { return !!getWorkerUrl(); }
 
   function historySummary() {
@@ -1475,35 +1562,94 @@
   }
 
   function aiDataReady() { return !!(state.lastList && state.lastList.length && state.lastPrice != null); }
+  function tabHidden() { return typeof document !== "undefined" && document.hidden; }
+  var AI_BUDGET_KEY = "aiBudget_v1";
+  function getAIBudget() { try { return localStorage.getItem(AI_BUDGET_KEY) || "smart"; } catch (e) { return "smart"; } }
+
   function maybeAutoAI() {
-    if (state.aiPrimed || !aiAvailable() || !aiDataReady()) return;
-    state.aiPrimed = true;          // first automatic read, once live data has loaded
-    callWorker(false);
+    if (!aiAvailable() || !aiDataReady()) return;
+    refreshCrowd(true);             // free: show the live market + real strike right away
+    if (state.aiPrimed) return;
+    state.aiPrimed = true;
+    callWorker(false);              // first paid read (gated inside)
   }
 
-  function callWorker(manual) {
+  // The math that actually settles an OVER/UNDER — handed to the AI so it reasons from physics.
+  function marketContext() {
+    var nextMode = nextModeNow();
+    var strike = roundStrike(), price = state.lastPrice;
+    var d = (strike != null && price != null) ? price - strike : null;
+    var sigRound = (state.micro && state.micro.sigRound) ? state.micro.sigRound : sigmaRoundFallback();
+    var b = barrierOver();   // null in next-round mode
+    return {
+      // In next-round mode the line resets to ≈the live price at open, so distance ≈ 0 there.
+      distance: nextMode ? 0 : d,
+      distancePct: nextMode ? 0 : ((d != null && strike) ? d / strike * 100 : null),
+      sigRoundPct: sigRound != null ? (Math.exp(sigRound) - 1) * 100 : null,
+      barrierOverPct: b != null ? b * 100 : null,
+      momentumPct: (state.micro && typeof state.micro.mom === "number") ? (Math.exp(state.micro.mom) - 1) * 100 : null,
+      timeLeftSec: Math.max(0, Math.floor((currentRoundEnd - new Date()) / 1000))
+    };
+  }
+  // Would a paid LLM read actually change the call? Skip the spend when the local blend
+  // (without the AI) and a confident market already point the same way.
+  function aiWorthIt() {
+    var reco = state.lastRecoObj; if (!reco) return true;
+    var parts = [], b = barrierOver();
+    if (b != null) { var info = Math.abs(b - 0.5) * 2; parts.push({ p: b, w: 0.12 + 0.5 * info }); }
+    var cc = crowdOver(activeCrowd()); if (cc != null) parts.push({ p: cc, w: 0.42 });
+    parts.push({ p: indOver(reco), w: 0.22 });
+    var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.07 });
+    var mo = momOver(); if (mo != null) parts.push({ p: mo, w: 0.08 });
+    var ws = 0, ac = 0; parts.forEach(function (x) { ws += x.w; ac += x.p * x.w; });
+    var pNoAI = ws ? ac / ws : 0.5;
+    if (Math.abs(pNoAI - 0.5) < 0.10) return true;                    // close call → AI breaks the tie
+    if (cc != null && (pNoAI >= 0.5) !== (cc >= 0.5)) return true;     // we disagree with the market → AI judges the edge
+    if (cc != null && Math.abs(cc - 0.5) > 0.12) return false;        // we + a confident market agree → save the spend
+    return true;
+  }
+  var _lastCrowdAt = 0;
+  function refreshCrowd(force) {
+    if (!(getWorkerUrl() && aiDataReady() && !tabHidden())) return;
+    var now = Date.now();
+    if (!force && now - _lastCrowdAt < 60000) return;   // periodic refresh at most ~1/min (free, but tidy)
+    _lastCrowdAt = now;
+    callWorker(false, true);
+  }
+
+  function callWorker(manual, crowdOnly) {
     var url = getWorkerUrl();
     if (!url) return;
-    if (!aiDataReady()) { if (manual) renderAIError("Still loading market data — try again in a moment."); return; }
-    var btn = $("aiRun"); if (btn) { btn.disabled = true; btn.textContent = "Analyzing…"; }
+    if (!aiDataReady()) { if (manual && !crowdOnly) renderAIError("Still loading market data — try again in a moment."); return; }
+    // Cost discipline for AUTOMATIC paid reads (the manual button + crowd-only always run):
+    if (!manual && !crowdOnly) {
+      if (tabHidden()) return;                                        // not watching → don't spend
+      var budget = getAIBudget();
+      if (budget === "manual") return;                               // only the button spends on AI
+      if (budget === "smart" && !aiWorthIt()) return;                // clear call → local blend is enough
+    }
     var secondsLeft = Math.max(0, Math.floor((currentRoundEnd - new Date()) / 1000));
     var payload = {
-      coin: state.coin,
-      price: state.lastPrice,
-      strike: roundStrike(),
-      pick: state.lastRecoDir,
-      model: getModel(),
-      secondsLeft: secondsLeft,          // lets the worker recommend the NEXT round near the limit
+      coin: state.coin, price: state.lastPrice, strike: roundStrike(), pick: state.lastRecoDir,
+      model: getModel(), secondsLeft: secondsLeft, market: marketContext(),
       indicators: (state.lastList || []).map(function (x) { return { name: x.name, value: x.val, signal: x.vote, label: x.chip }; }),
       history: historySummary()
     };
-    // Capture the scope this read was made under so the result can be labelled correctly.
+    if (crowdOnly) payload.noAI = true;     // free path: refresh Kalshi crowd + strike, no LLM call
+    var btn = $("aiRun"); if (!crowdOnly && btn) { btn.disabled = true; btn.textContent = "Analyzing…"; }
     var scope = scopeAt(secondsLeft);
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (d) { renderAI(d, scope); })
-      .catch(function (e) { renderAIError(e.message); })
-      .then(function () { if (btn) { btn.disabled = false; btn.textContent = "Refresh AI Read"; } });
+      .then(function (d) { if (crowdOnly) applyCrowd(d); else renderAI(d, scope); })
+      .catch(function (e) { if (!crowdOnly) renderAIError(e.message); })
+      .then(function () { if (!crowdOnly && btn) { btn.disabled = false; btn.textContent = "Refresh AI Read"; } });
+  }
+  // Crowd-only response: refresh the market price + real strike without touching the AI read.
+  function applyCrowd(d) {
+    if (!d) return;
+    if (d.crowd) state.lastCrowd = d.crowd;
+    if (state.pendingRound && d.crowd && typeof d.crowd.strike === "number") state.pendingRound.marketStrike = d.crowd.strike;
+    renderPickCard(); updateRoundStatus(); drawMiniChart(); renderBlend();
   }
 
   // Which round does an AI read taken with `secondsLeft` apply to? In the final
@@ -1566,10 +1712,12 @@
     callWorker(true);
   });
   $("aiModel").addEventListener("change", function () { try { localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {} });
+  (function () { var s = $("aiBudget"); if (s) s.addEventListener("change", function () { try { localStorage.setItem(AI_BUDGET_KEY, s.value); } catch (e) {} }); })();
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshCrowd(true); });   // returning to the tab: free market refresh
 
   loadRounds();
   renderAccuracy(); renderRounds(); tickTimer(); refresh(); connectWS();
-  (function initAI() { $("aiModel").value = getModel(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); } })();
+  (function initAI() { $("aiModel").value = getModel(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); } })();
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { var im = b.querySelector(".cico"); if (im) im.src = COIN_ICONS[b.getAttribute("data-coin")] || ""; });
   $("coinBadge").innerHTML = COIN_ICONS[state.coin] ? '<img alt="" src="' + COIN_ICONS[state.coin] + '">' : "";
   (function () { var s = $("coinSelect"); if (s) s.value = state.coin; var si = $("coinSelIcon"); if (si) si.src = COIN_ICONS[state.coin] || ""; })();
