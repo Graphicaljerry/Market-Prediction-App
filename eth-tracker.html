@@ -120,6 +120,15 @@
   .lean { font-size: 12px; margin-top: 9px; color: var(--label-3); }
   .lean.over { color: var(--green); } .lean.under { color: var(--red); } .lean.skip { color: var(--orange); }
 
+  /* ---------- Bet window banner ---------- */
+  .betwin { border-radius: 14px; padding: 12px 16px; margin-bottom: 18px; text-align: center; font-size: 13px; font-weight: 600; background: var(--surface); color: var(--label-2); border: 1px solid var(--separator); transition: background .3s, border-color .3s; }
+  .betwin.active { padding: 15px 16px; animation: betpulse 1.6s infinite; }
+  .betwin .big { font-size: 22px; font-weight: 800; display: inline-block; margin: 2px 0; }
+  .betwin.over { background: rgba(48,209,88,.12); border-color: var(--green); color: var(--green); }
+  .betwin.under { background: rgba(255,69,58,.12); border-color: var(--red); color: var(--red); }
+  .betwin.skip { background: rgba(255,159,10,.10); border-color: var(--orange); color: var(--orange); }
+  @keyframes betpulse { 0%,100%{ box-shadow: 0 0 0 0 rgba(255,255,255,0); } 50%{ box-shadow: 0 0 0 3px rgba(255,255,255,.06); } }
+
   /* ---------- Indicators ---------- */
   .ind { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 0; border-bottom: 0.5px solid var(--separator); }
   .ind:first-child { padding-top: 2px; }
@@ -212,6 +221,8 @@
     <button data-coin="BTC"><span class="sym">₿</span> BTC</button>
     <button data-coin="SOL"><span class="sym">◎</span> SOL</button>
   </div>
+
+  <div id="betWindow" class="betwin">Next bet window opens soon…</div>
 
   <section class="toprow">
 
@@ -640,6 +651,25 @@
     elTimerBar.classList.toggle("warn", warn);
     elTimerBar.style.width = (remaining / 900 * 100) + "%";
     elTimerSub.textContent = "Round closes at " + pad(currentRoundEnd.getHours()) + ":" + pad(currentRoundEnd.getMinutes());
+    updateBetWindow(remaining);
+  }
+
+  // In the final BET_WINDOW seconds, surface the freshest call for the NEXT round.
+  var BET_WINDOW = 120;
+  function updateBetWindow(remaining) {
+    var el = $("betWindow"), reco = state.lastRecoObj;
+    var ns = currentRoundEnd, ne = new Date(currentRoundEnd.getTime() + 15 * 60000);
+    var nextLabel = pad(ns.getHours()) + ":" + pad(ns.getMinutes()) + "–" + pad(ne.getHours()) + ":" + pad(ne.getMinutes());
+    if (remaining <= BET_WINDOW && reco) {
+      var dirTxt = reco.dir === "OVER" ? "OVER ↑" : reco.dir === "UNDER" ? "UNDER ↓" : "SKIP";
+      el.className = "betwin active " + reco.cls;
+      el.innerHTML = "&#128276; BET WINDOW · next round " + nextLabel +
+        "<br><span class=\"big mono\">" + dirTxt + "</span> · " + reco.bull + "&#8593; " + reco.bear + "&#8595;";
+    } else {
+      el.className = "betwin";
+      var t = Math.max(0, remaining - BET_WINDOW);
+      el.textContent = "Next bet window opens in " + pad(Math.floor(t / 60)) + ":" + pad(t % 60) + " · then bet for " + nextLabel;
+    }
   }
 
   // ---------- Pick accuracy tracker ----------
