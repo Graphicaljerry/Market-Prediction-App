@@ -283,6 +283,11 @@
   .autoLatest { text-align: center; font-size: 15px; font-weight: 800; margin-bottom: 14px; padding: 12px 10px; border-radius: 13px; background: var(--surface-2); }
   .autoLatest.over { color: var(--green); } .autoLatest.under { color: var(--red); } .autoLatest.skip { color: var(--orange); }
   .autoLatest .sub { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); margin-top: 4px; letter-spacing: 0; }
+  /* what the online model has learned */
+  .autoLearned { margin-top: 14px; font-size: 12.5px; color: var(--label-2); line-height: 1.5; }
+  .autoLearned .lh { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--label-3); margin-bottom: 6px; }
+  .autoLearned ul { margin: 0; padding-left: 16px; } .autoLearned li { margin: 2px 0; }
+  .autoLearned .pnow { font-weight: 700; color: var(--label); }
 
   /* ---------- Help / info sheet ---------- */
   .ihelp { display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:50%; background:var(--surface-3); color:var(--label-2); font-size:11px; font-weight:700; margin-left:7px; cursor:pointer; border:none; vertical-align:middle; padding:0; }
@@ -503,6 +508,7 @@
       <div class="stat"><div class="v mono" id="aHit">—</div><div class="k">Hit Rate</div></div>
       <div class="stat"><div class="v mono" id="aPick">—</div><div class="k">Now</div></div>
     </div>
+    <div id="autoLearned" class="autoLearned"></div>
     <div id="autoHistory" class="history" style="margin-top:14px"></div>
     <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. Claude reads this record too.</div>
   </div>
@@ -1724,6 +1730,19 @@
         '<span class="hres ' + w + '">' + (h.correct ? "✓ " : "✗ ") + h.actual + '</span></div>';
     }).join("");
     $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet.</div>';
+    // what the per-coin online model has learned
+    var lr = d.learned, le = $("autoLearned");
+    if (le) {
+      var items = lr && lr.tendencies ? lr.tendencies.slice() : [];
+      if (lr && lr.afterUpOverPct != null) items.push("after an UP round → OVER " + lr.afterUpOverPct + "%; after a DOWN round → OVER " + lr.afterDownOverPct + "%");
+      var modelNow = (p && typeof p.modelOver === "number") ? p.modelOver : null;
+      if (lr && (items.length || modelNow != null)) {
+        le.innerHTML = '<div class="lh">What the model has learned · ' + (lr.confidence || "warming up") + ' · ' + (lr.n || 0) + ' rounds</div>' +
+          (modelNow != null ? '<div>Current read: <span class="pnow">' + modelNow + '% OVER</span></div>' : '') +
+          (items.length ? '<ul>' + items.map(function (t) { return '<li>' + t + '</li>'; }).join("") + '</ul>' : '') +
+          '<div style="color:var(--label-3);margin-top:6px">15-min direction is near-random — these are faint tilts, not certainties.</div>';
+      } else { le.innerHTML = ""; }
+    }
   }
 
   // Which round does an AI read taken with `secondsLeft` apply to? In the final

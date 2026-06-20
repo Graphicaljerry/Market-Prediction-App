@@ -114,10 +114,15 @@ export default {
   },
 
   // Cron (every 15 min): compute a pick from FREE data only — no LLM call, so no AI spend —
-  // and grade the previous round. Lets the tracker keep a 24/7 record even when no tab is open.
+  // grade the previous round, and update the online learning model. Keeps a 24/7 record even
+  // when no tab is open. Coins run sequentially so the shared (pooled) model updates cleanly.
   async scheduled(event, env, ctx) {
-    const coins = AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]);
-    ctx.waitUntil(Promise.all(coins.map((c) => runCoinPick(env, c).catch(() => {}))));
+    ctx.waitUntil((async () => {
+      const coins = AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]);
+      const global = (await kvGetRaw(env, "model:global")) || newModel();
+      for (const c of coins) { try { await runCoinPick(env, c, global); } catch (_) {} }
+      await kvPutRaw(env, "model:global", global);
+    })());
   },
 };
 
@@ -337,6 +342,12 @@ Recent (pick->result [signals]): ${recent}.`
     ? `24/7 AUTO-TRACKER (an independent, market-anchored system — Kalshi price + momentum + order book, NO AI — that picks and is graded every round even while the user is away): ${ap.hitRatePct ?? "n/a"}% over ${ap.graded || apHist.length} rounds.${ap.pending ? ` Its current pick: ${ap.pending.side}${ap.pending.side !== "SKIP" ? " " + ap.pending.prob + "%" : ""} (crowd ${ap.pending.signals && ap.pending.signals.crowdOver}% over).` : ""} Recent guesses->results: ${apRecent}. Treat it as a reality check on the market: where this dumb-but-honest system keeps winning, the market is efficient — agree with it; where it has been wrong lately, look for the edge it's missing.`
     : (ap && ap.pending ? `24/7 auto-tracker current pick: ${ap.pending.side}${ap.pending.side !== "SKIP" ? " " + ap.pending.prob + "%" : ""} (not enough graded rounds yet).` : "");
 
+  // What the per-coin online model has learned (faint tilts on a near-efficient market).
+  const lr = ap && ap.learned;
+  const learnedLine = lr
+    ? `LEARNED MODEL for ${body.coin} (online logistic regression, ${lr.n} graded rounds, pooled across coins): current read P(OVER) ≈ ${ap.pending && typeof ap.pending.modelOver === "number" ? ap.pending.modelOver + "%" : "n/a"}.${lr.tendencies && lr.tendencies.length ? " Learned tendencies: " + lr.tendencies.join("; ") + "." : ""}${lr.afterUpOverPct != null ? ` Round-to-round: after an UP round it finishes OVER ${lr.afterUpOverPct}% of the time; after a DOWN round ${lr.afterDownOverPct}%.` : ""} (15-min direction is near-random, so weight this as a faint tilt, not gospel.)`
+    : "";
+
   const scopeLine = nextRound
     ? `Only ~${secs}s remain in THIS round, so treat it as settled — do NOT advise on it. Judge the NEXT 15-minute round, which opens in ~${secs}s at ≈ the current price (${body.price}). At that open the line resets to ~the live price, so the position model is ~50% by design — your ONLY edge for the next round is which way it drifts from here.`
     : `Judge THIS round: will ${body.coin} be ABOVE the line (${body.strike}) at the close, ~${secs ?? "?"}s from now? The position model already reflects how far you are from the line and how little time is left — respect it.`;
@@ -356,7 +367,7 @@ ${indicators}
 
 YOUR TRACK RECORD ON THIS DEVICE:
 ${historyLine}
-${autoLine ? "\n" + autoLine + "\n" : ""}
+${autoLine ? "\n" + autoLine + "\n" : ""}${learnedLine ? "\n" + learnedLine + "\n" : ""}
 HOW TO DECIDE — reason in this order, then output only JSON:
 1. Anchor on the market price. It is hard to beat; do not re-derive it. Your job is to spot the rare moments it's wrong or slow.
 2. THIS round: the position model P(OVER) is usually the best estimate. If price is well above/below the line with little time left, it's nearly decided — do not fight it on a hunch.
@@ -500,7 +511,7 @@ async function cbJson(path) {
   if (!r.ok) throw new Error("cb " + r.status);
   return r.json();
 }
-// Last price + recent 1-min momentum from Coinbase 1-min candles.
+// Last price + recent 1-min momentum + per-minute realized volatility from Coinbase 1-min candles.
 async function cbMicro(product) {
   const rows = await cbJson(`/products/${product}/candles?granularity=60`);   // [time,low,high,open,close,vol], newest first
   if (!Array.isArray(rows) || rows.length < 12) return null;
@@ -508,7 +519,11 @@ async function cbMicro(product) {
   const L = closes.length, look = Math.min(10, L - 1);
   const p0 = closes[L - 1 - look], pN = closes[L - 1];
   const mom = (p0 > 0 && look > 0) ? Math.log(pN / p0) / look : 0;   // avg log-return per minute
-  return { price: pN, mom };
+  const win = Math.min(30, L - 1), rets = [];
+  for (let i = L - win; i < L; i++) { const a = closes[i - 1], b = closes[i]; if (a > 0 && b > 0) rets.push(Math.log(b / a)); }
+  let sig = 0;
+  if (rets.length > 3) { const m = rets.reduce((s, x) => s + x, 0) / rets.length; sig = Math.sqrt(rets.reduce((s, x) => s + (x - m) * (x - m), 0) / (rets.length - 1)); }
+  return { price: pN, mom, sig };   // sig = per-minute log-return stdev
 }
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
 async function cbObi(product) {
@@ -523,12 +538,15 @@ async function cbObi(product) {
   const tot = bv + av;
   return tot ? (bv - av) / tot : null;
 }
-// Market-anchored free pick: crowd price nudged by momentum + book; SKIP near 50/50.
-function freePick(crowdOverPct, mom, obi) {
+// Market-anchored free pick: crowd price nudged by momentum + book + the learned model;
+// SKIP near 50/50. modelOver shrinks to 0.5 while the model is cold, so it only sways the
+// pick once it has actually learned something.
+function freePick(crowdOverPct, mom, obi, modelOver) {
   const parts = [];
-  if (typeof crowdOverPct === "number") parts.push({ p: Math.max(0.02, Math.min(0.98, crowdOverPct / 100)), w: 0.6 });
-  if (typeof mom === "number") parts.push({ p: Math.max(0.4, Math.min(0.6, 0.5 + 0.5 * Math.tanh(mom * 120))), w: 0.2 });
-  if (typeof obi === "number") parts.push({ p: Math.max(0.3, Math.min(0.7, 0.5 + 0.5 * Math.tanh(2 * obi))), w: 0.2 });
+  if (typeof crowdOverPct === "number") parts.push({ p: Math.max(0.02, Math.min(0.98, crowdOverPct / 100)), w: 0.55 });
+  if (typeof mom === "number") parts.push({ p: Math.max(0.4, Math.min(0.6, 0.5 + 0.5 * Math.tanh(mom * 120))), w: 0.15 });
+  if (typeof obi === "number") parts.push({ p: Math.max(0.3, Math.min(0.7, 0.5 + 0.5 * Math.tanh(2 * obi))), w: 0.15 });
+  if (typeof modelOver === "number") parts.push({ p: Math.max(0.05, Math.min(0.95, modelOver)), w: 0.2 });
   if (!parts.length) return null;
   let ws = 0, ac = 0; for (const x of parts) { ws += x.w; ac += x.p * x.w; }
   const pOver = ac / ws;
@@ -538,9 +556,81 @@ async function kvGetRaw(env, key) {
   try { if (!env.CROWD_KV) return null; const s = await env.CROWD_KV.get(key); return s ? JSON.parse(s) : null; } catch (_) { return null; }
 }
 async function kvPutRaw(env, key, val) {
-  try { if (env.CROWD_KV) await env.CROWD_KV.put(key, JSON.stringify(val), { expirationTtl: 60 * 60 * 24 * 8 }); } catch (_) {}
+  try { if (env.CROWD_KV) await env.CROWD_KV.put(key, JSON.stringify(val), { expirationTtl: 60 * 60 * 24 * 30 }); } catch (_) {}
 }
-async function runCoinPick(env, coin) {
+
+// --- Online learning model (per-coin + pooled global) --------------------
+// A tiny online logistic regression that learns, per coin, how round-open signals map to the
+// chance price finishes OVER. Updated once per round from the graded outcome (free, no LLM).
+// Research basis: order-flow imbalance is the strongest short-horizon predictor (Sirignano &
+// Cont 2018, arXiv:1803.06917; Bugaenko 2004.08290), and a *pooled* feature→move mapping is
+// "universal" and beats isolated per-asset models — so we partial-pool each coin toward a
+// shared global model, weighted by how much data the coin has earned.
+const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin", "todCos"];
+// Constant LR (NOT 1/sqrt(t)) so the model keeps tracking a drifting market; strong-ish L2
+// because samples are scarce. Tuning per research synthesis (online logistic regression
+// under distribution shift): eta ~0.05-0.15, L2 ~3e-3-1e-2.
+// POOL_K (~1.5 days at 96/round-day) = how much data a coin needs before its own weights
+// diverge from the shared/pooled model; GATE_N keeps the pooled output near 50/50 until it
+// has earned data. Research: features are universal across coins (pool the mapping), and a
+// real 53% edge needs ~2.5k samples to confirm — so stay humble and shrink hard.
+const LR = 0.05, L2 = 0.008, POOL_K = 150, GATE_N = 300;
+function newModel() { return { w: [0, 0, 0, 0, 0, 0, 0], b: 0, n: 0, avgSig: null }; }
+function sigmoid(z) { return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z)))); }
+function clampF(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
+// Build the standardized feature vector at round open. `prevActual` is last round's result.
+function featuresFor(model, signals, prevActual, ts) {
+  const obi = typeof signals.obi === "number" ? clampF(signals.obi, -1, 1) : 0;
+  const mom = typeof signals.mom === "number" ? Math.tanh(signals.mom * 120) : 0;
+  let volr = 0;
+  if (typeof signals.sig === "number" && signals.sig > 0) {
+    if (model.avgSig) volr = clampF(signals.sig / model.avgSig - 1, -1, 1);
+  }
+  const crowdLean = typeof signals.crowdOver === "number" ? clampF((signals.crowdOver / 100 - 0.5) * 2, -1, 1) : 0;
+  const lastDir = prevActual === "OVER" ? 1 : prevActual === "UNDER" ? -1 : 0;
+  const hourFrac = ((new Date(ts).getUTCHours()) + new Date(ts).getUTCMinutes() / 60) / 24;
+  return [obi, mom, volr, crowdLean, lastDir, Math.sin(2 * Math.PI * hourFrac), Math.cos(2 * Math.PI * hourFrac)];
+}
+function scoreModel(model, f) { let z = model.b; for (let i = 0; i < f.length; i++) z += model.w[i] * f[i]; return z; }
+// Partial-pooled probability: blend the coin's linear score toward the pooled (global) one by
+// how much data the coin has, then shrink the whole thing toward 50/50 until the pooled model
+// has earned enough samples — so a cold model never emits a confident (noisy) guess.
+function predictBlend(coin, global, f) {
+  const a = coin.n / (coin.n + POOL_K);
+  const p = sigmoid(a * scoreModel(coin, f) + (1 - a) * scoreModel(global, f));
+  const gate = Math.min(1, global.n / GATE_N);
+  return 0.5 + gate * (p - 0.5);
+}
+// One SGD step of logistic regression with L2 shrinkage.
+function trainModel(model, f, y) {
+  const p = sigmoid(scoreModel(model, f)), g = y - p;
+  for (let i = 0; i < f.length; i++) model.w[i] += LR * (g * f[i] - L2 * model.w[i]);
+  model.b += LR * g;
+  model.n++;
+}
+// Plain-language read of what a coin has learned (for the AI prompt + the app panel).
+function modelInsights(coin, global, history) {
+  if (!coin || coin.n < 12) return null;
+  const a = coin.n / (coin.n + POOL_K), w = coin.w.map((cw, i) => a * cw + (1 - a) * global.w[i]);
+  const tend = [];
+  if (Math.abs(w[1]) > 0.12) tend.push(w[1] > 0 ? "short-term moves tend to continue (momentum)" : "short-term moves tend to fade (mean-reversion)");
+  if (Math.abs(w[0]) > 0.12) tend.push(w[0] > 0 ? "buy-side order-book pressure has led to OVER" : "order-book pressure has been contrarian");
+  if (Math.abs(w[4]) > 0.12) tend.push(w[4] > 0 ? "tends to repeat last round's direction" : "tends to reverse last round's direction");
+  if (Math.abs(w[2]) > 0.12) tend.push(w[2] > 0 ? "more likely OVER when volatility is rising" : "more likely UNDER when volatility is rising");
+  // round-to-round transition rates from graded history (interpretable regime read)
+  let uu = 0, un = 0, du = 0, dn = 0;
+  for (let i = 0; i + 1 < history.length; i++) {
+    const prev = history[i + 1].actual, cur = history[i].actual;   // history is newest-first
+    if (prev === "OVER") { cur === "OVER" ? uu++ : un++; } else if (prev === "UNDER") { cur === "OVER" ? du++ : dn++; }
+  }
+  const afterUp = uu + un >= 5 ? Math.round(uu / (uu + un) * 100) : null;
+  const afterDown = du + dn >= 5 ? Math.round(du / (du + dn) * 100) : null;
+  // Honest confidence by sample size: a true 53% edge needs ~2,500 graded rounds to confirm.
+  const confidence = coin.n >= 2500 ? "established" : coin.n >= 600 ? "building" : "warming up";
+  return { n: coin.n, confidence, tendencies: tend, afterUpOverPct: afterUp, afterDownOverPct: afterDown };
+}
+
+async function runCoinPick(env, coin, global) {
   const series = env["KALSHI_SERIES_" + coin], product = CB_PRODUCT[coin];
   if (!series || !product) return;
   const [crowd, micro, obi] = await Promise.all([
@@ -550,8 +640,9 @@ async function runCoinPick(env, coin) {
   ]);
   const key = "picks:" + coin;
   const rec = (await kvGetRaw(env, key)) || { coin, pending: null, history: [], graded: 0, correct: 0 };
+  const coinModel = rec.model || newModel();
 
-  // 1) grade the previous pick once its round has closed
+  // 1) grade the previous pick once its round has closed — and LEARN from the outcome
   const p = rec.pending;
   if (p && micro && typeof micro.price === "number" && Date.now() >= (p.closeMs || 0)) {
     if (typeof p.strike === "number" && (p.side === "OVER" || p.side === "UNDER")) {
@@ -561,6 +652,10 @@ async function runCoinPick(env, coin) {
         rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: micro.price });
         if (rec.history.length > 200) rec.history.pop();
         rec.graded++; if (correct) rec.correct++;
+        // online update: the round's open-features -> did it finish OVER (1) or UNDER (0)?
+        const closeOver = micro.price > (typeof p.openPrice === "number" ? p.openPrice : p.strike) ? 1 : 0;
+        if (Array.isArray(p.feat)) { trainModel(coinModel, p.feat, closeOver); trainModel(global, p.feat, closeOver); }
+        rec.lastActual = actual;
       }
     }
     rec.pending = null;
@@ -568,20 +663,29 @@ async function runCoinPick(env, coin) {
 
   // 2) make a fresh pick for the round that just opened (the current Kalshi market)
   if (crowd && typeof crowd.overPct === "number" && typeof crowd.strike === "number") {
-    const fp = freePick(crowd.overPct, micro && micro.mom, obi);
+    const sigVals = { crowdOver: crowd.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig };
+    const nowTs = Date.now();
+    const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
+    if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;
+    const modelOver = predictBlend(coinModel, global, feat);        // learned P(OVER) for this round
+    const fp = freePick(crowd.overPct, micro && micro.mom, obi, modelOver);
     if (fp) {
-      const d = new Date();
+      const d = new Date(nowTs);
       rec.pending = {
-        coin, strike: crowd.strike, side: fp.side,
+        coin, strike: crowd.strike, openPrice: micro ? micro.price : crowd.strike, side: fp.side,
         pOver: Math.round(fp.pOver * 100),
         prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
-        closeMs: crowd.closeTime ? new Date(crowd.closeTime).getTime() : Date.now() + 900000,
-        ts: Date.now(),                                              // client formats this to 12-hour local time
+        modelOver: Math.round(modelOver * 100),
+        closeMs: crowd.closeTime ? new Date(crowd.closeTime).getTime() : nowTs + 900000,
+        ts: nowTs,                                                   // client formats this to 12-hour local time
         label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",   // fallback for older clients
+        feat,                                                        // remembered so the next run can learn from it
         signals: { crowdOver: Math.round(crowd.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null },
       };
     }
   }
+  rec.model = coinModel;
+  rec.learned = modelInsights(coinModel, global, rec.history);      // plain-language read for the prompt + app
   rec.hitRatePct = rec.graded ? Math.round(rec.correct / rec.graded * 100) : null;
   rec.updated = Date.now();
   await kvPutRaw(env, key, rec);

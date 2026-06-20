@@ -282,6 +282,30 @@ Read it at `…/?picks=ETH` (or `?picks` for all coins). The app shows it in the
 Auto-Tracker** panel (`fetchAutoTracker` / `renderAutoTracker`), and the Worker folds the
 record into the AI prompt as an independent reality check on the market.
 
+### The online learning model (per-coin, pooled)
+
+Each cron round also updates a tiny **online logistic regression** that learns, per coin, how
+round-open signals map to the chance price finishes OVER — then feeds what it's learned to the
+AI and the auto-tracker panel. Design choices are grounded in the literature:
+
+- **Features:** order-book imbalance, 1-min momentum, volatility regime, crowd lean,
+  **last-round direction** (continuation vs reversal), and **time-of-day** (sin/cos). Order
+  flow is the strongest short-horizon predictor — but it's a *seconds*-scale signal (Cont et
+  al. 2010; Sirignano & Cont 2018), so at 15 min the model simply *learns* to down-weight it.
+- **Online logistic regression with a constant learning rate** (η≈0.05, not 1/√t) so it keeps
+  tracking a drifting market, with **L2 shrinkage** because samples are scarce.
+- **Partial pooling:** each coin's weights are shrunk toward a **shared global model** by how
+  much data the coin has earned (κ≈150 ≈ 1.5 days), because microstructure features are
+  *universal across coins* (Bieganowski & Ślepaczuk 2026). Cold coins ride the pooled model.
+- **Cold-start gate:** the output is shrunk toward 50/50 until the pooled model has enough
+  data, so it never emits a confident guess from noise.
+- **Honest ceiling.** 15-minute direction is near-random; a real 53% edge needs ~2,500 graded
+  rounds (~26 days/coin) to even confirm. The model is therefore used as a **faint, calibrated
+  tilt + abstention aid**, never a crystal ball — and the panel labels its confidence by sample
+  size (*warming up → building → established*). It lives in `worker.js` (`featuresFor`,
+  `trainModel`, `predictBlend`, `modelInsights`) and persists in KV (`picks:<COIN>.model` +
+  the shared `model:global`).
+
 ---
 
 ## AI Co-Pilot (Cloudflare Worker)
@@ -414,7 +438,8 @@ Server-side, in Worker **KV** (`CROWD_KV`):
 | Key | Holds |
 |---|---|
 | `crowd:<series>` | shared Kalshi crowd-odds cache (stale-serve through 429s) |
-| `picks:<COIN>` | 24/7 auto-tracker: latest pick + rolling history + hit rate |
+| `picks:<COIN>` | 24/7 auto-tracker: latest pick + history + hit rate + the per-coin learned model |
+| `model:global` | the pooled online-learning model shared across coins |
 
 ---
 
