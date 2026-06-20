@@ -337,7 +337,7 @@
     SOL: { name: "Solana",   pair: "SOL · USD", sym: "◎", cgId: "solana",   cbProduct: "SOL-USD" }
   };
 
-  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null };
+  var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -529,6 +529,7 @@
       renderIndicators(a.list); renderReco(buildReco(a.list));
       if (!state.pendingRound) openRound(true);
       updateRoundStatus();
+      maybeAutoAI();
     }).catch(function () {
       if (myReq !== state.reqId) return;
       if (state.wsLive) return;   // keep the live price/indicators on screen if REST hiccups
@@ -588,6 +589,7 @@
       elUpdated.classList.remove("err");
       elUpdated.textContent = "Live · " + pad(t.getHours()) + ":" + pad(t.getMinutes()) + ":" + pad(t.getSeconds());
       elSrc.textContent = "Coinbase · live";
+      maybeAutoAI();
     }, 1000);
   }
 
@@ -696,7 +698,7 @@
     elPrice.textContent = "—"; elChange.textContent = "—"; elChange.className = "changePill mono";
     $("indicators").innerHTML = '<div class="empty">Loading indicators…</div>';
     $("recoDir").textContent = "Analyzing…"; $("recoConf").textContent = "Loading live indicators"; $("reco").className = "reco skip";
-    state.candles = null; state.wsLive = false;
+    state.candles = null; state.wsLive = false; state.aiPrimed = false;
     $("roundStatus").textContent = "Waiting for round open…";
     connectWS();
     refresh();
@@ -750,9 +752,17 @@
     };
   }
 
+  function aiDataReady() { return !!(state.lastList && state.lastList.length && state.lastPrice != null); }
+  function maybeAutoAI() {
+    if (state.aiPrimed || !aiAvailable() || !aiDataReady()) return;
+    state.aiPrimed = true;          // first automatic read, once live data has loaded
+    callWorker(false);
+  }
+
   function callWorker(manual) {
     var url = getWorkerUrl();
     if (!url) return;
+    if (!aiDataReady()) { if (manual) renderAIError("Still loading market data — try again in a moment."); return; }
     var btn = $("aiRun"); if (btn) { btn.disabled = true; btn.textContent = "Analyzing…"; }
     var payload = {
       coin: state.coin,
@@ -799,7 +809,7 @@
 
   loadRounds();
   renderAccuracy(); renderRounds(); tickTimer(); refresh(); connectWS();
-  (function initAI() { $("aiModel").value = getModel(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); callWorker(false); } })();
+  (function initAI() { $("aiModel").value = getModel(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); } })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
 })();
 </script>
