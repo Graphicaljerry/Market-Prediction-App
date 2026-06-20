@@ -291,10 +291,10 @@ ${crowdLine}
 
 Decide OVER, UNDER, or SKIP${nextRound ? " for the NEXT round" : ""}. Weigh the technicals, the user's historical hit rate (trust directions that have actually worked for them), AND the crowd. The strongest opportunities are when a well-supported technical read DISAGREES with the crowd (the crowd may be overreacting). If signals are mixed, the edge is small, or the crowd already strongly agrees with a weak technical case, prefer SKIP. Set "edge" to "against-crowd" if your verdict opposes the crowd's lean, "with-crowd" if it matches, else "n/a".
 
-Be blunt and terse. The "rationale" is ONE short sentence, max ~100 characters — name the single deciding factor only. No preamble, no hedging, no restating the question.
+Write the "rationale" in plain, everyday English for someone who does NOT know trading jargon — like you're explaining your call to a friend. One or two short sentences. Tell the story: what price just did (e.g. "it just dropped hard the last few minutes" / "it's been grinding up all round"), then the ONE signal that decides it, named simply (say "momentum is fading", "buyers are stepping in", "the crowd is leaning the other way" — NOT "RSI is 71" or "MACD crossed"). End with how sure you are and the call, e.g. "...so I'm fairly confident it finishes above the line." Avoid raw indicator numbers and acronyms.
 
 Respond with ONLY a JSON object, no markdown, exactly:
-{"verdict":"OVER|UNDER|SKIP","confidence":"Low|Medium|High","edge":"with-crowd|against-crowd|n/a","rationale":"one short blunt sentence"}`;
+{"verdict":"OVER|UNDER|SKIP","confidence":"Low|Medium|High","edge":"with-crowd|against-crowd|n/a","rationale":"one or two plain-English sentences a non-trader understands"}`;
 }
 
 function normalize(o) {
@@ -303,7 +303,7 @@ function normalize(o) {
     verdict: ["OVER", "UNDER", "SKIP"].includes(o.verdict) ? o.verdict : "SKIP",
     confidence: ["Low", "Medium", "High"].includes(o.confidence) ? o.confidence : "Low",
     edge: ["with-crowd", "against-crowd", "n/a"].includes(o.edge) ? o.edge : "n/a",
-    rationale: String(o.rationale || "").slice(0, 160),
+    rationale: String(o.rationale || "").slice(0, 320),
   };
 }
 function extractJson(text) {

@@ -5,14 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="theme-color" content="#000000" />
+<meta name="theme-color" content="#0a0a0b" />
 <title>15-Min Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #000000;
+    --bg: #0a0a0b;
     --surface: #1c1c1e;
     --surface-2: #2c2c2e;
     --surface-3: #3a3a3c;
@@ -43,28 +43,26 @@
   /* green "aurora" glow — the Bullish Orbs from the V2 design */
   body::before, body::after {
     content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
-    transition: opacity 1.2s ease; will-change: transform, opacity;
-    animation: auroraDrift 20s ease-in-out infinite alternate;
+    transition: opacity 1.4s ease; will-change: transform, opacity;
+    animation: auroraDrift 95s ease-in-out infinite alternate;   /* very slow ambient drift — futuristic */
   }
-  /* green glow — price at/above the line to beat (default) */
+  /* green glow (default) — two soft corner pools only, so ~70% of the app stays near-black */
   body::before {
     opacity: 1;
     background:
-      radial-gradient(48% 30% at 14% 6%,  rgba(13,224,89,0.22), transparent 72%),
-      radial-gradient(54% 34% at 84% 42%, rgba(13,224,89,0.15), transparent 74%),
-      radial-gradient(62% 40% at 32% 96%, rgba(13,224,89,0.18), transparent 74%);
+      radial-gradient(34% 24% at 3% -2%,   rgba(13,224,89,0.16), transparent 60%),
+      radial-gradient(40% 30% at 101% 102%, rgba(13,224,89,0.12), transparent 60%);
   }
   /* red glow — crossfades in when price is below the line (.dir-down) */
   body::after {
     opacity: 0;
     background:
-      radial-gradient(48% 30% at 14% 6%,  rgba(255,69,58,0.20), transparent 72%),
-      radial-gradient(54% 34% at 84% 42%, rgba(255,69,58,0.14), transparent 74%),
-      radial-gradient(62% 40% at 32% 96%, rgba(255,69,58,0.17), transparent 74%);
+      radial-gradient(34% 24% at 3% -2%,   rgba(255,69,58,0.15), transparent 60%),
+      radial-gradient(40% 30% at 101% 102%, rgba(255,69,58,0.11), transparent 60%);
   }
   body.dir-down::before { opacity: 0; }
   body.dir-down::after  { opacity: 1; }
-  @keyframes auroraDrift { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(0,-2.5%,0) scale(1.06); } }
+  @keyframes auroraDrift { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(1.5%,-1.5%,0) scale(1.03); } }
 
   .mono { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
@@ -87,6 +85,22 @@
   .seg button.active .sym { color: var(--label); }
   .seg button:active { opacity: .7; }
 
+  /* ---------- Coin dropdown (mobile only) ---------- */
+  .coinSelectWrap {
+    display: none; position: relative; align-items: center; gap: 11px;
+    background: rgba(28,28,30,0.55); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 0 16px; min-height: 54px; margin-bottom: 22px;
+  }
+  .coinSelectWrap .csIcon { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto; }
+  .coinSelect {
+    flex: 1; appearance: none; -webkit-appearance: none; background: transparent; border: none;
+    color: var(--label); font-family: inherit; font-weight: 700; font-size: 16px;
+    padding: 16px 26px 16px 0; cursor: pointer;
+  }
+  .coinSelect:focus { outline: none; }
+  .coinSelect option { background: var(--surface); color: var(--label); font-weight: 600; }
+  .coinSelectWrap::after { content: "\25BE"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: var(--label-2); pointer-events: none; font-size: 15px; }
+
   /* ---------- Section header ---------- */
   .sec { font-size: 13px; font-weight: 600; color: var(--label-2); margin: 0 6px 9px; }
   .sec .tiny { color: var(--label-3); font-weight: 500; }
@@ -102,18 +116,20 @@
   /* "clear" sections — no glass, content sits straight on the aurora */
   .card.flat { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; border: none; box-shadow: none; padding: 4px 2px; }
   /* crypto icons in the switcher + hero badge */
-  .cico { width: 19px; height: 19px; border-radius: 50%; object-fit: cover; display: inline-block; vertical-align: middle; flex: 0 0 auto; }
+  .cico { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; display: inline-block; vertical-align: middle; flex: 0 0 auto; }
   .badge img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
   /* clear-log button */
   .clearBtn { float: right; font: inherit; font-size: 11px; font-weight: 700; color: var(--label-3); background: transparent; border: 1px solid var(--separator); border-radius: 7px; padding: 2px 9px; cursor: pointer; transition: color .2s, border-color .2s; }
   .clearBtn:hover { color: var(--red); border-color: var(--red); }
   .clearBtn:active { opacity: .6; }
-  /* gentle breathing on the active bet window */
-  .betwin.active { animation: betPulse 2.6s ease-in-out infinite; }
-  @keyframes betPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.012); } }
 
   /* ---------- Responsive dashboard layout ---------- */
   .module { break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid; }
+  /* mobile: swap the 6-up segmented control for a compact dropdown */
+  @media (max-width: 759px) {
+    .seg { display: none; }
+    .coinSelectWrap { display: flex; }
+  }
   @media (min-width: 760px) {
     .seg { max-width: 540px; }
     /* hero + timer stacked on the left, the taller consolidated Auto Pick on the right */
@@ -187,18 +203,6 @@
   .miniChart { width: 100%; height: 96px; display: block; margin-top: 16px; border-radius: 10px; background: rgba(44,44,46,0.50); }
   .miniChartLbl { font-size: 11.5px; color: var(--label-3); text-align: center; margin-top: 7px; font-weight: 500; }
 
-  /* ---------- Bet window banner ---------- */
-  .betwin { border-radius: 14px; padding: 12px 16px; margin-bottom: 18px; text-align: center; font-size: 13px; font-weight: 600; background: var(--surface); color: var(--label-2); border: 1px solid var(--separator); transition: background .3s, border-color .3s; }
-  .betwin.active { padding: 15px 16px; animation: betpulse 1.6s infinite; }
-  .betwin .big { font-size: 22px; font-weight: 800; display: inline-block; margin: 2px 0; }
-  .betwin.over { background: rgba(48,209,88,.12); border-color: var(--green); color: var(--green); }
-  .betwin.under { background: rgba(255,69,58,.12); border-color: var(--red); color: var(--red); }
-  .betwin.skip { background: rgba(255,159,10,.10); border-color: var(--orange); color: var(--orange); }
-  .betwin.strong { border-width: 2px; }
-  .betwin.strong.over { box-shadow: 0 0 18px rgba(48,209,88,.5); }
-  .betwin.strong.under { box-shadow: 0 0 18px rgba(255,69,58,.5); }
-  .betwin.edge { border-color: var(--orange); box-shadow: 0 0 18px rgba(255,159,10,.45); }
-  @keyframes betpulse { 0%,100%{ box-shadow: 0 0 0 0 rgba(255,255,255,0); } 50%{ box-shadow: 0 0 0 3px rgba(255,255,255,.06); } }
 
   /* ---------- Indicators ---------- */
   .ind { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 0; border-bottom: 0.5px solid var(--separator); }
@@ -229,10 +233,13 @@
   .hidden { display: none !important; }
 
   /* ---------- Scoreboard ---------- */
-  .scoreGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .stat { background: var(--surface-2); border-radius: 13px; padding: 13px 6px; text-align: center; }
-  .stat .v { font-size: 22px; font-weight: 700; }
-  .stat .k { font-size: 11px; color: var(--label-2); margin-top: 4px; font-weight: 500; }
+  /* all four stats inline, no card backgrounds — just text columns split by hairlines */
+  .scoreGrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; }
+  .stat { padding: 6px 4px; text-align: center; position: relative; }
+  .stat + .stat::before { content: ""; position: absolute; left: 0; top: 14%; height: 72%; width: 1px; background: var(--separator); }
+  .stat .v { font-size: 21px; font-weight: 700; line-height: 1.1; }
+  .stat .k { font-size: 10.5px; color: var(--label-2); margin-top: 5px; font-weight: 500; }
+  @media (min-width: 380px) { .stat .v { font-size: 23px; } .stat .k { font-size: 11px; } }
   .pos { color: var(--green); } .neg { color: var(--red); }
 
   /* ---------- History ---------- */
@@ -310,8 +317,17 @@
     <button data-coin="SHIB"><img class="cico" alt=""> SHIB</button>
     <button data-coin="XRP"><img class="cico" alt=""> XRP</button>
   </div>
-
-  <div id="betWindow" class="betwin">Next bet window opens soon…</div>
+  <div class="coinSelectWrap" id="coinSelectWrap">
+    <img class="csIcon" id="coinSelIcon" alt="">
+    <select class="coinSelect" id="coinSelect" aria-label="Select crypto">
+      <option value="ETH">ETH · Ethereum</option>
+      <option value="BTC">BTC · Bitcoin</option>
+      <option value="SOL">SOL · Solana</option>
+      <option value="DOGE">DOGE · Dogecoin</option>
+      <option value="SHIB">SHIB · Shiba Inu</option>
+      <option value="XRP">XRP · Ripple</option>
+    </select>
+  </div>
 
   <section class="toprow">
 
@@ -413,8 +429,6 @@
       <div class="stat"><div class="v mono" id="sGraded">0</div><div class="k">Rounds</div></div>
       <div class="stat"><div class="v mono pos" id="sCorrect">0</div><div class="k">Correct</div></div>
       <div class="stat"><div class="v mono" id="sStreak">0</div><div class="k">Streak</div></div>
-    </div>
-    <div class="scoreGrid" style="margin-top:10px; grid-template-columns: 1fr;">
       <div class="stat"><div class="v mono" id="sHitRate">—</div><div class="k">Hit Rate</div></div>
     </div>
     <div class="accNote" id="accNote">Grading begins at the next 15-min close.</div>
@@ -983,6 +997,7 @@
   }
   function updateBetWindow(remaining) {
     var el = $("betWindow");
+    if (!el) return;   // banner removed — the locked next-round pick now lives in the Auto Pick card
     var ns = currentRoundEnd, ne = new Date(currentRoundEnd.getTime() + 15 * 60000);
     var nextLabel = pad(ns.getHours()) + ":" + pad(ns.getMinutes()) + "–" + pad(ne.getHours()) + ":" + pad(ne.getMinutes());
     if (remaining <= BET_WINDOW) {
@@ -1097,6 +1112,8 @@
     $("coinName").textContent = COINS[coin].name;
     $("priceLabel").textContent = COINS[coin].pair;
     Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { b.classList.toggle("active", b.getAttribute("data-coin") === coin); });
+    var _sel = $("coinSelect"); if (_sel) _sel.value = coin;
+    var _selIco = $("coinSelIcon"); if (_selIco) _selIco.src = COIN_ICONS[coin] || "";
     elPrice.textContent = "—"; elChange.textContent = "—"; elChange.className = "changePill mono";
     $("indicators").innerHTML = '<div class="empty">Loading indicators…</div>';
     $("recoScope").textContent = "Waiting for round…";
@@ -1118,6 +1135,7 @@
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) {
     b.addEventListener("click", function () { setCoin(b.getAttribute("data-coin")); });
   });
+  (function () { var s = $("coinSelect"); if (s) s.addEventListener("change", function () { setCoin(s.value); }); })();
   // ---------- Help sheet ----------
   var EXPLAIN = {
     autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. SKIP means there's no clear edge — sitting out is fine." },
@@ -1261,6 +1279,7 @@
   (function initAI() { $("aiModel").value = getModel(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); } })();
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { var im = b.querySelector(".cico"); if (im) im.src = COIN_ICONS[b.getAttribute("data-coin")] || ""; });
   $("coinBadge").innerHTML = COIN_ICONS[state.coin] ? '<img alt="" src="' + COIN_ICONS[state.coin] + '">' : "";
+  (function () { var s = $("coinSelect"); if (s) s.value = state.coin; var si = $("coinSelIcon"); if (si) si.src = COIN_ICONS[state.coin] || ""; })();
   var _cl = $("clearLog"); if (_cl) _cl.addEventListener("click", function () { if (confirm("Clear all graded rounds and accuracy stats?")) { state.rounds = []; saveRounds(); renderAccuracy(); renderRounds(); } });
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
   window.addEventListener("resize", drawMiniChart);
