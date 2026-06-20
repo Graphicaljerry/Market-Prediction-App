@@ -4,3 +4,10 @@
 name = "market-prediction-app"
 main = "cloudflare-worker/worker.js"
 compatibility_date = "2026-06-20"
+
+# Public Kalshi 15-min series tickers (not secret). Kept here so Git deploys don't
+# wipe them — plain-text dashboard variables get reset on every Worker build.
+[vars]
+KALSHI_SERIES_ETH = "KXETH15M"
+KALSHI_SERIES_BTC = "KXBTC15M"
+KALSHI_SERIES_SOL = "KXSOL15M"
