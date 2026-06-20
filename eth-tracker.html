@@ -476,7 +476,7 @@
   };
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
-    lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0 };
+    lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -559,6 +559,49 @@
   }
   function loadCandles(coin) { return loadCoinbaseCandles(coin).catch(function () { return loadGeckoCandles(coin); }); }
 
+  // ---------- Order-book imbalance ----------
+  // The live bid/ask pressure right at the touch. It's a *short-horizon* signal (it can
+  // flip within seconds), so it's surfaced as info + fed to the AI, and only nudges the
+  // blended odds very gently — it tells you who's leaning on the book right now.
+  function refreshOrderBook(coin) {
+    var product = COINS[coin].cbProduct;
+    fetch("https://api.exchange.coinbase.com/products/" + product + "/book?level=2", { cache: "no-store" })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (j) {
+        if (coin !== state.coin) return;            // user switched coins mid-flight
+        var bids = j.bids || [], asks = j.asks || [];
+        if (!bids.length || !asks.length) return;
+        var mid = (parseFloat(bids[0][0]) + parseFloat(asks[0][0])) / 2;
+        if (!(mid > 0)) return;
+        var band = mid * 0.0015;                     // only liquidity within ±0.15% of mid matters near touch
+        var bidVol = 0, askVol = 0, i, p;
+        for (i = 0; i < bids.length; i++) { p = parseFloat(bids[i][0]); if (mid - p > band) break; bidVol += parseFloat(bids[i][1]); }
+        for (i = 0; i < asks.length; i++) { p = parseFloat(asks[i][0]); if (p - mid > band) break; askVol += parseFloat(asks[i][1]); }
+        var tot = bidVol + askVol;
+        if (!tot) return;
+        var obi = (bidVol - askVol) / tot;           // -1..+1 — positive = bids heavier (buy pressure)
+        state.obi = { obi: obi, pOver: 0.5 + 0.5 * Math.tanh(2.0 * obi), ts: Date.now() };
+        // splice the fresh row into the live indicator list without recomputing the rest
+        if (state.lastList) {
+          var row = orderBookRow(), i;
+          for (i = 0; i < state.lastList.length; i++) if (state.lastList[i].name === "Order Book") { state.lastList.splice(i, 1); break; }
+          if (row) state.lastList.push(row);
+          renderIndicators(state.lastList);
+        }
+      })
+      .catch(function () {});                          // book is a nice-to-have; never block the round on it
+  }
+  // One indicator row describing current book pressure (null when we have no fresh read).
+  function orderBookRow() {
+    var ob = state.obi;
+    if (!ob || Date.now() - ob.ts > 120000) return null;
+    var b = ob.obi, pct = (b >= 0 ? "+" : "") + Math.round(b * 100) + "%";
+    var bull = b > 0.08, bear = b < -0.08;
+    return { name: "Order Book", sub: "Live bid/ask pressure", val: pct, vote: null,
+      chip: bull ? "Buyers heavier" : bear ? "Sellers heavier" : "Balanced",
+      forceChip: bull ? "bull" : bear ? "bear" : "info" };
+  }
+
   // ---------- Analyze ----------
   function analyze(candles) {
     var closes = candles.map(function (c){ return c.c; });
@@ -597,6 +640,7 @@
       list.push({ name: "Bollinger %B", sub: "20-period band", val: pB != null ? pB.toFixed(2) : "—", vote: pB != null ? sig : null, chip: txt });
     })();
     list.push({ name: "Volume", sub: "vs 20-bar avg", val: volRatio.toFixed(2) + "×", vote: null, chip: volRatio >= 1.2 ? (lastUp ? "High buy" : "High sell") : "Normal", forceChip: volRatio >= 1.2 ? (lastUp ? "bull" : "bear") : "info" });
+    var obRow = orderBookRow(); if (obRow) list.push(obRow);
 
     return { price: price, list: list };
   }
@@ -628,10 +672,16 @@
     return crowd && typeof crowd.overPct === "number" ? Math.max(0.02, Math.min(0.98, crowd.overPct / 100)) : null;
   }
   // Weighted blend; weights renormalize when a source is missing.
+  function obiOver() {
+    var ob = state.obi;
+    if (!ob || Date.now() - ob.ts > 120000) return null;
+    return Math.max(0.2, Math.min(0.8, ob.pOver));   // clamp — it's a short-horizon nudge, not a verdict
+  }
   function combinedOdds(reco) {
     var parts = [{ p: indOver(reco), w: 0.40 }];
     var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: 0.35 });
     var c = crowdOver(state.lastCrowd); if (c != null) parts.push({ p: c, w: 0.25 });
+    var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.08 });   // gentle book-pressure tilt
     var wsum = 0, acc = 0;
     parts.forEach(function (x) { wsum += x.w; acc += x.p * x.w; });
     var pOver = wsum ? acc / wsum : 0.5;
@@ -790,6 +840,7 @@
 
   function refresh() {
     var myReq = ++state.reqId, coin = state.coin;
+    refreshOrderBook(coin);
     loadCandles(coin).then(function (res) {
       if (myReq !== state.reqId) return;
       var candles = res.candles, a = analyze(candles);
@@ -1124,6 +1175,7 @@
     state.candles = null; state.wsLive = false; state.aiPrimed = false; state.roundCall = null; state.lastRecoObj = null;
     state.lastAI = null; state.lastCrowd = null; state.betWindowFired = false;
     state.lockedNext = null; state.thisRoundLock = null; state.leanDir = null; state.leanFlips = 0; clearLocks();
+    state.obi = null;
     state.priceHist = []; drawMiniChart();
     $("liveLean").textContent = "—"; $("liveLean").className = "lean mono";
     $("roundStatus").textContent = "Waiting for round open…";
@@ -1149,7 +1201,8 @@
     "Price vs EMA 50": { t: "Price vs EMA 50", d: "Price against the slower 50-period average — the medium-term trend filter. Trading above it is constructive; below it is weaker." },
     "Momentum 1h": { t: "Momentum (1h)", d: "Rate of change over the last hour (4 fifteen-minute candles). Positive = price rising, negative = falling. Confirms whether recent moves have follow-through." },
     "Bollinger %B": { t: "Bollinger %B", d: "Where price sits inside its volatility bands: 0 = lower band, 1 = upper band. Upper half leans bullish; near 1 is stretched/overbought, near 0 is oversold." },
-    "Volume": { t: "Volume", d: "Trade volume versus the 20-bar average. High volume on an up candle signals real buying conviction; on a down candle, real selling. Shown for context — it doesn't vote." }
+    "Volume": { t: "Volume", d: "Trade volume versus the 20-bar average. High volume on an up candle signals real buying conviction; on a down candle, real selling. Shown for context — it doesn't vote." },
+    "Order Book": { t: "Order Book pressure", d: "Live look at the resting buy and sell orders right next to the current price (within ±0.15%). 'Buyers heavier' means more size is waiting to buy than sell — short-term upward pressure; 'Sellers heavier' is the reverse. It's a fast, short-horizon read (it can flip within seconds), so it's shown for context and only nudges the blended odds a little." }
   };
   function openInfo(key) { var t = EXPLAIN[key]; if (!t) return; $("infoTitle").textContent = t.t; $("infoText").textContent = t.d; $("infoSheet").classList.add("open"); }
   document.addEventListener("click", function (e) { var hit = e.target.closest && e.target.closest("[data-info]"); if (hit) openInfo(hit.getAttribute("data-info")); });
