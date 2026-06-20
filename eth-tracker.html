@@ -9,7 +9,7 @@
 <title>15-Min Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Roboto+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
   :root {
     --bg: #000000;
@@ -28,18 +28,30 @@
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
 
+  html { background: var(--bg); }
   html, body {
-    background: var(--bg); color: var(--label);
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Inter", sans-serif;
-    -webkit-font-smoothing: antialiased; letter-spacing: -0.01em;
+    color: var(--label);
+    font-family: "Space Mono", ui-monospace, "SF Mono", monospace;
+    -webkit-font-smoothing: antialiased; letter-spacing: 0;
   }
   body {
+    position: relative; background: transparent;
     max-width: 1400px; margin: 0 auto;
     padding: max(14px, env(safe-area-inset-top)) clamp(16px, 3.5vw, 44px) calc(40px + env(safe-area-inset-bottom));
     min-height: 100vh;
   }
+  /* green "aurora" glow — the Bullish Orbs from the V2 design */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background:
+      radial-gradient(46% 28% at 14% 6%,  rgba(13,224,89,0.20), transparent 72%),
+      radial-gradient(42% 26% at 86% 15%, rgba(13,224,89,0.13), transparent 72%),
+      radial-gradient(55% 34% at 32% 50%, rgba(13,224,89,0.16), transparent 72%),
+      radial-gradient(60% 38% at 78% 88%, rgba(13,224,89,0.18), transparent 74%),
+      radial-gradient(58% 36% at 8% 93%,  rgba(13,224,89,0.14), transparent 74%);
+  }
 
-  .mono { font-family: ui-monospace, "SF Mono", "Roboto Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+  .mono { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
   /* ---------- Header ---------- */
   .topbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 2px 18px; }
@@ -49,7 +61,7 @@
   @keyframes livepulse { 0%,100%{opacity:1;} 50%{opacity:.25;} }
 
   /* ---------- Segmented control ---------- */
-  .seg { display: flex; gap: 2px; background: rgba(118,118,128,0.20); border-radius: 11px; padding: 2px; margin-bottom: 22px; }
+  .seg { display: flex; gap: 2px; background: rgba(28,28,30,0.55); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 3px; margin-bottom: 22px; }
   .seg button {
     flex: 1; min-height: 40px; border-radius: 9px; background: transparent; color: var(--label);
     border: none; font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
@@ -65,7 +77,12 @@
   .sec .tiny { color: var(--label-3); font-weight: 500; }
 
   /* ---------- Card ---------- */
-  .card { background: var(--surface); border-radius: 18px; padding: 18px; margin-bottom: 24px; }
+  .card {
+    background: rgba(28,28,30,0.55);
+    -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 18px; margin-bottom: 24px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+  }
 
   /* ---------- Responsive dashboard layout ---------- */
   .module { break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid; }
@@ -139,7 +156,7 @@
   .lean.over { color: var(--green); } .lean.under { color: var(--red); } .lean.skip { color: var(--orange); }
 
   /* ---------- Mini live chart ---------- */
-  .miniChart { width: 100%; height: 96px; display: block; margin-top: 16px; border-radius: 10px; background: rgba(118,118,128,0.10); }
+  .miniChart { width: 100%; height: 96px; display: block; margin-top: 16px; border-radius: 10px; background: rgba(44,44,46,0.50); }
   .miniChartLbl { font-size: 11.5px; color: var(--label-3); text-align: center; margin-top: 7px; font-weight: 500; }
 
   /* ---------- Bet window banner ---------- */
@@ -170,7 +187,7 @@
   .chip.info { background: rgba(118,118,128,0.2); color: var(--label-2); }
 
   /* ---------- Bet ---------- */
-  .betInput { width: 100%; min-height: 50px; background: var(--surface-2); color: var(--label); border: none; border-radius: 12px; padding: 0 16px; font-size: 22px; font-weight: 600; font-family: ui-monospace, "SF Mono", "Roboto Mono", monospace; font-variant-numeric: tabular-nums; margin-bottom: 12px; }
+  .betInput { width: 100%; min-height: 50px; background: var(--surface-2); color: var(--label); border: none; border-radius: 12px; padding: 0 16px; font-size: 22px; font-weight: 600; font-family: ui-monospace, "SF Mono", "Space Mono", monospace; font-variant-numeric: tabular-nums; margin-bottom: 12px; }
   .betInput:focus { outline: 2px solid var(--blue); }
   .betBtns { display: flex; gap: 11px; }
   .btn { flex: 1; min-height: 54px; border: none; border-radius: 14px; font-size: 17px; font-weight: 600; font-family: inherit; color: #fff; cursor: pointer; transition: opacity .15s, transform .08s; letter-spacing: 0; }
@@ -219,7 +236,7 @@
   .aiRow { display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:.5px solid var(--separator); font-size:14px; }
   .aiRow:last-child { border-bottom:none; }
   .aiRow .k { color:var(--label-2); }
-  .aiRow .v { font-weight:700; font-family:"Roboto Mono",monospace; }
+  .aiRow .v { font-weight:700; font-family:"Space Mono",monospace; }
   .aiScope { font-size:11px; font-weight:600; text-align:center; color:var(--label-3); letter-spacing:.02em; text-transform:uppercase; margin-bottom:2px; }
   .aiScope.next { color:var(--blue); }
   .aiVerdict { font-size:24px; font-weight:800; text-align:center; padding:4px 0 2px; }
@@ -228,7 +245,7 @@
   .aiEdge { font-size:11px; font-weight:700; padding:3px 9px; border-radius:7px; }
   .aiEdge.with { background:rgba(255,159,10,.15); color:var(--orange); }
   .aiEdge.against { background:rgba(48,209,88,.15); color:var(--green); }
-  .settingsInput { width:100%; min-height:44px; background:var(--surface-2); color:var(--label); border:1px solid var(--border-2); border-radius:10px; padding:0 12px; font-size:13px; font-family:"Roboto Mono",monospace; margin-bottom:10px; }
+  .settingsInput { width:100%; min-height:44px; background:var(--surface-2); color:var(--label); border:1px solid var(--border-2); border-radius:10px; padding:0 12px; font-size:13px; font-family:"Space Mono",monospace; margin-bottom:10px; }
   .aiBtn { width:100%; min-height:46px; border:none; border-radius:12px; background:var(--blue); color:#fff; font-size:15px; font-weight:700; cursor:pointer; }
   .aiBtn:active{ opacity:.85; } .aiBtn:disabled{ opacity:.45; }
   .aiMuted { font-size:12.5px; color:var(--label-3); line-height:1.55; margin-bottom:12px; }
