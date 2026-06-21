@@ -19,6 +19,15 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Accurate round settlement + a "which to follow" verdict.** Rounds are now graded against
+  the **definitive close** — the finalized Coinbase 15-minute candle for that round, not a
+  possibly-stale live tick — so the logged direction matches what you see on Coinbase even if
+  the tab was backgrounded. The moment the timer turns over, a **real-time "last round closed
+  $X · OVER/UNDER the line $Y · pick ✓/✗"** readout appears. To end the Auto-Pick-vs-Auto-Tracker
+  confusion, a single **"Which to follow"** line reconciles them (agree → higher conviction;
+  split → coin-flip, sit out), the auto-tracker's learned model now feeds the Co-Pilot blend
+  directly, and the help notes the settlement nuance (Kalshi settles on a 60-sec **CF Benchmarks
+  index** average, so razor-thin rounds can differ from a single Coinbase price).
 - **Per-round high/low ("the graph") as a signal.** The intra-round price path's **high and
   low** are now drawn on the live chart (dotted guides + labels) and read everywhere: where
   price sits in that range gives a gentle continuation tilt in the blended probability, the

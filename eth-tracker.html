@@ -215,6 +215,20 @@
   .nextPick .npPick { font-size: 17px; font-weight: 800; letter-spacing: -.01em; color: var(--label); }
   .nextPick .npPick.over { color: var(--green); } .nextPick .npPick.under { color: var(--red); } .nextPick .npPick.skip { color: var(--orange); }
   .nextPick .npHint { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); letter-spacing: 0; text-transform: none; margin-top: 3px; opacity: .9; }
+  /* real-time "what the last round actually closed at" — appears the moment the timer turns over */
+  .lastClose { margin-top: 12px; padding-top: 11px; border-top: .5px solid var(--separator); font-size: 12.5px; font-weight: 600; color: var(--label-2); line-height: 1.5; }
+  .lastClose:empty { display: none; }
+  .lastClose .lcLbl { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--label-3); margin-bottom: 2px; }
+  .lastClose.over { color: var(--green); } .lastClose.under { color: var(--red); }
+  .lastClose.skip, .lastClose.pending { color: var(--label-3); }
+  /* "which to follow" — reconciles the Co-Pilot pick with the 24/7 tracker in one line */
+  .consensus { font-size: 13px; font-weight: 600; line-height: 1.5; margin: 12px 0 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--separator); background: rgba(255,255,255,0.04); color: var(--label-2); text-align: left; }
+  .consensus:empty { display: none; }
+  .consensus .consLbl { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); margin-bottom: 3px; }
+  .consensus b { font-weight: 800; }
+  .consensus.over { border-color: rgba(13,224,89,.4); background: rgba(13,224,89,.08); } .consensus.over b { color: var(--green); }
+  .consensus.under { border-color: rgba(255,69,58,.4); background: rgba(255,69,58,.08); } .consensus.under b { color: var(--red); }
+  .consensus.split { border-color: rgba(255,159,10,.45); background: rgba(255,159,10,.08); } .consensus.split b { color: var(--orange); }
 
   /* ---------- Recommendation ---------- */
   .reco { text-align: center; }
@@ -442,6 +456,7 @@
     <div class="timerBarWrap"><div id="timerBar"></div></div>
     <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
     <div id="nextPick" class="nextPick"></div>
+    <div id="lastClose" class="lastClose"></div>
   </div>
 
   </div>
@@ -454,6 +469,7 @@
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
       <div class="buyLine skip" id="buyLine">Analyzing…</div>
       <div class="buyHint" id="buyHint">Loading live market data…</div>
+      <div class="consensus" id="consensus"></div>
       <div class="oddsRow"><span class="oddsPct mono" id="oddsPct">—</span><span class="oddsLbl" id="oddsLbl"></span></div>
       <div class="conf" id="recoConf">Loading live indicators</div>
       <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
@@ -840,6 +856,12 @@
     if (!ob || Date.now() - ob.ts > 120000) return null;
     return Math.max(0.2, Math.min(0.8, ob.pOver));   // clamp — it's a short-horizon nudge, not a verdict
   }
+  // The 24/7 auto-tracker's own learned P(OVER) for the current round — lets that always-on
+  // server model feed the live Co-Pilot blend directly (not just via the AI reading its record).
+  function autoModelOver() {
+    var ap = state.lastAuto && state.lastAuto.pending;
+    return ap && typeof ap.modelOver === "number" ? Math.max(0.05, Math.min(0.95, ap.modelOver / 100)) : null;
+  }
   // Short-term drift from recent 1-min momentum — a gentle, short-lived tilt.
   function momOver() {
     var mo = state.micro && typeof state.micro.mom === "number" ? state.micro.mom : null;
@@ -868,6 +890,10 @@
     var r = roundRange(), strike = roundStrike();
     if (!r || strike == null || (r.hi - r.lo) / strike < 0.0005) return null;  // negligible range → no signal
     return Math.max(0.4, Math.min(0.6, 0.5 + 0.3 * (r.pos - 0.5)));
+  }
+  // Plain-English read of where price sits in its round range (for the chart + next-round line).
+  function rangePhrase(pos) {
+    return pos >= 0.8 ? "riding its highs" : pos <= 0.2 ? "near its lows" : pos >= 0.6 ? "upper half of its range" : pos <= 0.4 ? "lower half of its range" : "mid-range";
   }
   // Standard normal CDF (Abramowitz & Stegun 26.2.17) — for the position/barrier model.
   function normCdf(z) {
@@ -912,6 +938,7 @@
     var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.07 });                // order-book nudge
     var mo = momOver(); if (mo != null) parts.push({ p: mo, w: 0.08 });                // short-term momentum
     var rg = rangeOver(); if (rg != null) parts.push({ p: rg, w: 0.07 });              // where price sits in its round high–low range
+    var am = autoModelOver(); if (am != null) parts.push({ p: am, w: 0.10 });          // the 24/7 auto-tracker's learned read (the two systems talk)
     var wsum = 0, acc = 0;
     parts.forEach(function (x) { wsum += x.w; acc += x.p * x.w; });
     return wsum ? acc / wsum : 0.5;
@@ -1023,6 +1050,8 @@
 
     // colour the ambient glow to the live recommendation (over=green / under=red / skip=amber)
     setGlow(locking ? "SKIP" : call ? call.dir : "SKIP");
+    state.shownDir = locking ? "SKIP" : (call ? call.dir : "SKIP");
+    renderConsensus();   // how the Co-Pilot pick lines up with the 24/7 auto-tracker
 
     leanEl.textContent = liveLeanLine(call ? call.dir : "SKIP");
     leanEl.className = "lean mono " + leanClass();
@@ -1062,6 +1091,25 @@
     }
   }
 
+  // One plain-English line that reconciles the two systems so you know which to trust:
+  //  • Co-Pilot pick  = the headline call (market + position model + Claude + indicators + your
+  //    calibration) — this is the one you follow.
+  //  • 24/7 auto-tracker = a free, always-on baseline (market + flow + a learned model, no AI).
+  // When they AGREE, conviction is higher; when they SPLIT, it's coin-flip territory → skip.
+  function renderConsensus() {
+    var el = $("consensus"); if (!el) return;
+    var my = state.shownDir || "SKIP";
+    var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
+    if (!auto) { el.className = "consensus"; el.innerHTML = ""; return; }   // tracker not connected → nothing to reconcile
+    var cls, txt;
+    if (my !== "SKIP" && my === auto) { cls = my === "OVER" ? "over" : "under"; txt = "Co-Pilot and the 24/7 tracker <b>both say " + my + "</b> — higher conviction, this is your call."; }
+    else if (my === "SKIP" && auto === "SKIP") { cls = "skip"; txt = "Both are <b>sitting out</b> — no clear edge this round."; }
+    else if (my === "SKIP" || auto === "SKIP") { var live = my === "SKIP" ? auto : my; cls = "lean"; txt = "Lean <b>" + live + "</b>, lower conviction — " + (my === "SKIP" ? "the tracker leans it but the Co-Pilot sees no edge." : "the Co-Pilot likes it but the tracker is sitting out."); }
+    else { cls = "split"; txt = "<b>Split</b> — Co-Pilot says " + my + ", the tracker says " + auto + ". Coin-flip territory; sitting out is the safe play."; }
+    el.className = "consensus " + cls;
+    el.innerHTML = '<span class="consLbl">Which to follow</span>' + txt;
+  }
+
   // A compact, always-visible "what to bet the NEXT round" line in the timer card. Shows a
   // live lean for the upcoming round and firms up to a 🔒 LOCKED pick in the final 2 min
   // (the moment the bet actually commits). Idempotent — only touches the DOM when the text
@@ -1081,7 +1129,8 @@
       var o = combinedOdds(state.lastRecoObj), pd = o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP";
       var pcls = pd === "OVER" ? "over" : pd === "UNDER" ? "under" : "skip";
       var body = pd === "SKIP" ? "Leaning flat — no clear side yet" : ("Leaning " + pd + (pd === "OVER" ? " ↑ " : " ↓ ") + pctFor(o.pOver, pd) + "%");
-      html = lbl + '<span class="npPick ' + pcls + '">' + body + '<span class="npHint">live preview · locks in the final 2 min</span></span>';
+      var rrp = roundRange(), rtail = rrp ? " · price " + rangePhrase(rrp.pos) : "";
+      html = lbl + '<span class="npPick ' + pcls + '">' + body + '<span class="npHint">live preview · locks in the final 2 min' + rtail + '</span></span>';
     } else {
       html = lbl + '<span class="npPick skip">Reading signals…<span class="npHint">your next-round pick locks in the final 2 min</span></span>';
     }
@@ -1168,6 +1217,7 @@
       renderIndicators(a.list); renderLean(buildReco(a.list));
       if (!state.pendingRound) { openRound(true); resetChart(); }
       updateRoundStatus();
+      settleGrades();                          // grade the just-closed round against its finalized candle
       pushPricePoint(); drawMiniChart();
       maybeAutoAI();
     }).catch(function () {
@@ -1408,7 +1458,7 @@
     var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
     ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     if (lbl) lbl.textContent = (lastAbove ? "Above the line → OVER winning now" : "Below the line → UNDER winning now") +
-      (rr ? " · " + Math.round(rr.pos * 100) + "% up its range (H " + fmtMoney(rr.hi) + " / L " + fmtMoney(rr.lo) + ")" : "");
+      (rr ? " · " + rangePhrase(rr.pos) + " (H " + fmtMoney(rr.hi) + " / L " + fmtMoney(rr.lo) + ")" : "");
   }
 
   // Live "Price to beat" / Over-Under status vs the strike captured at round open.
@@ -1431,7 +1481,7 @@
   function tickTimer() {
     var now = new Date();
     if (now >= currentRoundEnd) {
-      gradeRound();
+      closeRound();                                                // stash the just-ended round for accurate settle
       currentRoundEnd = nextBoundary(now);
       state.leanFlips = 0; state.leanDir = null;                   // fresh stability tracking per round
       openRound(false);
@@ -1547,23 +1597,77 @@
     return pr.marketStrike != null ? pr.marketStrike : pr.openPrice;
   }
 
-  function gradeRound() {
+  // Round boundary: hand the just-ended round off to be settled against the DEFINITIVE close
+  // — the finalized Coinbase 15-min candle — instead of whatever the last live tick happened to
+  // be (which can be seconds-to-minutes stale on a hidden tab or REST-only). A provisional close
+  // shows immediately; settleGrades() confirms it once the closed candle is in.
+  function closeRound() {
     var pr = state.pendingRound;
     state.pendingRound = null;
-    if (!pr || pr.partial) return;                                   // mid-session / coin-switch rounds aren't graded
-    var refStrike = pr.marketStrike != null ? pr.marketStrike : pr.openPrice;   // grade against the same line we showed
-    if (refStrike == null || state.lastPrice == null) return;
-    if (pr.pickDir !== "OVER" && pr.pickDir !== "UNDER") return;     // SKIP picks aren't graded
-    var close = state.lastPrice;
-    var actual = close > refStrike ? "OVER" : close < refStrike ? "UNDER" : "FLAT";
-    if (actual === "FLAT") return;                                   // no movement — push, ignore
-    state.rounds.unshift({
+    if (!pr || pr.partial) return;
+    pr.provClose = state.lastPrice;          // freshest tick — provisional until the candle confirms
+    pr.tries = 0;
+    state.gradePending = pr;
+    renderLastClose();                        // "closing near $X · confirming…"
+    settleGrades();                           // maybe the candle is already loaded
+  }
+  function candleCloseAt(t) {
+    if (!state.candles) return null;
+    for (var i = state.candles.length - 1; i >= 0; i--) if (state.candles[i].t === t) return state.candles[i].c;
+    return null;
+  }
+  // Settle the pending round once Coinbase's finalized 15-min candle for it is available (its
+  // close = the price right at the boundary, matching the candle/arrow you see on Coinbase). If
+  // it hasn't posted after a few refreshes, fall back to the boundary tick so we never hang.
+  function settleGrades() {
+    var gp = state.gradePending; if (!gp) return;
+    var close = candleCloseAt(gp.openTime), src = "candle";
+    if (close == null) {
+      gp.tries = (gp.tries || 0) + 1;
+      if (gp.tries < 4) return;               // wait for the finalized candle (a few refreshes)
+      close = gp.provClose; src = "live";      // give up waiting — use the price captured at the boundary
+    }
+    if (close == null) { state.gradePending = null; renderLastClose(); return; }
+    finalizeGrade(gp, close, src);
+    state.gradePending = null;
+  }
+  function finalizeGrade(pr, close, src) {
+    var ref = pr.marketStrike != null ? pr.marketStrike : pr.openPrice;
+    var actual = (ref != null && close != null) ? (close > ref ? "OVER" : close < ref ? "UNDER" : "FLAT") : null;
+    var rec = {
       coin: pr.coin, time: pr.endLabel, pick: pr.pickDir, actual: actual,
-      correct: actual === pr.pickDir, pct: (close - refStrike) / refStrike * 100,
-      feat: pr.feat || null                                          // signal snapshot → powers calibration + AI learning
-    });
-    if (state.rounds.length > 700) state.rounds.pop();   // ~7 days of 15-min rounds
-    saveRounds(); renderAccuracy(); renderRounds();
+      close: close, ref: ref, openPrice: pr.openPrice, src: src,
+      pct: ref ? (close - ref) / ref * 100 : 0, feat: pr.feat || null
+    };
+    state.lastSettled = rec;                   // drives the real-time "last close" readout
+    // Only OVER/UNDER picks score; SKIP picks (and the rare exactly-FLAT close) are shown but not graded.
+    if ((pr.pickDir === "OVER" || pr.pickDir === "UNDER") && (actual === "OVER" || actual === "UNDER")) {
+      rec.correct = actual === pr.pickDir;
+      state.rounds.unshift(rec);
+      if (state.rounds.length > 700) state.rounds.pop();   // ~7 days of 15-min rounds
+      saveRounds(); renderAccuracy(); renderRounds();
+    }
+    renderLastClose();
+  }
+  // The most recent settled round — exactly what it closed at and which way it went — shown live
+  // the moment the timer turns over (provisional first, then confirmed against the real candle).
+  function renderLastClose() {
+    var el = $("lastClose"); if (!el) return;
+    var gp = state.gradePending;
+    if (gp) {
+      el.className = "lastClose pending";
+      el.textContent = "⏳ Round " + disp12(gp.endLabel) + " closing near " + (gp.provClose != null ? fmtMoney(gp.provClose) : "—") + " · confirming exact close…";
+      return;
+    }
+    var r = state.lastSettled;
+    if (!r || r.close == null) { el.className = "lastClose"; el.textContent = ""; return; }
+    var graded = (r.pick === "OVER" || r.pick === "UNDER") && (r.actual === "OVER" || r.actual === "UNDER");
+    var cls = !graded ? "skip" : r.correct ? "over" : "under";
+    var dirTxt = r.actual === "OVER" ? "OVER ↑" : r.actual === "UNDER" ? "UNDER ↓" : "FLAT";
+    var tail = graded ? (r.correct ? " · pick won ✓" : " · pick missed ✗") : (r.pick === "SKIP" ? " · sat out" : "");
+    el.className = "lastClose " + cls;
+    el.innerHTML = '<span class="lcLbl">Last round ' + disp12(r.time) + '</span>' +
+      "closed " + fmtMoney(r.close) + " · " + dirTxt + " the line " + fmtMoney(r.ref) + tail;
   }
 
   function saveRounds() { try { localStorage.setItem("pickTracker_v1", JSON.stringify(state.rounds)); } catch (e) {} }
@@ -1600,7 +1704,7 @@
         html += '<div class="hrow ' + (ok ? "w" : "l") + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
           '<span class="hpred ' + (r.pick === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.pick + '</span>' +
           '<span class="hres ' + (ok ? "w" : "l") + '">' + (ok ? "✓" : "✗") + '</span>' +
-          '<span class="hmeta mono">Actual ' + r.actual + ' · ' + moveStr + '</span></div>';
+          '<span class="hmeta mono">' + r.actual + (r.close != null ? " @ " + fmtMoney(r.close) : "") + ' · ' + moveStr + '</span></div>';
       });
       $("history").innerHTML = html;
     }
@@ -1631,6 +1735,7 @@
     state.lastAI = null; state.lastCrowd = null; state.betWindowFired = false;
     state.lockedNext = null; state.thisRoundLock = null; state.leanDir = null; state.leanFlips = 0; clearLocks();
     state.obi = null; state.micro = null;
+    state.gradePending = null; state.lastSettled = null; state.lastAuto = null; renderLastClose();   // clear the prior coin's close readout
     var _am = $("autoMod"); if (_am) _am.style.display = "none"; fetchAutoTracker(coin, true);   // 24/7 record for the new coin
     state.tfData = null; if (state.chartTF !== "live") loadCurrentTF(true);   // reload zoom for the new coin
     state.priceHist = []; drawMiniChart();
@@ -1650,10 +1755,10 @@
   });
   // ---------- Help sheet ----------
   var EXPLAIN = {
-    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine." },
+    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine. The 'Which to follow' line right under the call reconciles it with the always-on 24/7 auto-tracker: agree → higher conviction (this is your call); split → coin-flip territory, sitting out is the safe play. Follow this Co-Pilot pick as the headline; use the tracker to gauge how much to trust it." },
     indicators: { t: "Live Indicators", d: "Classic technical indicators recomputed live from 15-minute candles. Each shows its current value and a bull / bear / neutral tag. Tap any indicator row to learn what it means." },
-    accuracy: { t: "Pick Accuracy", d: "When each 15-minute round closes, the app checks whether the auto pick was right — did price end above or below the round's opening 'price to beat'? It tracks your hit rate, streak, and the last ~7 days of rounds, saved on this device." },
-    autotracker: { t: "24/7 Auto-Tracker", d: "A second, simpler picker that runs on the server every 15 minutes — even when this app is closed. It uses only free data (the Kalshi market price, short-term momentum, and the order book) with no AI, so it costs nothing. Every round it makes a pick and grades the last one, building an always-on track record. It's a reality check on the market: where this honest, no-frills system keeps winning, the market is efficient; where it slips, there may be an edge. The AI Co-Pilot reads this record too when it makes your live call." },
+    accuracy: { t: "Pick Accuracy & how rounds settle", d: "When a 15-minute round closes, the app grades the pick against the DEFINITIVE close — the finalized Coinbase 15-minute candle for that round (the same close/arrow you see on Coinbase), not a stray live tick — so the logged direction stays accurate even if the tab was in the background. OVER / UNDER is measured against the round's line to beat (the real Kalshi strike when the Co-Pilot is connected, otherwise the round's opening price). Heads up: Kalshi officially settles on a 60-second average of the CF Benchmarks index in the final minute before expiry, which can differ from a single Coinbase price on razor-thin rounds — so treat this grade as a close, honest proxy, not the official settlement. Hit rate, streak, and the last ~7 days are saved on this device." },
+    autotracker: { t: "24/7 Auto-Tracker", d: "A second, simpler picker that runs on the server every 15 minutes — even when this app is closed. It uses only free data (the Kalshi market price, short-term momentum, and the order book) with no AI, so it costs nothing. Every round it makes a pick and grades the last one, building an always-on track record. It's a reality check on the market: where this honest, no-frills system keeps winning, the market is efficient; where it slips, there may be an edge. The AI Co-Pilot reads this record when it makes your live call, and the tracker's learned model now also feeds the Co-Pilot's blended % directly — so the two genuinely talk. Don't pick between them: follow the Co-Pilot's headline call, and let this tracker (via the 'Which to follow' line) tell you how confident to be." },
     ai: { t: "AI Co-Pilot", d: "Optional. Connects to a small Cloudflare Worker you deploy. The worker fetches the live Kalshi crowd odds (the regulated market behind Coinbase's Over/Under) and asks Claude to weigh your indicators AND your recent track record against the crowd. The biggest edge is when a well-supported read disagrees with the crowd." },
     "RSI (14)": { t: "RSI (14)", d: "Relative Strength Index — momentum on a 0–100 scale. Above ~55 = buyers in control (bullish); below ~45 = sellers (bearish). Above 70 is overbought (stretched up), below 30 is oversold (stretched down)." },
     "MACD (12,26,9)": { t: "MACD (12,26,9)", d: "Moving Average Convergence Divergence. The histogram measures momentum: positive/green = upward push (bullish), negative/red = downward (bearish). Rising bars mean momentum is building in that direction." },
@@ -1839,6 +1944,7 @@
   }
   function renderAutoTracker(d) {
     var mod = $("autoMod"); if (!mod) return;
+    state.lastAuto = d || null; renderConsensus();   // keep the "which to follow" line in sync with the tracker
     var has = d && !d.empty && (d.pending || (d.history && d.history.length));
     if (!has) { mod.style.display = "none"; return; }
     mod.style.display = "";
