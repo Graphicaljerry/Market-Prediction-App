@@ -56,22 +56,22 @@
      sticky backdrop. Green by default; crossfades to red when the pick is UNDER. Each card
      clips its own orb so the glow stays contained within that section. */
   .card.orb {
-    position: relative; overflow: hidden; isolation: isolate;
-    /* glass picks up the live accent colour — a faint coloured edge + inner bloom */
+    position: relative;   /* no clipping — the glow bleeds past the edges and shows through the glass */
     border-color: rgba(var(--accent-rgb), 0.22);
-    box-shadow: 0 8px 30px rgba(0,0,0,0.35), inset 0 1px 34px rgba(var(--accent-rgb), 0.06);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.35), inset 0 1px 40px rgba(var(--accent-rgb), 0.07);
     transition: border-color .8s ease, box-shadow .8s ease;
   }
   .card.orb::before, .card.orb::after {
     content: ""; position: absolute; z-index: -1; pointer-events: none;
-    border-radius: 50%; filter: blur(14px); opacity: 1;
+    border-radius: 50%; filter: blur(34px); opacity: 1;
     transition: background .9s ease; will-change: transform;
   }
-  .card.orb::before { width: 78%; height: 70%; right: -16%; top: -22%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.36), transparent 72%);
+  /* big soft glow that sits BEHIND the glass and spills out past the card edges */
+  .card.orb::before { width: 80%; height: 92%; right: -12%; top: -14%;
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.46), transparent 72%);
     animation: orbCircleA 26s linear infinite; }
-  .card.orb::after  { width: 64%; height: 56%; left: -14%; bottom: -20%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.22), transparent 72%);
+  .card.orb::after  { width: 64%; height: 72%; left: -12%; bottom: -14%;
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.28), transparent 72%);
     animation: orbCircleB 34s linear infinite; }
   /* slow, subtle circular drift (the element orbits ~9px without spinning itself) */
   @keyframes orbCircleA { from { transform: rotate(0deg) translateX(9px) rotate(0deg); } to { transform: rotate(360deg) translateX(9px) rotate(-360deg); } }
@@ -140,7 +140,7 @@
   /* "clear" sections — no glass, content sits straight on the glow */
   .card.flat { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; border: none; box-shadow: none; padding: 4px 2px; }
   /* glowing cards a touch more glassy so the orb reads through, like the Figma */
-  .card.orb { background: rgba(28,28,30,0.42); }
+  .card.orb { background: rgba(28,28,30,0.26); }   /* glassier so the glow behind reads through */
   /* crypto icons in the switcher + hero badge */
   .cico { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; display: inline-block; vertical-align: middle; flex: 0 0 auto; }
   .badge img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
@@ -300,7 +300,8 @@
   .empty { text-align: center; color: var(--label-3); font-size: 14px; padding: 24px 0; }
   .accNote { font-size: 12px; color: var(--label-3); margin-top: 14px; text-align: center; }
   /* 24/7 auto-tracker latest pick banner */
-  .autoLatest { text-align: center; font-size: 15px; font-weight: 800; margin-bottom: 14px; padding: 12px 10px; border-radius: 13px; background: var(--surface-2); }
+  .autoLatest { text-align: center; font-size: 15px; font-weight: 800; margin-bottom: 14px; padding: 12px 10px; border-radius: 13px;
+    background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); }
   .autoLatest.over { color: var(--green); } .autoLatest.under { color: var(--red); } .autoLatest.skip { color: var(--orange); }
   .autoLatest .sub { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); margin-top: 4px; letter-spacing: 0; }
   /* what the online model has learned */
