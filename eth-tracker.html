@@ -35,7 +35,7 @@
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
 
-  html { background: var(--bg); overflow-x: hidden; overscroll-behavior: none; }
+  html { background: var(--bg); overflow-x: clip; overscroll-behavior: none; }
   html, body {
     color: var(--label);
     font-family: "Space Mono", ui-monospace, "SF Mono", monospace;
@@ -45,8 +45,11 @@
     position: relative; background: transparent;
     max-width: 1120px; margin: 0 auto;
     padding: max(14px, env(safe-area-inset-top)) clamp(16px, 3.5vw, 44px) calc(40px + env(safe-area-inset-bottom));
-    min-height: 100vh; overflow-x: hidden; overscroll-behavior-y: none;
+    min-height: 100vh; overflow-x: clip; overscroll-behavior-y: none;
   }
+  /* overflow-x:clip (not hidden) clips sideways bleed WITHOUT forcing overflow-y to `auto` — the
+     latter turned the centered, max-width body into its own scroll container and put a phantom
+     scrollbar mid-screen on desktop. With clip, the viewport scrolls normally. */
   /* ---- smooth full-page scrolling ----
      While actively scrolling, pause the ambient glow drift so the blurred orbs behind the
      glass cards don't force a backdrop-filter repaint on every frame (it resumes ~0.2s after
