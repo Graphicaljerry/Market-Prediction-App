@@ -1,0 +1,35 @@
+# CLAUDE.md
+
+Project memory for the **15-Minute Crypto Over/Under Tracker**. Read this at the start of
+every session and follow the conventions below.
+
+## Keep the docs in sync with the app (standing rule)
+
+Whenever we ship a **notable feature** or land an **important insight** about how the app
+works, **document it in the Markdown files as part of the same change** — never leave it only
+in code or in chat. Updating the docs is part of "done," not a follow-up.
+
+**What's worth recording**
+
+- A new user-facing feature or panel, or a meaningful change to an existing one.
+- A change to how the core logic *behaves* — probability/barrier model, indicator engine,
+  round settlement/grading, the per-coin learned model, conviction/"which to follow".
+- A non-obvious insight or gotcha we discovered and would want written down (e.g. how Kalshi
+  settles on a 60-sec CF Benchmarks index, a data quirk, a rate-limit/caching workaround).
+- Anything that changes deploy, secrets, cron, or the AI model/budget.
+
+Skip the noise: typo fixes, pure refactors, and formatting don't need an entry.
+
+**Where it goes**
+
+- **`README.md` → `## What's new (latest)`** — the primary changelog. Add a **bold-led bullet,
+  newest first**, matching the existing entries' voice: lead with the bold headline of *what*
+  changed, then plainly say *why it matters*. Keep it tight.
+- **The relevant deeper `README.md` section** (e.g. _The probability engine_, _Indicator
+  engine_, _24/7 Auto-Tracker_, _AI Co-Pilot_, _Architecture_, _Data persistence_) — update the
+  body so it stays accurate, not just the changelog. If a change makes existing doc text wrong,
+  fix that text in the same pass.
+- **`cloudflare-worker/README.md`** — for anything about the Worker: deploy, secrets, cron, AI
+  model/budget, or the Kalshi crowd-odds series tickers.
+
+When in doubt, write it down — future sessions only know what the docs say.
