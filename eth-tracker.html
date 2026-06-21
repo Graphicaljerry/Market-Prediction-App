@@ -521,7 +521,7 @@
     </details>
     <div class="aiMuted" id="aiIntro">Add the live <b>Kalshi crowd odds</b> + a <b>Claude</b> read to the blend above — connect your Cloudflare Worker below (optional).</div>
     <details id="aiSetup" class="aiSetup">
-      <summary>&#9881; AI Co-Pilot setup</summary>
+      <summary>AI Co-Pilot setup</summary>
       <div class="aiSetupBody">
         <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
         <select id="aiModel" class="settingsInput">
@@ -1093,8 +1093,8 @@
 
     if (locking) {
       el.className = "reco skip";
-      scopeEl.textContent = "⏭ NEXT round " + nsH + "–" + neH;
-      buyEl.className = "buyLine skip"; buyEl.textContent = "🔒 Locking pick…";
+      scopeEl.textContent = "NEXT round " + nsH + "–" + neH;
+      buyEl.className = "buyLine skip"; buyEl.textContent = "Locking pick…";
       hintEl.textContent = "Reading the freshest signals to lock your next-round bet.";
       pctEl.textContent = "—"; lblEl.textContent = "locking";
       return;
@@ -1103,7 +1103,7 @@
 
     if (call.dir === "SKIP") {
       el.className = "reco skip";
-      scopeEl.textContent = nextMode ? ("⏭ NEXT round " + nsH + "–" + neH + (call.atLabel ? " · 🔒 locked " + call.atLabel : "")) : ("✅ THIS round · closes " + nsH);
+      scopeEl.textContent = nextMode ? ("NEXT round " + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "")) : ("THIS round · closes " + nsH);
       buyEl.className = "buyLine skip"; buyEl.textContent = "SKIP — no clear edge";
       hintEl.textContent = nextMode ? "Too close to call — sitting out the next round is fine." : "No clear edge — sitting out is a position too.";
       pctEl.textContent = "—"; lblEl.textContent = "no clear side";
@@ -1116,11 +1116,11 @@
       '<span class="buySub">' + (call.dir === "OVER" ? "betting the price goes UP" : "betting the price goes DOWN") + "</span>";
     pctEl.textContent = call.pct + "%";
     if (nextMode) {
-      scopeEl.textContent = "⏭ NEXT round " + nsH + "–" + neH + (call.atLabel ? " · 🔒 locked " + call.atLabel : "");
+      scopeEl.textContent = "NEXT round " + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "");
       hintEl.textContent = "Locked — buy " + call.dir + " when the next round opens.";
       lblEl.textContent = "likely " + (call.dir === "OVER" ? "UP" : "DOWN");
     } else {
-      scopeEl.textContent = "✅ THIS round · closes " + nsH;
+      scopeEl.textContent = "THIS round · closes " + nsH;
       hintEl.textContent = "Your locked pick for this round — live status below.";
       lblEl.textContent = "chance " + (call.dir === "OVER" ? "UP" : "DOWN");
     }
@@ -1143,23 +1143,29 @@
     else { cls = "split"; txt = "<b>Split</b> — Co-Pilot says " + my + ", the tracker says " + auto + ". Coin-flip territory; sitting out is the safe play."; }
     el.className = "consensus " + cls;
     el.innerHTML = '<span class="consLbl">Which to follow</span>' + txt;
+    // Keep the headline confidence honest: if the two systems disagree, don't claim "High
+    // Confidence" up top while this line says coin-flip. Temper it; restore it when they align.
+    var confEl = $("recoConf");
+    if (confEl) {
+      if (cls === "split") confEl.textContent = "Low confidence — the two systems disagree, sitting out is safe";
+      else if (cls === "lean") confEl.textContent = "Lower confidence — only one system likes it";
+      else if (state.baseConf) confEl.textContent = state.baseConf;
+    }
   }
 
   // A compact, always-visible "what to bet the NEXT round" line in the timer card. Shows a
-  // live lean for the upcoming round and firms up to a 🔒 LOCKED pick in the final 2 min
+  // live lean for the upcoming round and firms up to a LOCKED pick in the final 2 min
   // (the moment the bet actually commits). Idempotent — only touches the DOM when the text
   // changes — so it's safe to call every tick without thrashing scroll.
   function renderNextPick() {
     var el = $("nextPick"); if (!el) return;
     var ns = currentRoundEnd, ne = new Date(currentRoundEnd.getTime() + 15 * 60000);
-    var lbl = '<span class="npLbl">⏭ Next round ' + rangeHM(ns, ne) + '</span>';
+    var lbl = '<span class="npLbl">Next round ' + rangeHM(ns, ne) + '</span>';
     var L = state.lockedNext, html;
-    if (L && L.dir === "SKIP") {
-      html = lbl + '<span class="npPick skip">🔒 SKIP — no clear edge</span>';
-    } else if (L && L.dir) {
-      var lcls = L.dir === "OVER" ? "over" : "under";
-      html = lbl + '<span class="npPick ' + lcls + '">🔒 BUY ' + L.dir + (L.dir === "OVER" ? " ↑" : " ↓") + ' · ' + L.pct + '% likely ' + (L.dir === "OVER" ? "UP" : "DOWN") +
-        '<span class="npHint">locked ' + (L.atLabel || nowClock()) + ' — this is your next-round bet</span></span>';
+    if (L && L.dir) {
+      // Once locked, the Auto Pick card shows this same next-round pick in full — don't repeat it
+      // here (that was the duplicate). The timer card stays just the countdown during the bet window.
+      html = "";
     } else if (state.lastRecoObj) {
       var o = combinedOdds(state.lastRecoObj), pd = o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP";
       var pcls = pd === "OVER" ? "over" : pd === "UNDER" ? "under" : "skip";
@@ -1203,6 +1209,7 @@
     // Freeze this round's actionable call — prefer the pick you locked last bet window.
     state.thisRoundLock = state.lockedNext || makeCall(reco);
     state.lockedNext = null; clearLocks();
+    state.baseConf = reco.conf;                 // indicator-strength confidence; consensus can temper it
     $("recoConf").textContent = reco.conf;
     $("recoTally").textContent = reco.bull + "↑   " + reco.bear + "↓   of " + reco.total + " indicators";
     var denom = reco.total || 1;
@@ -1576,17 +1583,17 @@
     if (remaining <= BET_WINDOW) {
       ensureLockedNext();
       var L = state.lockedNext;
-      if (!L) { el.className = "betwin"; el.innerHTML = "&#128274; Locking next-round pick… <span style=\"opacity:.7;font-weight:500\">reading fresh signals</span>"; return; }
+      if (!L) { el.className = "betwin"; el.innerHTML = "Locking next-round pick… <span style=\"opacity:.7;font-weight:500\">reading fresh signals</span>"; return; }
       if (L.dir === "SKIP") {
         el.className = "betwin skip";
-        el.innerHTML = "&#128274; LOCKED · NEXT round " + nextLabel +
+        el.innerHTML = "LOCKED · NEXT round " + nextLabel +
           "<br><span class=\"big mono\">SKIP / SIT OUT</span>" +
           "<br><span style=\"font-size:11px;opacity:.9;font-weight:600\">too close to call · locked " + L.atLabel + "</span>";
         return;
       }
       var cls = L.dir === "OVER" ? "over" : "under";
       var dirTxt = L.dir === "OVER" ? "BUY OVER ↑" : "BUY UNDER ↓";
-      var head = L.conv.level === "strong" ? "&#11088; STRONG · LOCKED" : L.conv.level === "edge" ? "&#9889; EDGE vs CROWD · LOCKED" : "&#128274; LOCKED PICK";
+      var head = L.conv.level === "strong" ? "STRONG · LOCKED" : L.conv.level === "edge" ? "EDGE vs CROWD · LOCKED" : "LOCKED PICK";
       var dpct = state.lastRecoObj ? pctFor(combinedOdds(state.lastRecoObj).pOver, L.dir) : L.pct;
       var drift = dpct >= 50 ? "✓ live still agrees · " + dpct + "%" : "⚠ live drifted · " + dpct + "% now";
       el.className = "betwin active " + cls + (L.conv.level !== "normal" ? " " + L.conv.level : "");
