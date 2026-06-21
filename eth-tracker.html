@@ -44,38 +44,27 @@
   .card, .module, .reco, .toprow, .grid { min-width: 0; max-width: 100%; }
   .aiMuted, .aiWhyText, .aiRationale, .buyHint, .accNote, .miniChartLbl, .autoLearned,
   .nextRibbon, .scopeTag, .conf, .tally, .lean, .isub, .hmeta, .infoCard p { overflow-wrap: anywhere; word-break: break-word; }
-  /* ---------- Aurora glow ---------- */
-  /* A fixed, layered glow that colours itself to the live recommendation: green when the
-     pick is OVER, red when UNDER, amber when SKIP. Each layer drifts very slowly and
-     independently so the background feels alive without distracting. Centre stays near-black. */
-  #aura { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
-  #aura .lyr { position: absolute; inset: -14%; opacity: 0; transition: opacity 1.8s ease; will-change: transform, opacity; }
-  /* GREEN is the signature glow — always present so the background never looks flat */
-  #aura .lyr.over {
-    opacity: .85;
-    background:
-      radial-gradient(48% 36% at 0% 0%,     rgba(13,224,89,0.42), transparent 66%),
-      radial-gradient(54% 42% at 100% 100%, rgba(13,224,89,0.34), transparent 68%);
-    animation: auraDriftA 44s ease-in-out infinite alternate;
+  /* ---------- Section glow ("Bullish Orbs") ----------
+     Soft radial glows that live INSIDE each glowing card and scroll with it — never a fixed,
+     sticky backdrop. Green by default; crossfades to red when the pick is UNDER. Each card
+     clips its own orb so the glow stays contained within that section. */
+  .card.orb { position: relative; overflow: hidden; isolation: isolate; }
+  .card.orb::before, .card.orb::after {
+    content: ""; position: absolute; z-index: -1; pointer-events: none;
+    border-radius: 50%; filter: blur(12px); opacity: 1; transition: background .9s ease;
   }
-  /* RED only crossfades in when the pick is UNDER */
-  #aura .lyr.under {
-    background:
-      radial-gradient(48% 36% at 0% 0%,     rgba(255,69,58,0.40), transparent 66%),
-      radial-gradient(54% 42% at 100% 100%, rgba(255,69,58,0.32), transparent 68%);
-    animation: auraDriftB 52s ease-in-out infinite alternate;
-  }
-  #aura .lyr.skip { opacity: 0; }   /* unused — SKIP just keeps the calm green */
-  /* state overrides are scoped under #aura so they outrank the #aura base specificity */
-  body.glow-over  #aura .lyr.over  { opacity: 1; }
-  body.glow-over  #aura .lyr.under { opacity: 0; }
-  body.glow-under #aura .lyr.over  { opacity: 0; }
-  body.glow-under #aura .lyr.under { opacity: 1; }
-  body.glow-skip  #aura .lyr.over  { opacity: .8; }   /* no clear pick → stay green, just a touch calmer */
-  body.glow-skip  #aura .lyr.under { opacity: 0; }
-  @keyframes auraDriftA { from { transform: translate3d(0,0,0) scale(1); }    to { transform: translate3d(2%,-1.6%,0) scale(1.05); } }
-  @keyframes auraDriftB { from { transform: translate3d(0,0,0) scale(1.03); } to { transform: translate3d(-2%,1.6%,0) scale(1); } }
-  @media (prefers-reduced-motion: reduce) { #aura .lyr { animation: none; } }
+  .card.orb::before { width: 78%; height: 70%; right: -16%; top: -22%;
+    background: radial-gradient(closest-side, rgba(13,224,89,0.34), transparent 72%); }
+  .card.orb::after  { width: 64%; height: 56%; left: -14%; bottom: -20%;
+    background: radial-gradient(closest-side, rgba(13,224,89,0.22), transparent 72%); }
+  body.glow-under .card.orb::before { background: radial-gradient(closest-side, rgba(255,69,58,0.32), transparent 72%); }
+  body.glow-under .card.orb::after  { background: radial-gradient(closest-side, rgba(255,69,58,0.20), transparent 72%); }
+  /* a couple of free-floating orbs anchored to the page (scroll with it, not the viewport) */
+  .pageGlow { position: absolute; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(40px);
+    background: radial-gradient(closest-side, rgba(13,224,89,0.16), transparent 70%); }
+  .pageGlow.g1 { width: 300px; height: 200px; right: -60px; top: 360px; }
+  .pageGlow.g2 { width: 440px; height: 420px; left: -130px; bottom: 60px; }
+  .pageGlow.g3 { width: 400px; height: 380px; right: -110px; bottom: 0; }
 
   .mono { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
@@ -98,24 +87,27 @@
   .seg button.active .sym { color: var(--label); }
   .seg button:active { opacity: .7; }
 
-  /* ---------- Coin dropdown (mobile only) ---------- */
+  /* ---------- Coin dropdown (mobile only) — compact pill, top-left ---------- */
   .coinSelectWrap {
-    display: none; position: relative; align-items: center; gap: 11px;
-    background: rgba(28,28,30,0.55); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
-    border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 0 16px; min-height: 54px; margin-bottom: 22px;
+    display: none; position: relative; align-items: center; gap: 9px; width: -moz-fit-content; width: fit-content;
+    background: rgba(28,28,30,0.6); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 0 8px 0 14px; min-height: 48px; margin-bottom: 0;
   }
-  .coinSelectWrap .csIcon { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 auto; }
+  .coinSelectWrap .csIcon { width: 21px; height: 21px; border-radius: 50%; flex: 0 0 auto; }
   .coinSelect {
-    flex: 1; appearance: none; -webkit-appearance: none; background: transparent; border: none;
-    color: var(--label); font-family: inherit; font-weight: 700; font-size: 16px;
-    padding: 16px 26px 16px 0; cursor: pointer;
+    appearance: none; -webkit-appearance: none; background: transparent; border: none;
+    color: var(--label); font-family: inherit; font-weight: 700; font-size: 15px;
+    padding: 13px 24px 13px 4px; cursor: pointer;
   }
   .coinSelect:focus { outline: none; }
   .coinSelect option { background: var(--surface); color: var(--label); font-weight: 600; }
-  .coinSelectWrap::after { content: "\25BE"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: var(--label-2); pointer-events: none; font-size: 15px; }
+  .coinSelectWrap::after { content: "\25BE"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--label-2); pointer-events: none; font-size: 14px; }
+
+  /* ---------- Big coin name heading (mobile V2) ---------- */
+  .coinHero { font-size: clamp(34px, 11.5vw, 46px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.04; margin: 14px 2px 18px; }
 
   /* ---------- Section header ---------- */
-  .sec { font-size: 13px; font-weight: 600; color: var(--label-2); margin: 0 6px 9px; }
+  .sec { font-size: 13px; font-weight: 600; color: var(--label-2); margin: 0 4px 10px; }
   .sec .tiny { color: var(--label-3); font-weight: 500; }
 
   /* ---------- Card ---------- */
@@ -126,8 +118,10 @@
     box-shadow: 0 8px 30px rgba(0,0,0,0.35);
     transition: border-color .4s ease;
   }
-  /* "clear" sections — no glass, content sits straight on the aurora */
+  /* "clear" sections — no glass, content sits straight on the glow */
   .card.flat { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; border: none; box-shadow: none; padding: 4px 2px; }
+  /* glowing cards a touch more glassy so the orb reads through, like the Figma */
+  .card.orb { background: rgba(28,28,30,0.42); }
   /* crypto icons in the switcher + hero badge */
   .cico { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; display: inline-block; vertical-align: middle; flex: 0 0 auto; }
   .badge img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
@@ -342,7 +336,9 @@
 </head>
 <body>
 
-  <div id="aura" aria-hidden="true"><div class="lyr over"></div><div class="lyr under"></div><div class="lyr skip"></div></div>
+  <div class="pageGlow g1" aria-hidden="true"></div>
+  <div class="pageGlow g2" aria-hidden="true"></div>
+  <div class="pageGlow g3" aria-hidden="true"></div>
 
   <div class="topbar">
     <div class="appname" id="title">15-Min Tracker</div>
@@ -361,20 +357,22 @@
   <div class="coinSelectWrap" id="coinSelectWrap">
     <img class="csIcon" id="coinSelIcon" alt="">
     <select class="coinSelect" id="coinSelect" aria-label="Select crypto">
-      <option value="ETH">ETH · Ethereum</option>
-      <option value="BTC">BTC · Bitcoin</option>
-      <option value="SOL">SOL · Solana</option>
-      <option value="DOGE">DOGE · Dogecoin</option>
-      <option value="SHIB">SHIB · Shiba Inu</option>
-      <option value="XRP">XRP · Ripple</option>
+      <option value="ETH">ETH</option>
+      <option value="BTC">BTC</option>
+      <option value="SOL">SOL</option>
+      <option value="DOGE">DOGE</option>
+      <option value="SHIB">SHIB</option>
+      <option value="XRP">XRP</option>
     </select>
   </div>
+
+  <h1 class="coinHero" id="coinHero">Ethereum</h1>
 
   <section class="toprow">
 
   <!-- HERO PRICE -->
   <div class="module">
-  <div class="card hero">
+  <div class="card hero orb">
     <div class="heroTop">
       <div class="coinInfo">
         <div class="badge" id="coinBadge">Ξ</div>
@@ -397,7 +395,7 @@
 
   <!-- TIMER -->
   <div class="module">
-  <div class="card timerCard">
+  <div class="card flat timerCard">
     <div class="timerLabel">Next round closes in</div>
     <div id="timer" class="timer mono">--:--</div>
     <div class="timerBarWrap"><div id="timerBar"></div></div>
@@ -409,7 +407,7 @@
   <!-- RECOMMENDATION -->
   <div class="module">
   <div class="sec">Auto Pick <span class="tiny">· your bet + the read</span> <button class="ihelp" data-info="autopick">?</button></div>
-  <div class="card">
+  <div class="card orb">
     <div id="reco" class="reco skip">
       <div class="nextRibbon" id="nextRibbon"></div>
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
@@ -1500,6 +1498,7 @@
     state.pendingRound = null;
     $("coinBadge").innerHTML = COIN_ICONS[coin] ? '<img alt="" src="' + COIN_ICONS[coin] + '">' : COINS[coin].sym;
     $("coinName").textContent = COINS[coin].name;
+    var _ch = $("coinHero"); if (_ch) _ch.textContent = COINS[coin].name;
     $("priceLabel").textContent = COINS[coin].pair;
     Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { b.classList.toggle("active", b.getAttribute("data-coin") === coin); });
     var _sel = $("coinSelect"); if (_sel) _sel.value = coin;
