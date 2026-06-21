@@ -231,6 +231,14 @@
   .consensus.over { border-color: rgba(13,224,89,.4); background: rgba(13,224,89,.08); } .consensus.over b { color: var(--green); }
   .consensus.under { border-color: rgba(255,69,58,.4); background: rgba(255,69,58,.08); } .consensus.under b { color: var(--red); }
   .consensus.split { border-color: rgba(255,159,10,.45); background: rgba(255,159,10,.08); } .consensus.split b { color: var(--orange); }
+  /* recent 15-min market moves — the same up/down arrows Coinbase shows, from Coinbase candles */
+  .moveStrip { display: flex; align-items: center; gap: 5px; margin-top: 14px; flex-wrap: wrap; }
+  .moveStrip:empty { display: none; }
+  .moveStrip .msLbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--label-3); margin-right: 3px; }
+  .moveStrip .msDot { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; line-height: 1; }
+  .moveStrip .msDot.up { background: rgba(13,224,89,.16); color: var(--green); border: 1px solid rgba(13,224,89,.4); }
+  .moveStrip .msDot.down { background: rgba(255,69,58,.16); color: var(--red); border: 1px solid rgba(255,69,58,.4); }
+  .moveStrip .msDot.now { box-shadow: 0 0 0 2px rgba(255,255,255,.18); }
 
   /* ---------- Recommendation ---------- */
   .reco { text-align: center; }
@@ -442,6 +450,7 @@
     </div>
     <div id="price" class="price mono">—</div>
     <div id="roundStatus" class="roundStatus mono">Waiting for round open…</div>
+    <div id="moveStrip" class="moveStrip"></div>
     <div class="updated">
       <span id="updated" class="mono">Loading…</span>
       <span id="srcTag" class="mono"></span>
@@ -1230,7 +1239,7 @@
       if (!state.pendingRound) { openRound(true); resetChart(); }
       updateRoundStatus();
       settleGrades();                          // grade the just-closed round against its finalized candle
-      pushPricePoint(); drawMiniChart();
+      pushPricePoint(); drawMiniChart(); renderMoveStrip();
       maybeAutoAI();
     }).catch(function () {
       if (myReq !== state.reqId) return;
@@ -1287,7 +1296,7 @@
       var a = analyze(c);
       state.lastList = a.list;
       renderIndicators(a.list); renderLean(buildReco(a.list));
-      pushPricePoint(); drawMiniChart();
+      pushPricePoint(); drawMiniChart(); renderMoveStrip();
       var t = new Date();
       elUpdated.classList.remove("err");
       elUpdated.textContent = "Live · " + hms(t);
@@ -1688,6 +1697,22 @@
     el.className = "lastClose " + cls;
     el.innerHTML = '<span class="lcLbl">Last round ' + disp12(r.time) + '</span>' +
       "closed " + fmtMoney(r.close) + " · " + dirTxt + " the line " + fmtMoney(r.ref) + tail + sub;
+  }
+  // The last several 15-minute MARKET moves (price up vs down over each round) as the same arrow
+  // dots Coinbase shows — straight from the Coinbase candles, so it matches what you see there.
+  // This is raw direction (close vs the round's open); graded OVER/UNDER picks live in Recent Rounds.
+  function renderMoveStrip() {
+    var el = $("moveStrip"); if (!el) return;
+    var c = state.candles;
+    if (!c || c.length < 2) { if (el._html) { el._html = ""; el.innerHTML = ""; } return; }
+    var start = Math.max(0, c.length - 8), html = '<span class="msLbl">Recent 15-min</span>', i, cd, up, isNow;
+    for (i = start; i < c.length; i++) {
+      cd = c[i]; up = cd.c >= cd.o; isNow = (i === c.length - 1);
+      html += '<span class="msDot ' + (up ? "up" : "down") + (isNow ? " now" : "") + '" title="' +
+        hma(new Date(cd.t)) + (isNow ? " · live" : "") + ' — ' + (up ? "up" : "down") + '">' + (up ? "↑" : "↓") + '</span>';
+    }
+    if (el._html === html) return;   // only touch the DOM when a dot actually changed
+    el._html = html; el.innerHTML = html;
   }
 
   function saveRounds() { try { localStorage.setItem("pickTracker_v1", JSON.stringify(state.rounds)); } catch (e) {} }

@@ -27,7 +27,9 @@ Recent work, newest first:
   confusion, a single **"Which to follow"** line reconciles them (agree → higher conviction;
   split → coin-flip, sit out), the auto-tracker's learned model now feeds the Co-Pilot blend
   directly, and the help notes the settlement nuance (Kalshi settles on a 60-sec **CF Benchmarks
-  index** average, so razor-thin rounds can differ from a single Coinbase price).
+  index** average, so razor-thin rounds can differ from a single Coinbase price). A **"Recent
+  15-min" arrow strip** in the header mirrors the up/down dots Coinbase shows, straight from the
+  same Coinbase candles, so the market's recent direction is glanceable in-app.
 - **Per-round high/low ("the graph") as a signal.** The intra-round price path's **high and
   low** are now drawn on the live chart (dotted guides + labels) and read everywhere: where
   price sits in that range gives a gentle continuation tilt in the blended probability, the
