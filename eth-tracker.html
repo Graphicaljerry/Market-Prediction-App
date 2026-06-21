@@ -1517,7 +1517,7 @@
       // Round open: just refresh the free market price/strike. The paid AI read happens once
       // per round at the 2-min lock (the actionable moment) — no redundant spend here.
       if (aiAvailable()) setTimeout(function () { refreshCrowd(true); }, 4000);
-      setTimeout(function () { fetchAutoTracker(state.coin, true); }, 8000);   // let the cron post the new round's pick
+      [8000, 45000, 90000].forEach(function (ms) { setTimeout(function () { fetchAutoTracker(state.coin, true); }, ms); });   // pull the cron's fresh grade + new pick a few times after open
     }
     var remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
     state.remaining = remaining;
@@ -1681,6 +1681,7 @@
     var rec = {
       coin: pr.coin, time: pr.endLabel, pick: pr.pickDir, actual: actual,
       close: close, ref: ref, openPrice: pr.openPrice, src: src, avg60: pr.avg60 != null ? pr.avg60 : null,
+      endMs: pr.openTime + 900000,        // round close time — lets the arrow strip place it without waiting for the worker
       pct: ref ? (close - ref) / ref * 100 : 0, feat: pr.feat || null
     };
     state.lastSettled = rec;                   // drives the real-time "last close" readout
@@ -1692,6 +1693,7 @@
       saveRounds(); renderAccuracy(); renderRounds();
     }
     renderLastClose();
+    renderMoveStrip();   // surface this just-graded round's arrow now, ~30s after close (not a worker round-trip later)
   }
   // The most recent settled round — exactly what it closed at and which way it went — shown live
   // the moment the timer turns over (provisional first, then confirmed against the real candle).
@@ -1727,20 +1729,24 @@
   // from the per-second loop, so it stays put and never fights the scroll.
   function renderMoveStrip() {
     var el = $("moveStrip"); if (!el) return;
-    var dots = [], auto = state.lastAuto, hist = auto && auto.history ? auto.history.slice() : null, i;
-    if (hist && hist.length) {
-      hist.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });   // oldest → newest, order-safe
-      hist = hist.slice(-8);
-      for (i = 0; i < hist.length; i++) dots.push({ dir: hist[i].actual === "OVER" ? 1 : hist[i].actual === "UNDER" ? -1 : 0, t: hist[i].ts || null });
-    } else {
-      var c = state.candles;
-      if (c && c.length >= 2) for (i = Math.max(0, c.length - 9); i < c.length - 1; i++) dots.push({ dir: c[i].c >= c[i].o ? 1 : -1, t: c[i].t });   // completed candles only — skip the forming one
-    }
-    if (!dots.length) { if (el._html) { el._html = ""; el.innerHTML = ""; } return; }
-    var html = '<span class="msLbl">Recent 15-min</span>';
-    for (i = 0; i < dots.length; i++) {
-      var d = dots[i], cls = d.dir > 0 ? "up" : d.dir < 0 ? "down" : "flat", ar = d.dir > 0 ? "↑" : d.dir < 0 ? "↓" : "·";
-      html += '<span class="msDot ' + cls + '" title="' + (d.t ? hma(new Date(d.t)) + " — " : "") + (d.dir > 0 ? "OVER / up" : d.dir < 0 ? "UNDER / down" : "flat") + '">' + ar + '</span>';
+    // Merge sources into one dot per 15-min round (keyed by the round's open boundary). Priority,
+    // first-writer-wins: (1) the worker's graded history — complete, vs the real Kalshi strike;
+    // (2) the round we JUST graded on the client — fills the newest round ~30s after close, before
+    // the worker's cron reports it; (3) raw candle direction — fills gaps / the no-tracker case.
+    var byBucket = {}, i, j;
+    function add(dir, t) { if (!t || !dir) return; var b = Math.floor(t / 900000); if (byBucket[b] === undefined) byBucket[b] = { dir: dir, t: t }; }
+    var auto = state.lastAuto, hist = auto && auto.history ? auto.history : null;
+    if (hist) for (i = 0; i < hist.length; i++) add(hist[i].actual === "OVER" ? 1 : hist[i].actual === "UNDER" ? -1 : 0, hist[i].ts);
+    var ls = state.lastSettled;
+    if (ls && ls.endMs) add(ls.actual === "OVER" ? 1 : ls.actual === "UNDER" ? -1 : 0, ls.endMs - 900000);   // bucket by the round's open
+    var c = state.candles;
+    if (c) for (j = Math.max(0, c.length - 9); j < c.length - 1; j++) add(c[j].c >= c[j].o ? 1 : -1, c[j].t);   // completed candles only
+    var keys = Object.keys(byBucket).map(Number).sort(function (a, b) { return a - b; }).slice(-8);
+    if (!keys.length) { if (el._html) { el._html = ""; el.innerHTML = ""; } return; }
+    var html = '<span class="msLbl">Recent 15-min</span>', k, d, cls, ar;
+    for (k = 0; k < keys.length; k++) {
+      d = byBucket[keys[k]]; cls = d.dir > 0 ? "up" : d.dir < 0 ? "down" : "flat"; ar = d.dir > 0 ? "↑" : d.dir < 0 ? "↓" : "·";
+      html += '<span class="msDot ' + cls + '" title="' + hma(new Date(d.t)) + " — " + (d.dir > 0 ? "OVER / up" : d.dir < 0 ? "UNDER / down" : "flat") + '">' + ar + '</span>';
     }
     if (el._html === html) return;   // only touch the DOM when an outcome actually changed
     el._html = html; el.innerHTML = html;
