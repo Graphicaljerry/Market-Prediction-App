@@ -213,6 +213,7 @@
         "acc    recent"
         "auto   auto"; }
     .m-chart .chartSec { display: none; }
+    .m-chart .miniChart { height: 320px; }
   }
 
   /* DESKTOP (≥1200): three-column terminal + full-width rows below */
@@ -228,9 +229,9 @@
         "signal chart  recent"
         "ind    ind    ind"
         "auto   auto   auto"; }
-    .m-chart { align-self: stretch; }
-    .m-chart .chartCard { height: 100%; display: flex; flex-direction: column; }
-    .m-chart .miniChart { flex: 1 1 auto; height: auto; min-height: 520px; }
+    /* fixed, stable chart height on desktop — no longer stretches to match the side columns */
+    .m-chart { align-self: start; }
+    .m-chart .miniChart { height: 600px; }
   }
 
   /* ---------- Hero / price ---------- */
@@ -583,6 +584,8 @@
       <button class="tfBtn" data-tf="30m">30m</button>
       <button class="tfBtn" data-tf="1h">1h</button>
       <button class="tfBtn" data-tf="1d">1d</button>
+      <button class="tfBtn" data-tf="1w">1W</button>
+      <button class="tfBtn" data-tf="1mo">1M</button>
     </div>
     <div class="chartType" id="chartType">
       <button type="button" data-ct="line" class="active">Line</button>
@@ -1441,7 +1444,9 @@
     { k: "15m", g: 900,   bars: 60, span: "last 15 hours" },
     { k: "30m", g: 900, agg: 2, bars: 48, span: "last day" },
     { k: "1h",  g: 3600,  bars: 48, span: "last 2 days" },
-    { k: "1d",  g: 86400, bars: 60, span: "last 2 months" }
+    { k: "1d",  g: 86400, bars: 60, span: "last 2 months" },
+    { k: "1w",  g: 86400, agg: 7,  bars: 52, span: "weekly · last ~10 months" },
+    { k: "1mo", g: 86400, agg: 30, bars: 24, span: "monthly · last ~10 months" }
   ];
   function tfDef(k) { for (var i = 0; i < TF_DEFS.length; i++) if (TF_DEFS[i].k === k) return TF_DEFS[i]; return TF_DEFS[0]; }
   // Aggregate finer candles into bigger OHLC bars (e.g. 30m = two 15m bars) so candlesticks work.
