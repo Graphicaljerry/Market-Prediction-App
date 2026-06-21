@@ -78,6 +78,21 @@ export default {
         for (const c of AUTO_COINS) { const r = await kvGetRaw(env, "picks:" + c); if (r) out[c] = r; }
         return json(out);
       }
+      // One-time cleanup: ?reset=ETH zeroes the auto-tracker's record for a coin (hit-rate
+      // counters + history + pending) so it rebuilds on correctly-graded rounds only. The learned
+      // model is kept by default (it self-heals); add &model=1 to wipe that too. Honors
+      // ACCESS_TOKEN like the POST path — set that secret first if you want this locked down.
+      if (u.searchParams.has("reset")) {
+        if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
+        const coin = (u.searchParams.get("reset") || "").toUpperCase();
+        if (!coin) return json({ error: "specify a coin, e.g. ?reset=ETH" }, 400);
+        const prev = (await kvGetRaw(env, "picks:" + coin)) || { coin };
+        const keepModel = u.searchParams.get("model") !== "1";
+        const fresh = { coin, pending: null, history: [], graded: 0, correct: 0, hitRatePct: null, lastActual: null, updated: Date.now() };
+        if (keepModel && prev.model) { fresh.model = prev.model; fresh.learned = prev.learned || null; }
+        await kvPutRaw(env, "picks:" + coin, fresh);
+        return json({ ok: true, coin, reset: true, modelKept: keepModel && !!prev.model, clearedGraded: prev.graded || 0 });
+      }
       // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
     }
