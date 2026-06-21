@@ -242,6 +242,15 @@
   .moveStrip .msDot.up { background: rgba(13,224,89,.16); color: var(--green); border: 1px solid rgba(13,224,89,.4); }
   .moveStrip .msDot.down { background: rgba(255,69,58,.16); color: var(--red); border: 1px solid rgba(255,69,58,.4); }
   .moveStrip .msDot.flat { background: rgba(118,118,128,.18); color: var(--label-2); border: 1px solid rgba(118,118,128,.4); }
+  /* collapsible secondary panels — keep the betting signal the focus, detail one tap away */
+  details.collapsePanel { margin: 0; }
+  .secToggle { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; -webkit-tap-highlight-color: transparent; }
+  .secToggle::-webkit-details-marker { display: none; }
+  .secToggle .ihelp { pointer-events: auto; }
+  .secChevron { margin-left: auto; color: var(--label-3); font-size: 13px; transition: transform .2s; }
+  details[open] > .secToggle .secChevron { transform: rotate(90deg); }
+  .collapseCard { margin-top: 10px; }
+  #liveLean { display: none; }   /* redundant with the tally above — one less line of noise */
 
   /* ---------- Recommendation ---------- */
   .reco { text-align: center; }
@@ -541,13 +550,14 @@
 
   <!-- (AI Co-Pilot is now consolidated into the Auto Pick panel above) -->
 
-  <!-- INDICATORS -->
-  <div class="module">
-  <div class="sec">Live Indicators <span class="tiny">· 15m candles</span> <button class="ihelp" data-info="indicators">?</button></div>
-  <div class="card flat">
-    <div id="indicators"><div class="empty">Loading indicators…</div></div>
-  </div>
-
+  <!-- INDICATORS · collapsed by default so the call stays the focus -->
+  <div class="module m-indicators">
+  <details class="collapsePanel">
+    <summary class="sec secToggle">Live Indicators <span class="tiny" id="indSummary">· the signals behind the %</span><span class="secChevron" aria-hidden="true">▸</span></summary>
+    <div class="card flat collapseCard">
+      <div id="indicators"><div class="empty">Loading indicators…</div></div>
+    </div>
+  </details>
   </div>
 
   <!-- ACCURACY -->
@@ -576,9 +586,10 @@
   </div>
 
   <!-- 24/7 AUTO-TRACKER (server-side, free, runs even when the app is closed) -->
-  <div class="module" id="autoMod" style="display:none">
-  <div class="sec">24/7 Auto-Tracker <span class="tiny">· market + flow, always on</span> <button class="ihelp" data-info="autotracker">?</button></div>
-  <div class="card flat">
+  <div class="module m-autotracker" id="autoMod" style="display:none">
+  <details class="collapsePanel">
+    <summary class="sec secToggle">Benchmark <span class="tiny">· 24/7 auto-tracker · the always-on reality check <button class="ihelp" data-info="autotracker" onclick="event.preventDefault();event.stopPropagation();">?</button></span><span class="secChevron" aria-hidden="true">▸</span></summary>
+    <div class="card flat collapseCard">
     <div id="autoLatest" class="autoLatest"></div>
     <div class="scoreGrid">
       <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
@@ -590,8 +601,8 @@
     <div id="autoHistory" class="history collapsed" style="margin-top:14px"></div>
     <button class="seeMore" id="moreAuto" style="display:none"></button>
     <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. Claude reads this record too.</div>
-  </div>
-
+    </div>
+  </details>
   </div>
   </main>
 
