@@ -196,6 +196,7 @@
     .seg { display: none; }
     .coinSelectWrap { display: flex; }
     .m-chart .chartSec { display: none; }
+    .m-chart .miniChart { height: 220px; }   /* taller on phones — easier to read & scrub */
     .layout .module { margin-top: 18px; }
     .layout .m-hero { margin-top: 0; }
   }
@@ -338,7 +339,7 @@
   .lean.over { color: var(--green); } .lean.under { color: var(--red); } .lean.skip { color: var(--orange); }
 
   /* ---------- Mini live chart ---------- */
-  .miniChart { width: 100%; height: 120px; display: block; margin-top: 12px; border-radius: 10px; background: rgba(44,44,46,0.50); }
+  .miniChart { width: 100%; height: 120px; display: block; margin-top: 12px; border-radius: 10px; background: rgba(44,44,46,0.50); touch-action: pan-y; cursor: crosshair; -webkit-tap-highlight-color: transparent; }
   .miniChartLbl { font-size: 11.5px; color: var(--label-3); text-align: center; margin-top: 7px; font-weight: 500; }
   /* timeframe zoom selector above the chart */
   .tfBar { display: flex; gap: 4px; margin-top: 16px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; touch-action: pan-x; }
@@ -709,7 +710,7 @@
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null,
-    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null,
+    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null,
     chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
     hiConvOnly: (function () { try { return localStorage.getItem("hiConvOnly_v1") === "1"; } catch (e) { return false; } })() };
 
@@ -1562,6 +1563,11 @@
       var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
       ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     }
+    var slotW = W / n;
+    state.chartPts = data.map(function (d, ix) {
+      return { x: candle ? (ix + 0.5) * slotW : X(ix), y: Y(candle ? d.c : d.p), t: d.t, p: candle ? d.c : d.p, o: d.o, h: d.h, l: d.l, c: d.c, candle: candle };
+    });
+    state.chartMeta = { kind: "tf", W: W, H: H, strike: hasStrike ? strike : null, def: def, tf: state.chartTF, candle: candle };
     if (lbl) {
       var dd = hasStrike ? last.p - strike : 0;
       lbl.textContent = !hasStrike ? (state.chartTF + " · " + def.span)
@@ -1572,11 +1578,13 @@
     var cv = $("miniChart"); if (!cv || !cv.getContext) return;
     var W = cv.clientWidth || cv.offsetWidth || 300, H = cv.clientHeight || 120, dpr = window.devicePixelRatio || 1;
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    state.chartPts = null;   // rebuilt by the draw fn below — the hit map the crosshair scrubs against
     if (state.chartTF && state.chartTF !== "live") {
       var ctx2 = cv.getContext("2d"); ctx2.setTransform(dpr, 0, 0, dpr, 0, 0); ctx2.clearRect(0, 0, W, H);
-      return drawTFChart(cv, ctx2, W, H, dpr);
+      drawTFChart(cv, ctx2, W, H, dpr); drawChartCrosshair(ctx2, W, H); return;
     }
-    return drawLiveChart(cv, W, H, dpr);
+    drawLiveChart(cv, W, H, dpr);
+    drawChartCrosshair(cv.getContext("2d"), W, H);
   }
   function drawLiveChart(cv, W, H, dpr) {
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
@@ -1625,11 +1633,53 @@
     var last = hist[hist.length - 1], lastAbove = last.p >= strike;
     ctx.fillStyle = lastAbove ? "#30d158" : "#ff453a";
     ctx.beginPath(); ctx.arc(X(last.t), Y(last.p), 3.5, 0, Math.PI * 2); ctx.fill();
+    state.chartPts = hist.map(function (x) { return { x: X(x.t), y: Y(x.p), t: x.t, p: x.p }; });
+    state.chartMeta = { kind: "live", W: W, H: H, strike: strike };
     ctx.fillStyle = "rgba(235,235,245,.55)"; ctx.font = "10px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
     var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
     ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     if (lbl) lbl.textContent = (lastAbove ? "Above the line → OVER winning now" : "Below the line → UNDER winning now") +
       (rr ? " · " + rangePhrase(rr.pos) + " (H " + fmtMoney(rr.hi) + " / L " + fmtMoney(rr.lo) + ")" : "");
+  }
+
+  // ---------- Crosshair scrub (tap-drag on mobile / hover on desktop to read price at any time) ----------
+  function fmtPointTime(t, meta) {
+    var d = new Date(t);
+    if (!meta || meta.kind === "live") return hms(d);                                  // 2:45:09 PM
+    var g = meta.def ? meta.def.g : 60, agg = meta.def && meta.def.agg ? meta.def.agg : 1;
+    var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    var date = MON[d.getMonth()] + " " + d.getDate();
+    if (g >= 86400) return agg >= 7 ? ("Week of " + date) : (date + ", " + d.getFullYear());   // daily / weekly / monthly
+    return date + " " + hma(d);                                                          // intraday: "Jun 21 2:45 PM"
+  }
+  function drawChartCrosshair(ctx, W, H) {
+    var pts = state.chartPts, meta = state.chartMeta;
+    if (!ctx || !pts || pts.length < 2 || state.hoverX == null) return;
+    var hx = Math.max(0, Math.min(W, state.hoverX)), best = pts[0], bd = Infinity, i, dx;
+    for (i = 0; i < pts.length; i++) { dx = Math.abs(pts[i].x - hx); if (dx < bd) { bd = dx; best = pts[i]; } }
+    var px = best.x, py = best.y, strike = meta ? meta.strike : null;
+    var col = strike != null ? (best.p >= strike ? "#30d158" : "#ff453a") : "#0a84ff";
+    ctx.save();
+    ctx.strokeStyle = "rgba(235,235,245,.32)"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(px, 0); ctx.lineTo(px, H); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(18,18,20,.95)"; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(px, py, 3.6, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,.92)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.stroke();
+    var l1 = fmtMoney(best.p), l2 = fmtPointTime(best.t, meta), l3 = null;
+    if (strike != null) { var ddl = best.p - strike; l3 = (ddl >= 0 ? "+" : "−") + fmtMoney(Math.abs(ddl)) + (ddl >= 0 ? " above" : " below"); }
+    ctx.font = "600 11px -apple-system, system-ui, sans-serif"; var w1 = ctx.measureText(l1).width;
+    ctx.font = "10px -apple-system, system-ui, sans-serif"; var w2 = ctx.measureText(l2).width, w3 = l3 ? ctx.measureText(l3).width : 0;
+    var padX = 8, padY = 6, lineH = 13, boxW = Math.max(w1, w2, w3) + padX * 2, boxH = padY * 2 + lineH * (l3 ? 3 : 2);
+    var bx = px + 12; if (bx + boxW > W) bx = px - 12 - boxW; if (bx < 2) bx = 2;
+    var by = 6; if (py < boxH + 16 && py <= H / 2) by = Math.min(H - boxH - 4, py + 14);
+    ctx.fillStyle = "rgba(22,22,24,.92)"; ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.lineWidth = 1;
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(bx, by, boxW, boxH, 7); ctx.fill(); ctx.stroke(); }
+    else { ctx.fillRect(bx, by, boxW, boxH); ctx.strokeRect(bx, by, boxW, boxH); }
+    ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "#fff"; ctx.font = "600 11px -apple-system, system-ui, sans-serif"; ctx.fillText(l1, bx + padX, by + padY + 10);
+    ctx.fillStyle = "rgba(235,235,245,.6)"; ctx.font = "10px -apple-system, system-ui, sans-serif"; ctx.fillText(l2, bx + padX, by + padY + 10 + lineH);
+    if (l3) { ctx.fillStyle = col; ctx.fillText(l3, bx + padX, by + padY + 10 + lineH * 2); }
+    ctx.restore();
   }
 
   // Live "Price to beat" / Over-Under status vs the strike captured at round open.
@@ -2324,6 +2374,30 @@
   (function () { var b = $("moreAuto"); if (b) b.addEventListener("click", function () { $("autoHistory").classList.toggle("collapsed"); updateSeeMore("autoHistory", "moreAuto", _autoHistLen); }); })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
   window.addEventListener("resize", drawMiniChart);
+
+  // Scrub the chart to read the exact price at any point in time — touch-drag on mobile, hover on desktop.
+  (function () {
+    var cv = $("miniChart"); if (!cv) return;
+    function setHover(clientX) { var r = cv.getBoundingClientRect(); state.hoverX = clientX - r.left; drawMiniChart(); }
+    function clearHover() { if (state.hoverX != null) { state.hoverX = null; drawMiniChart(); } }
+    if (window.PointerEvent) {
+      cv.addEventListener("pointerdown", function (e) { setHover(e.clientX); if (e.pointerType !== "mouse") { try { cv.setPointerCapture(e.pointerId); } catch (x) {} } });
+      cv.addEventListener("pointermove", function (e) {
+        if (e.pointerType === "mouse") { setHover(e.clientX); return; }                                  // desktop: hover to read
+        if (e.buttons || (cv.hasPointerCapture && cv.hasPointerCapture(e.pointerId))) { e.preventDefault(); setHover(e.clientX); }   // touch: only while pressed
+      });
+      cv.addEventListener("pointerup", clearHover);
+      cv.addEventListener("pointercancel", clearHover);
+      cv.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse") clearHover(); });
+    } else {
+      cv.addEventListener("mousemove", function (e) { setHover(e.clientX); });
+      cv.addEventListener("mouseleave", clearHover);
+      cv.addEventListener("touchstart", function (e) { if (e.touches[0]) setHover(e.touches[0].clientX); }, { passive: true });
+      cv.addEventListener("touchmove", function (e) { if (e.touches[0]) { e.preventDefault(); setHover(e.touches[0].clientX); } }, { passive: false });
+      cv.addEventListener("touchend", clearHover);
+      cv.addEventListener("touchcancel", clearHover);
+    }
+  })();
   // Pause the ambient glow drift while the page is actively scrolling, then resume shortly
   // after it stops — keeps mobile scrolling smooth without losing the idle motion.
   (function () { var t; window.addEventListener("scroll", function () {
