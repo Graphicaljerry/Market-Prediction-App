@@ -179,7 +179,7 @@
   /* grid-area names — applied only when .layout becomes a grid (tablet/desktop); ignored on mobile */
   .m-hero { grid-area: hero; } .m-timer { grid-area: timer; } .m-signal { grid-area: signal; }
   .m-chart { grid-area: chart; } .m-read { grid-area: read; } .m-indicators { grid-area: ind; }
-  .m-accuracy { grid-area: acc; } .m-recent { grid-area: recent; } .m-autotracker { grid-area: auto; }
+  .m-autotracker { grid-area: auto; }
 
   /* MOBILE (default, < 768px): dropdown coin picker, single vertical stack */
   @media (max-width: 767px) {
@@ -210,7 +210,6 @@
         "chart  chart"
         "read   read"
         "ind    ind"
-        "acc    recent"
         "auto   auto"; }
     .m-chart .chartSec { display: none; }
     .m-chart .miniChart { height: 320px; }
@@ -225,10 +224,9 @@
       grid-template-areas:
         "hero   chart  timer"
         "signal chart  read"
-        "signal chart  acc"
-        "signal chart  recent"
-        "ind    ind    ind"
-        "auto   auto   auto"; }
+        "signal chart  auto"
+        "signal chart  auto"
+        "ind    ind    ind"; }
     /* fixed, stable chart height on desktop — no longer stretches to match the side columns */
     .m-chart { align-self: start; }
     .m-chart .miniChart { height: 600px; }
@@ -647,49 +645,23 @@
   </details>
   </div>
 
-  <!-- ACCURACY -->
-  <div class="module m-accuracy">
-  <div class="sec">Pick Accuracy <span class="tiny">· auto-graded</span> <button class="ihelp" data-info="accuracy">?</button></div>
+  <!-- TRACK RECORD — 24/7 auto-tracker (server-side, free; grades a round every 15 min even when the app is closed) -->
+  <div class="module m-autotracker" id="autoMod">
+  <div class="sec">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button></div>
   <div class="card flat">
-    <div class="scoreGrid">
-      <div class="stat"><div class="v mono" id="sGraded">0</div><div class="k">Rounds</div></div>
-      <div class="stat"><div class="v mono pos" id="sCorrect">0</div><div class="k">Correct</div></div>
-      <div class="stat"><div class="v mono" id="sStreak">0</div><div class="k">Streak</div></div>
-      <div class="stat"><div class="v mono" id="sHitRate">—</div><div class="k">Hit Rate</div></div>
-    </div>
-    <div class="accNote" id="accNote">Grading begins at the next 15-min close.</div>
-  </div>
-
-  </div>
-
-  <!-- HISTORY -->
-  <div class="module m-recent">
-  <div class="sec">Recent Rounds <span class="tiny" id="recentCount">· auto-graded</span> <button class="clearBtn" id="clearLog">Clear</button></div>
-  <div class="card flat">
-    <div id="history" class="history collapsed"><div class="empty">No graded rounds yet.</div></div>
-    <button class="seeMore" id="moreRounds" style="display:none"></button>
-  </div>
-
-  </div>
-
-  <!-- 24/7 AUTO-TRACKER (server-side, free, runs even when the app is closed) -->
-  <div class="module m-autotracker" id="autoMod" style="display:none">
-  <details class="collapsePanel">
-    <summary class="sec secToggle">Benchmark <span class="tiny">· 24/7 auto-tracker · the always-on reality check <button class="ihelp" data-info="autotracker" onclick="event.preventDefault();event.stopPropagation();">?</button></span><span class="secChevron" aria-hidden="true">▸</span></summary>
-    <div class="card flat collapseCard">
     <div id="autoLatest" class="autoLatest"></div>
     <div class="scoreGrid">
       <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
-      <div class="stat"><div class="v mono" id="aCorrect">0</div><div class="k">Correct</div></div>
+      <div class="stat"><div class="v mono pos" id="aCorrect">0</div><div class="k">Correct</div></div>
       <div class="stat"><div class="v mono" id="aHit">—</div><div class="k">Hit Rate</div></div>
       <div class="stat"><div class="v mono" id="aPick">—</div><div class="k">Now</div></div>
     </div>
     <div id="autoLearned" class="autoLearned"></div>
-    <div id="autoHistory" class="history collapsed" style="margin-top:14px"></div>
+    <div class="sec" style="margin-top:20px">Recent Rounds</div>
+    <div id="autoHistory" class="history collapsed"><div class="empty">Warming up — grades a round every 15 minutes, even while you're away.</div></div>
     <button class="seeMore" id="moreAuto" style="display:none"></button>
     <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. Claude reads this record too.</div>
-    </div>
-  </details>
+  </div>
   </div>
   </main>
   </div><!-- /.layout -->
@@ -1907,6 +1879,7 @@
   function loadRounds() { try { var s = localStorage.getItem("pickTracker_v1"); if (s) state.rounds = JSON.parse(s) || []; } catch (e) {} }
 
   function renderAccuracy() {
+    if (!$("sGraded")) return;   // Pick Accuracy panel retired — the 24/7 Track Record is the scoreboard now
     // Score only the rounds the Co-Pilot actually bet (rec.correct defined); sat-out rounds are
     // listed in the log but don't count toward the hit rate or streak.
     var rounds = state.rounds, scored = 0, correct = 0, streak = 0, sat = 0, i, r;
@@ -1935,6 +1908,7 @@
     b.textContent = $(histId).classList.contains("collapsed") ? ("See all " + n + "  ↓") : "Show fewer  ↑";
   }
   function renderRounds() {
+    if (!$("history")) return;   // client Recent Rounds retired — the 24/7 Track Record lists rounds now
     var n = state.rounds.length;
     if (!n) { $("history").innerHTML = '<div class="empty">No rounds yet — they will appear here as each 15-min round closes.</div>'; }
     else {
@@ -2196,8 +2170,7 @@
     state.lastAuto = d || null; renderConsensus();   // keep the "which to follow" line in sync with the tracker
     renderMoveStrip();                                // refresh the "Recent 15-min" arrows from the freshly graded history
     var has = d && !d.empty && (d.pending || (d.history && d.history.length));
-    if (!has) { mod.style.display = "none"; return; }
-    mod.style.display = "";
+    if (!has) return;   // stay visible with the warming-up placeholder — the tracker is the primary scoreboard now
     var graded = d.graded || 0, correct = d.correct || 0, p = d.pending;
     $("aGraded").textContent = graded;
     $("aCorrect").textContent = correct;
