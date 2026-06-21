@@ -536,6 +536,18 @@ async function cbMicro(product) {
   }
   return { price: pN, mom, sig, rngClose };   // sig = per-minute log-return stdev
 }
+// The price AT a round's close: the finalized 1-min candle that ENDS exactly at closeMs (its
+// close ≈ the boundary price Coinbase shows and Kalshi settles near). Grading off the latest /
+// still-forming candle instead let a late cron or a post-close tick settle a round on the wrong
+// side of the line — the same mis-grade we fixed in the client.
+async function cbCloseAt(product, closeMs) {
+  if (!(closeMs > 0)) return null;
+  const rows = await cbJson(`/products/${product}/candles?granularity=60`).catch(() => null);
+  if (!Array.isArray(rows)) return null;
+  const bucket = Math.floor(closeMs / 1000) - 60;   // 1-min candle covering [closeMs-60s, closeMs]
+  for (const r of rows) if (r[0] === bucket) return r[4];   // r = [time,low,high,open,close,vol]
+  return null;
+}
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
 async function cbObi(product) {
   const j = await cbJson(`/products/${product}/book?level=2`);
@@ -658,20 +670,26 @@ async function runCoinPick(env, coin, global) {
   const rec = (await kvGetRaw(env, key)) || { coin, pending: null, history: [], graded: 0, correct: 0 };
   const coinModel = padModel(rec.model || newModel());
 
-  // 1) grade the previous pick once its round has closed — and LEARN from the outcome
+  // 1) grade the previous pick once its round has closed — and LEARN from the outcome.
+  // Settle against the price AT THE CLOSE (the finalized 1-min candle ending at closeMs), NOT the
+  // live price when this cron happens to run — a late cron or a post-close tick used to flip rounds.
   const p = rec.pending;
-  if (p && micro && typeof micro.price === "number" && Date.now() >= (p.closeMs || 0)) {
+  if (p && Date.now() >= (p.closeMs || 0)) {
     if (typeof p.strike === "number" && (p.side === "OVER" || p.side === "UNDER")) {
-      const actual = micro.price > p.strike ? "OVER" : micro.price < p.strike ? "UNDER" : "FLAT";
-      if (actual !== "FLAT") {
-        const correct = actual === p.side;
-        rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: micro.price });
-        if (rec.history.length > 200) rec.history.pop();
-        rec.graded++; if (correct) rec.correct++;
-        // online update: the round's open-features -> did it finish OVER (1) or UNDER (0)?
-        const closeOver = micro.price > (typeof p.openPrice === "number" ? p.openPrice : p.strike) ? 1 : 0;
-        if (Array.isArray(p.feat)) { trainModel(coinModel, p.feat, closeOver); trainModel(global, p.feat, closeOver); }
-        rec.lastActual = actual;
+      let settle = await cbCloseAt(product, p.closeMs);
+      if (settle == null && micro && typeof micro.price === "number") settle = micro.price;   // last resort if the close candle is missing
+      if (typeof settle === "number") {
+        const actual = settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT";
+        if (actual !== "FLAT") {
+          const correct = actual === p.side;
+          rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: settle });
+          if (rec.history.length > 200) rec.history.pop();
+          rec.graded++; if (correct) rec.correct++;
+          // online update: the round's open-features -> did it finish OVER (1) or UNDER (0)?
+          const closeOver = settle > (typeof p.openPrice === "number" ? p.openPrice : p.strike) ? 1 : 0;
+          if (Array.isArray(p.feat)) { trainModel(coinModel, p.feat, closeOver); trainModel(global, p.feat, closeOver); }
+          rec.lastActual = actual;
+        }
       }
     }
     rec.pending = null;
