@@ -119,7 +119,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil((async () => {
       const coins = AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]);
-      const global = (await kvGetRaw(env, "model:global")) || newModel();
+      const global = padModel((await kvGetRaw(env, "model:global")) || newModel());
       for (const c of coins) { try { await runCoinPick(env, c, global); } catch (_) {} }
       await kvPutRaw(env, "model:global", global);
     })());
@@ -311,6 +311,8 @@ function buildPrompt(body, crowd, autopicks) {
     typeof m.sigRoundPct === "number" ? `Typical full-round move (volatility): ±${fnum(m.sigRoundPct, 3)}%` : null,
     typeof m.barrierOverPct === "number" ? `Position model P(OVER) — distance vs time-left vs volatility: ${Math.round(m.barrierOverPct)}%` : null,
     typeof m.momentumPct === "number" ? `Short-term momentum (last few min): ${m.momentumPct >= 0 ? "+" : ""}${fnum(m.momentumPct, 4)}%/min` : null,
+    typeof m.roundHigh === "number" && typeof m.roundLow === "number" ? `This round's graph so far — high ${fnum(m.roundHigh, 2)}, low ${fnum(m.roundLow, 2)}${typeof m.rangePosPct === "number" ? `; price is sitting ${Math.round(m.rangePosPct)}% of the way up that range (100% = at the high, 0% = at the low)` : ""}.` : null,
+    typeof m.highVsLinePct === "number" && typeof m.lowVsLinePct === "number" ? `Range vs the line: the high reached ${m.highVsLinePct >= 0 ? "+" : ""}${fnum(m.highVsLinePct, 3)}% (${m.highVsLinePct >= 0 ? "above" : "below"} the line), the low ${m.lowVsLinePct >= 0 ? "+" : ""}${fnum(m.lowVsLinePct, 3)}%. Read it: price repeatedly testing a side and failing to hold = mean-reversion risk; fresh highs/lows toward the close = momentum.` : null,
   ].filter(Boolean).join("\n");
 
   const indicators = (body.indicators || []).map((i) => `- ${i.name}: ${i.value} (${i.label})`).join("\n");
@@ -523,7 +525,16 @@ async function cbMicro(product) {
   for (let i = L - win; i < L; i++) { const a = closes[i - 1], b = closes[i]; if (a > 0 && b > 0) rets.push(Math.log(b / a)); }
   let sig = 0;
   if (rets.length > 3) { const m = rets.reduce((s, x) => s + x, 0) / rets.length; sig = Math.sqrt(rets.reduce((s, x) => s + (x - m) * (x - m), 0) / (rets.length - 1)); }
-  return { price: pN, mom, sig };   // sig = per-minute log-return stdev
+  // Shape of the just-closed ~15-min round: where the latest price sits in that round's own
+  // high–low range (+1 = closed at the round high, −1 = at the low) — a momentum/exhaustion tell.
+  const seg = rows.slice(0, 15);   // rows are newest-first → the most recent ~15 one-minute candles
+  let rngClose = 0;
+  if (seg.length >= 8) {
+    let hi = -Infinity, lo = Infinity;
+    for (const r of seg) { if (r[2] > hi) hi = r[2]; if (r[1] < lo) lo = r[1]; }   // candle = [time,low,high,open,close,vol]
+    if (hi > lo) rngClose = clampF((seg[0][4] - lo) / (hi - lo) * 2 - 1, -1, 1);
+  }
+  return { price: pN, mom, sig, rngClose };   // sig = per-minute log-return stdev
 }
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
 async function cbObi(product) {
@@ -566,7 +577,7 @@ async function kvPutRaw(env, key, val) {
 // Cont 2018, arXiv:1803.06917; Bugaenko 2004.08290), and a *pooled* feature→move mapping is
 // "universal" and beats isolated per-asset models — so we partial-pool each coin toward a
 // shared global model, weighted by how much data the coin has earned.
-const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin", "todCos"];
+const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin", "todCos", "rangeClose"];
 // Constant LR (NOT 1/sqrt(t)) so the model keeps tracking a drifting market; strong-ish L2
 // because samples are scarce. Tuning per research synthesis (online logistic regression
 // under distribution shift): eta ~0.05-0.15, L2 ~3e-3-1e-2.
@@ -575,7 +586,10 @@ const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin"
 // has earned data. Research: features are universal across coins (pool the mapping), and a
 // real 53% edge needs ~2.5k samples to confirm — so stay humble and shrink hard.
 const LR = 0.05, L2 = 0.008, POOL_K = 150, GATE_N = 300;
-function newModel() { return { w: [0, 0, 0, 0, 0, 0, 0], b: 0, n: 0, avgSig: null }; }
+function newModel() { return { w: FEATS.map(() => 0), b: 0, n: 0, avgSig: null }; }
+// Saved models predate later features — pad the weight vector so dimensions line up (new
+// weights start at 0, so a migrated model behaves identically until it learns the new signal).
+function padModel(m) { if (m && Array.isArray(m.w)) { while (m.w.length < FEATS.length) m.w.push(0); } return m; }
 function sigmoid(z) { return 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z)))); }
 function clampF(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
 // Build the standardized feature vector at round open. `prevActual` is last round's result.
@@ -588,8 +602,9 @@ function featuresFor(model, signals, prevActual, ts) {
   }
   const crowdLean = typeof signals.crowdOver === "number" ? clampF((signals.crowdOver / 100 - 0.5) * 2, -1, 1) : 0;
   const lastDir = prevActual === "OVER" ? 1 : prevActual === "UNDER" ? -1 : 0;
+  const rngClose = typeof signals.rngClose === "number" ? clampF(signals.rngClose, -1, 1) : 0;
   const hourFrac = ((new Date(ts).getUTCHours()) + new Date(ts).getUTCMinutes() / 60) / 24;
-  return [obi, mom, volr, crowdLean, lastDir, Math.sin(2 * Math.PI * hourFrac), Math.cos(2 * Math.PI * hourFrac)];
+  return [obi, mom, volr, crowdLean, lastDir, Math.sin(2 * Math.PI * hourFrac), Math.cos(2 * Math.PI * hourFrac), rngClose];
 }
 function scoreModel(model, f) { let z = model.b; for (let i = 0; i < f.length; i++) z += model.w[i] * f[i]; return z; }
 // Partial-pooled probability: blend the coin's linear score toward the pooled (global) one by
@@ -617,6 +632,7 @@ function modelInsights(coin, global, history) {
   if (Math.abs(w[0]) > 0.12) tend.push(w[0] > 0 ? "buy-side order-book pressure has led to OVER" : "order-book pressure has been contrarian");
   if (Math.abs(w[4]) > 0.12) tend.push(w[4] > 0 ? "tends to repeat last round's direction" : "tends to reverse last round's direction");
   if (Math.abs(w[2]) > 0.12) tend.push(w[2] > 0 ? "more likely OVER when volatility is rising" : "more likely UNDER when volatility is rising");
+  if (w.length > 7 && Math.abs(w[7]) > 0.12) tend.push(w[7] > 0 ? "tends to keep going when the prior round closed near an extreme (momentum)" : "tends to reverse when the prior round closed near an extreme (mean-reversion)");
   // round-to-round transition rates from graded history (interpretable regime read)
   let uu = 0, un = 0, du = 0, dn = 0;
   for (let i = 0; i + 1 < history.length; i++) {
@@ -640,7 +656,7 @@ async function runCoinPick(env, coin, global) {
   ]);
   const key = "picks:" + coin;
   const rec = (await kvGetRaw(env, key)) || { coin, pending: null, history: [], graded: 0, correct: 0 };
-  const coinModel = rec.model || newModel();
+  const coinModel = padModel(rec.model || newModel());
 
   // 1) grade the previous pick once its round has closed — and LEARN from the outcome
   const p = rec.pending;
@@ -663,7 +679,7 @@ async function runCoinPick(env, coin, global) {
 
   // 2) make a fresh pick for the round that just opened (the current Kalshi market)
   if (crowd && typeof crowd.overPct === "number" && typeof crowd.strike === "number") {
-    const sigVals = { crowdOver: crowd.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig };
+    const sigVals = { crowdOver: crowd.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose };
     const nowTs = Date.now();
     const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
     if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;

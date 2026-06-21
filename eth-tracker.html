@@ -846,6 +846,29 @@
     if (mo == null) return null;
     return Math.max(0.35, Math.min(0.65, 0.5 + 0.5 * Math.tanh(mo * 120)));
   }
+  // The intra-round price path's high & low (the "graph" for THIS round) and where price sits
+  // between them. Built from the live price trace, anchored at the round open. Null until
+  // there's a real range to read.
+  function roundRange() {
+    var h = state.priceHist; if (!h || h.length < 3) return null;
+    var hi = -Infinity, lo = Infinity, i, p;
+    for (i = 0; i < h.length; i++) { p = h[i].p; if (p > hi) hi = p; if (p < lo) lo = p; }
+    if (!(hi > lo)) return null;
+    var price = state.lastPrice == null ? h[h.length - 1].p : state.lastPrice;
+    return { hi: hi, lo: lo, pos: Math.max(0, Math.min(1, (price - lo) / (hi - lo))) };   // pos: 0 = at the round low, 1 = at the round high
+  }
+  // Where price sits within its own round range — a gentle continuation tilt: near the round
+  // HIGH it's been climbing (mild OVER), near the LOW it's been sinking (mild UNDER). Small
+  // weight and gated to mid-round (the first few minutes carve too thin a range to mean much);
+  // the per-coin learned model refines the true sign over time.
+  function rangeOver() {
+    if (nextModeNow()) return null;                                          // next round has no graph yet
+    var elapsed = 900 - (state.remaining == null ? 900 : state.remaining);
+    if (elapsed < 180) return null;                                          // < 3 min in: range too thin
+    var r = roundRange(), strike = roundStrike();
+    if (!r || strike == null || (r.hi - r.lo) / strike < 0.0005) return null;  // negligible range → no signal
+    return Math.max(0.4, Math.min(0.6, 0.5 + 0.3 * (r.pos - 0.5)));
+  }
   // Standard normal CDF (Abramowitz & Stegun 26.2.17) — for the position/barrier model.
   function normCdf(z) {
     var t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989422804 * Math.exp(-z * z / 2);
@@ -888,6 +911,7 @@
     parts.push({ p: indOver(reco), w: 0.22 });                                         // TA indicators (correlated → modest)
     var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.07 });                // order-book nudge
     var mo = momOver(); if (mo != null) parts.push({ p: mo, w: 0.08 });                // short-term momentum
+    var rg = rangeOver(); if (rg != null) parts.push({ p: rg, w: 0.07 });              // where price sits in its round high–low range
     var wsum = 0, acc = 0;
     parts.forEach(function (x) { wsum += x.w; acc += x.p * x.w; });
     return wsum ? acc / wsum : 0.5;
@@ -922,7 +946,8 @@
       obi: ob == null ? null : Math.round(ob * 100) / 100,
       ai: state.lastAI && state.lastAI.verdict ? state.lastAI.verdict : null,
       crowd: state.lastCrowd && typeof state.lastCrowd.overPct === "number" ? Math.round(state.lastCrowd.overPct) : null,
-      conv: reco ? convictionFor(reco).level : null
+      conv: reco ? convictionFor(reco).level : null,
+      rngPos: (function () { var r = roundRange(); return r ? Math.round(r.pos * 100) / 100 : null; })()
     };
   }
 
@@ -1358,6 +1383,18 @@
     }
     ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(235,235,245,.4)"; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(W, yS); ctx.stroke(); ctx.setLineDash([]);
+    // this round's HIGH and LOW as faint guides on the graph (the extremes the AI now reads)
+    var rr = roundRange();
+    if (rr) {
+      var yH = Y(rr.hi), yL = Y(rr.lo);
+      ctx.setLineDash([2, 3]); ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(48,209,88,.32)"; ctx.beginPath(); ctx.moveTo(0, yH); ctx.lineTo(W, yH); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,69,58,.32)"; ctx.beginPath(); ctx.moveTo(0, yL); ctx.lineTo(W, yL); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = "9px -apple-system, system-ui, sans-serif"; ctx.textAlign = "right";
+      ctx.fillStyle = "rgba(48,209,88,.8)"; ctx.fillText("H " + fmtMoney(rr.hi), W - 4, yH - 3 < 11 ? yH + 11 : yH - 3);
+      ctx.fillStyle = "rgba(255,69,58,.8)"; ctx.fillText("L " + fmtMoney(rr.lo), W - 4, yL - 3 < 11 ? yL + 11 : yL - 3);
+    }
     ctx.lineWidth = 2; ctx.lineJoin = "round";
     for (i = 0; i < hist.length - 1; i++) {
       a = hist[i]; b = hist[i + 1]; above = (a.p + b.p) / 2 >= strike;
@@ -1370,7 +1407,8 @@
     ctx.fillStyle = "rgba(235,235,245,.55)"; ctx.font = "10px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
     var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
     ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
-    if (lbl) lbl.textContent = lastAbove ? "Above the line → OVER is winning right now" : "Below the line → UNDER is winning right now";
+    if (lbl) lbl.textContent = (lastAbove ? "Above the line → OVER winning now" : "Below the line → UNDER winning now") +
+      (rr ? " · " + Math.round(rr.pos * 100) + "% up its range (H " + fmtMoney(rr.hi) + " / L " + fmtMoney(rr.lo) + ")" : "");
   }
 
   // Live "Price to beat" / Over-Under status vs the strike captured at round open.
@@ -1703,6 +1741,7 @@
     var d = (strike != null && price != null) ? price - strike : null;
     var sigRound = (state.micro && state.micro.sigRound) ? state.micro.sigRound : sigmaRoundFallback();
     var b = barrierOver();   // null in next-round mode
+    var rr = nextMode ? null : roundRange();   // this round's high/low graph (none yet for the next round)
     return {
       // In next-round mode the line resets to ≈the live price at open, so distance ≈ 0 there.
       distance: nextMode ? 0 : d,
@@ -1710,6 +1749,13 @@
       sigRoundPct: sigRound != null ? (Math.exp(sigRound) - 1) * 100 : null,
       barrierOverPct: b != null ? b * 100 : null,
       momentumPct: (state.micro && typeof state.micro.mom === "number") ? (Math.exp(state.micro.mom) - 1) * 100 : null,
+      // This round's graph extremes — high, low, where price sits in that range, and how far
+      // each extreme pushed past the line. Lets the AI weigh momentum vs. failed tests.
+      roundHigh: rr ? rr.hi : null,
+      roundLow: rr ? rr.lo : null,
+      rangePosPct: rr ? Math.round(rr.pos * 100) : null,
+      highVsLinePct: (rr && strike) ? (rr.hi - strike) / strike * 100 : null,
+      lowVsLinePct: (rr && strike) ? (rr.lo - strike) / strike * 100 : null,
       timeLeftSec: Math.max(0, Math.floor((currentRoundEnd - new Date()) / 1000))
     };
   }

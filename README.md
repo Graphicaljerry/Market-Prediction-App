@@ -19,6 +19,16 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Per-round high/low ("the graph") as a signal.** The intra-round price path's **high and
+  low** are now drawn on the live chart (dotted guides + labels) and read everywhere: where
+  price sits in that range gives a gentle continuation tilt in the blended probability, the
+  high/low (and how far each pushed past the line) are handed to **Claude** so it can weigh
+  momentum vs. failed tests, and the per-coin **learned model** gains a "where did last round
+  close in its range" feature (existing models migrate forward automatically).
+- **Smoother scrolling + next-round indicator.** Fixed a mobile scroll snag (the page no longer
+  springs back when a control re-renders; ambient glow pauses while you scroll). The timer card
+  now shows the **next round's** lean, firming to a locked pick in the final 2 min, and the AI
+  rationale is tucked into a tidy **"AI summary"** dropdown.
 - **24/7 auto-tracker (free, in-app).** A scheduled Cloudflare Worker (cron, every 15 min)
   makes a market-anchored pick from **free data only** — Kalshi price + 1-min momentum +
   order book, **no LLM** — and grades the previous round, building an always-on per-coin
