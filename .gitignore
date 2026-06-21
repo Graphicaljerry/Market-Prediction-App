@@ -1,3 +1,7 @@
 node_modules/
 tools/preview.png
 tools/*.png
+# local preview tooling only (npm install puppeteer) — kept out of the repo root
+# so Cloudflare's git-connected Worker build doesn't try to install it
+package.json
+package-lock.json
