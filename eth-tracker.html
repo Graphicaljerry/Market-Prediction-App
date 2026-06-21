@@ -74,27 +74,33 @@
   }
   .card.orb::before, .card.orb::after {
     content: ""; position: absolute; z-index: -1; pointer-events: none;
-    border-radius: 50%; filter: blur(34px); opacity: 1;
+    border-radius: 50%; filter: blur(52px); opacity: 1;
     transition: background .9s ease; will-change: transform;
   }
-  /* big soft glow that sits BEHIND the glass and spills out past the card edges */
-  .card.orb::before { width: 80%; height: 92%; right: -12%; top: -14%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.46), transparent 72%);
+  /* big soft glow behind the glass — gentle multi-stop falloff to fully transparent so there is
+     no hard disc edge; heavy blur feathers it further (bumped again on desktop below). */
+  .card.orb::before { width: 92%; height: 104%; right: -16%; top: -20%;
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.42) 0%, rgba(var(--accent-rgb), 0.13) 46%, transparent 90%);
     animation: orbCircleA 26s linear infinite; }
-  .card.orb::after  { width: 64%; height: 72%; left: -12%; bottom: -14%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.28), transparent 72%);
+  .card.orb::after  { width: 74%; height: 84%; left: -16%; bottom: -20%;
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.24) 0%, rgba(var(--accent-rgb), 0.08) 46%, transparent 90%);
     animation: orbCircleB 34s linear infinite; }
   /* slow, subtle circular drift (the element orbits ~9px without spinning itself) */
   @keyframes orbCircleA { from { transform: rotate(0deg) translateX(9px) rotate(0deg); } to { transform: rotate(360deg) translateX(9px) rotate(-360deg); } }
   @keyframes orbCircleB { from { transform: rotate(0deg) translateX(12px) rotate(0deg); } to { transform: rotate(-360deg) translateX(12px) rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .card.orb::before, .card.orb::after { animation: none; } }
   /* free-floating page orbs (scroll with the page, not the viewport) — also drift gently */
-  .pageGlow { position: absolute; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(40px);
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.16), transparent 70%); transition: background .9s ease; will-change: transform; }
+  .pageGlow { position: absolute; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(64px);
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.15) 0%, rgba(var(--accent-rgb), 0.05) 48%, transparent 92%); transition: background .9s ease; will-change: transform; }
   .pageGlow.g1 { width: 300px; height: 200px; right: -60px; top: 360px; animation: orbCircleB 40s linear infinite; }
   .pageGlow.g2 { width: 440px; height: 420px; left: -130px; bottom: 60px; animation: orbCircleA 52s linear infinite; }
   .pageGlow.g3 { width: 400px; height: 380px; right: -110px; bottom: 0; animation: orbCircleB 46s linear infinite; }
   @media (prefers-reduced-motion: reduce) { .pageGlow { animation: none; } }
+  /* on big screens the orbs are largest, so feather them even more to kill any visible edge */
+  @media (min-width: 1024px) {
+    .card.orb::before, .card.orb::after { filter: blur(76px); }
+    .pageGlow { filter: blur(104px); }
+  }
 
   .mono { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
@@ -332,6 +338,14 @@
     border: 1px solid var(--separator); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .18s ease; }
   .tfBtn.active { background: var(--surface-3); color: var(--label); border-color: transparent; }
   .tfBtn:active { opacity: .6; }
+  /* chart header row: timeframe bar (scrolls) + line/candles toggle (pinned right) */
+  .chartHead { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+  .chartHead .tfBar { margin-top: 0; flex: 1 1 auto; min-width: 0; }
+  .chartType { display: flex; gap: 2px; flex: 0 0 auto; background: rgba(28,28,30,0.55); border: 1px solid rgba(255,255,255,0.07); border-radius: 9px; padding: 2px; }
+  .chartType button { flex: 0 0 auto; min-height: 26px; padding: 3px 10px; border-radius: 7px; background: transparent; color: var(--label-2);
+    border: none; font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .18s ease; }
+  .chartType button.active { background: var(--surface-3); color: var(--label); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+  .chartType button:active { opacity: .6; }
 
 
   /* ---------- Indicators ---------- */
@@ -559,6 +573,7 @@
   <div class="module m-chart">
   <div class="sec chartSec" id="chartSec">ETH / USD <span class="tiny">· 15m</span></div>
   <div class="card orb chartCard">
+    <div class="chartHead">
     <div class="tfBar" id="tfBar">
       <button class="tfBtn active" data-tf="live">Live</button>
       <button class="tfBtn" data-tf="1m">1m</button>
@@ -568,6 +583,11 @@
       <button class="tfBtn" data-tf="30m">30m</button>
       <button class="tfBtn" data-tf="1h">1h</button>
       <button class="tfBtn" data-tf="1d">1d</button>
+    </div>
+    <div class="chartType" id="chartType">
+      <button type="button" data-ct="line" class="active">Line</button>
+      <button type="button" data-ct="candle">Candles</button>
+    </div>
     </div>
     <canvas id="miniChart" class="miniChart"></canvas>
     <div class="miniChartLbl" id="miniChartLbl">Live price vs the line you must beat</div>
@@ -702,7 +722,8 @@
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null,
-    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null };
+    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null,
+    chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })() };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -1423,11 +1444,16 @@
     { k: "1d",  g: 86400, bars: 60, span: "last 2 months" }
   ];
   function tfDef(k) { for (var i = 0; i < TF_DEFS.length; i++) if (TF_DEFS[i].k === k) return TF_DEFS[i]; return TF_DEFS[0]; }
-  function aggClosesByTime(candles, stepMs) {
+  // Aggregate finer candles into bigger OHLC bars (e.g. 30m = two 15m bars) so candlesticks work.
+  function aggOHLC(candles, stepMs) {
     var buckets = {}, order = [];
-    candles.forEach(function (c) { var key = Math.floor(c.t / stepMs); if (!(key in buckets)) order.push(key); buckets[key] = { t: c.t, p: c.c }; });
+    candles.forEach(function (c) {
+      var key = Math.floor(c.t / stepMs), b = buckets[key];
+      if (!b) { buckets[key] = { t: c.t, o: c.o, h: c.h, l: c.l, c: c.c }; order.push(key); }
+      else { b.h = Math.max(b.h, c.h); b.l = Math.min(b.l, c.l); b.c = c.c; b.t = c.t; }
+    });
     order.sort(function (a, b) { return a - b; });
-    return order.map(function (k) { return buckets[k]; });
+    return order.map(function (k) { var b = buckets[k]; b.p = b.c; return b; });
   }
   function loadTFCloses(coin, def) {
     var ck = coin + "|" + def.k, cached = state.tfCache[ck];
@@ -1435,8 +1461,9 @@
     var url = "https://api.exchange.coinbase.com/products/" + COINS[coin].cbProduct + "/candles?granularity=" + def.g;
     return fetch(url, { cache: "no-store" }).then(function (r) { if (!r.ok) throw 0; return r.json(); }).then(function (rows) {
       if (!Array.isArray(rows) || !rows.length) throw 0;
-      var cs = rows.map(function (x) { return { t: x[0] * 1000, c: x[4] }; }).sort(function (a, b) { return a.t - b.t; });
-      var series = def.agg ? aggClosesByTime(cs, def.g * def.agg * 1000) : cs.map(function (c) { return { t: c.t, p: c.c }; });
+      // Coinbase candle = [time, low, high, open, close, vol]. Keep full OHLC (p=close for the line).
+      var cs = rows.map(function (x) { return { t: x[0] * 1000, o: x[3], h: x[2], l: x[1], c: x[4] }; }).sort(function (a, b) { return a.t - b.t; });
+      var series = def.agg ? aggOHLC(cs, def.g * def.agg * 1000) : cs.map(function (c) { return { t: c.t, o: c.o, h: c.h, l: c.l, c: c.c, p: c.c }; });
       if (series.length > def.bars) series = series.slice(series.length - def.bars);
       state.tfCache[ck] = { ts: Date.now(), data: series };
       return series;
@@ -1447,6 +1474,25 @@
     Array.prototype.forEach.call(document.querySelectorAll("#tfBar .tfBtn"), function (b) { b.classList.toggle("active", b.getAttribute("data-tf") === k); });
     if (k === "live") { state.tfData = null; drawMiniChart(); return; }
     loadCurrentTF(true);
+  }
+  function setChartType(ct) {
+    state.chartType = ct === "candle" ? "candle" : "line";
+    try { localStorage.setItem("chartType_v1", state.chartType); } catch (e) {}
+    Array.prototype.forEach.call(document.querySelectorAll("#chartType button"), function (b) { b.classList.toggle("active", b.getAttribute("data-ct") === state.chartType); });
+    drawMiniChart();
+  }
+  // ~4 evenly-spaced price levels with right-edge labels — the "grid" behind line & candles.
+  function drawPriceGrid(ctx, W, H, min, max, Y, withLabels) {
+    if (!(max > min)) return;
+    var levels = 4, i, p, y;
+    ctx.lineWidth = 1; ctx.textAlign = "right";
+    ctx.font = "9px ui-monospace, 'SF Mono', monospace";
+    for (i = 0; i <= levels; i++) {
+      p = min + (max - min) * (i / levels); y = Y(p);
+      ctx.strokeStyle = "rgba(235,235,245,.05)";
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      if (withLabels && y > 11 && y < H - 3) { ctx.fillStyle = "rgba(235,235,245,.30)"; ctx.fillText(fmtMoney(p), W - 4, y - 3); }
+    }
   }
   function loadCurrentTF(showLoading) {
     var k = state.chartTF; if (k === "live") return;
@@ -1460,49 +1506,63 @@
       state.tfData = null; var lbl = $("miniChartLbl"); if (lbl) lbl.textContent = "Couldn't load " + k + " data — try again";
     });
   }
-  // Historical-closes chart for a chosen timeframe, sharing the look of the live chart.
+  // Historical chart for a chosen timeframe — price grid + (line or candlesticks) + the strike line.
   function drawTFChart(cv, ctx, W, H, dpr) {
     var strike = roundStrike(), data = state.tfData, lbl = $("miniChartLbl"), def = tfDef(state.chartTF);
     if (!data || data.length < 2) {
       ctx.fillStyle = "rgba(235,235,245,.3)"; ctx.font = "12px -apple-system, system-ui, sans-serif"; ctx.textAlign = "center";
       ctx.fillText("Loading " + state.chartTF + "…", W / 2, H / 2); return;
     }
-    var prices = data.map(function (x) { return x.p; });
-    if (strike != null) prices = prices.concat([strike]);
-    var min = Math.min.apply(null, prices), max = Math.max.apply(null, prices);
-    var padY = (max - min) * 0.18 || (max * 0.0004) || 1; min -= padY; max += padY;
+    var candle = state.chartType === "candle" && data[0].h != null;
+    var lows = [], highs = [];
+    data.forEach(function (x) { if (candle) { lows.push(x.l); highs.push(x.h); } else { lows.push(x.p); highs.push(x.p); } });
+    if (strike != null) { lows.push(strike); highs.push(strike); }
+    var min = Math.min.apply(null, lows), max = Math.max.apply(null, highs);
+    var padY = (max - min) * 0.12 || (max * 0.0004) || 1; min -= padY; max += padY;
     var top = 8, bot = 8, n = data.length;
     function X(i) { return n < 2 ? 0 : (i / (n - 1)) * W; }
     function Y(p) { return top + (1 - (p - min) / (max - min)) * (H - top - bot); }
-    var hasStrike = strike != null, yS = hasStrike ? Y(strike) : null, i, above;
-    // area + line, green above the line / red below (when we have a line)
-    if (hasStrike) {
-      for (i = 0; i < n - 1; i++) {
-        above = (data[i].p + data[i + 1].p) / 2 >= strike;
-        ctx.beginPath(); ctx.moveTo(X(i), Y(data[i].p)); ctx.lineTo(X(i + 1), Y(data[i + 1].p)); ctx.lineTo(X(i + 1), yS); ctx.lineTo(X(i), yS); ctx.closePath();
-        ctx.fillStyle = above ? "rgba(48,209,88,.16)" : "rgba(255,69,58,.16)"; ctx.fill();
+    drawPriceGrid(ctx, W, H, min, max, Y, true);
+    var hasStrike = strike != null, yS = hasStrike ? Y(strike) : null, i, above, last = data[n - 1];
+    if (candle) {
+      var slot = W / n, bw = Math.max(1.5, Math.min(slot * 0.62, 18));
+      for (i = 0; i < n; i++) {
+        var d = data[i], cx = (i + 0.5) * slot, up = d.c >= d.o, col = up ? "#30d158" : "#ff453a";
+        ctx.strokeStyle = col; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(cx, Y(d.h)); ctx.lineTo(cx, Y(d.l)); ctx.stroke();
+        var yO = Y(d.o), yC = Y(d.c), bt = Math.min(yO, yC), bh = Math.max(1, Math.abs(yC - yO));
+        ctx.fillStyle = col; ctx.fillRect(Math.round(cx - bw / 2), bt, Math.round(bw), bh);
       }
-      ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(235,235,245,.4)"; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(W, yS); ctx.stroke(); ctx.setLineDash([]);
+      if (hasStrike) { ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(235,235,245,.45)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(W, yS); ctx.stroke(); ctx.setLineDash([]); }
+    } else {
+      if (hasStrike) {
+        for (i = 0; i < n - 1; i++) {
+          above = (data[i].p + data[i + 1].p) / 2 >= strike;
+          ctx.beginPath(); ctx.moveTo(X(i), Y(data[i].p)); ctx.lineTo(X(i + 1), Y(data[i + 1].p)); ctx.lineTo(X(i + 1), yS); ctx.lineTo(X(i), yS); ctx.closePath();
+          ctx.fillStyle = above ? "rgba(48,209,88,.16)" : "rgba(255,69,58,.16)"; ctx.fill();
+        }
+        ctx.setLineDash([4, 4]); ctx.strokeStyle = "rgba(235,235,245,.4)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(0, yS); ctx.lineTo(W, yS); ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.lineWidth = 2; ctx.lineJoin = "round";
+      for (i = 0; i < n - 1; i++) {
+        above = hasStrike ? ((data[i].p + data[i + 1].p) / 2 >= strike) : true;
+        ctx.strokeStyle = !hasStrike ? "#0a84ff" : above ? "#30d158" : "#ff453a";
+        ctx.beginPath(); ctx.moveTo(X(i), Y(data[i].p)); ctx.lineTo(X(i + 1), Y(data[i + 1].p)); ctx.stroke();
+      }
+      var lastAbove = hasStrike ? last.p >= strike : true;
+      ctx.fillStyle = !hasStrike ? "#0a84ff" : lastAbove ? "#30d158" : "#ff453a";
+      ctx.beginPath(); ctx.arc(X(n - 1), Y(last.p), 3.5, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.lineWidth = 2; ctx.lineJoin = "round";
-    for (i = 0; i < n - 1; i++) {
-      above = hasStrike ? ((data[i].p + data[i + 1].p) / 2 >= strike) : true;
-      ctx.strokeStyle = !hasStrike ? "#0a84ff" : above ? "#30d158" : "#ff453a";
-      ctx.beginPath(); ctx.moveTo(X(i), Y(data[i].p)); ctx.lineTo(X(i + 1), Y(data[i + 1].p)); ctx.stroke();
-    }
-    var last = data[n - 1], lastAbove = hasStrike ? last.p >= strike : true;
-    ctx.fillStyle = !hasStrike ? "#0a84ff" : lastAbove ? "#30d158" : "#ff453a";
-    ctx.beginPath(); ctx.arc(X(n - 1), Y(last.p), 3.5, 0, Math.PI * 2); ctx.fill();
     if (hasStrike) {
-      ctx.fillStyle = "rgba(235,235,245,.55)"; ctx.font = "10px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(235,235,245,.6)"; ctx.font = "10px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "left";
       var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
       ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     }
     if (lbl) {
-      var d = hasStrike ? last.p - strike : 0;
+      var dd = hasStrike ? last.p - strike : 0;
       lbl.textContent = !hasStrike ? (state.chartTF + " · " + def.span)
-        : (state.chartTF + " · " + def.span + " — now " + (d >= 0 ? "+" : "−") + fmtMoney(Math.abs(d)) + " " + (d >= 0 ? "above" : "below") + " the line");
+        : (state.chartTF + " · " + def.span + " — now " + (dd >= 0 ? "+" : "−") + fmtMoney(Math.abs(dd)) + " " + (dd >= 0 ? "above" : "below") + " the line");
     }
   }
   function drawMiniChart() {
@@ -1532,6 +1592,7 @@
     var top = 8, bot = 8;
     function X(t) { return Math.max(0, Math.min(1, (t - roundStart) / (roundEnd - roundStart))) * W; }
     function Y(p) { return top + (1 - (p - min) / (max - min)) * (H - top - bot); }
+    drawPriceGrid(ctx, W, H, min, max, Y, false);   // faint price levels behind the live track (H/L labels stay)
     var yS = Y(strike), i, a, b, above;
     for (i = 0; i < hist.length - 1; i++) {
       a = hist[i]; b = hist[i + 1]; above = (a.p + b.p) / 2 >= strike;
@@ -1932,6 +1993,10 @@
   Array.prototype.forEach.call(document.querySelectorAll("#tfBar .tfBtn"), function (b) {
     b.addEventListener("click", function () { setChartTF(b.getAttribute("data-tf")); });
   });
+  Array.prototype.forEach.call(document.querySelectorAll("#chartType button"), function (b) {
+    b.addEventListener("click", function () { setChartType(b.getAttribute("data-ct")); });
+  });
+  setChartType(state.chartType);   // reflect the saved Line/Candles preference on load
   // ---------- Help sheet ----------
   var EXPLAIN = {
     autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine. The 'Which to follow' line right under the call reconciles it with the always-on 24/7 auto-tracker: agree → higher conviction (this is your call); split → coin-flip territory, sitting out is the safe play. Follow this Co-Pilot pick as the headline; use the tracker to gauge how much to trust it." },
