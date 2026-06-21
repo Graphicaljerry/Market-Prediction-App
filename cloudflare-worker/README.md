@@ -68,8 +68,11 @@ the nearest-expiry open market in that series.
 The root `wrangler.toml` adds a **cron trigger** (`[triggers] crons = ["*/15 * * * *"]`). Every
 15 minutes the Worker's `scheduled` handler makes a market-anchored pick for each coin that has
 a `KALSHI_SERIES_*` set — using **only free data** (Kalshi price + Coinbase 1-min momentum +
-order book, **no LLM**) — grades the previous round, and stores it in **KV** under `picks:<COIN>`.
-- **Costs nothing beyond the free tier:** no Anthropic calls on the schedule; cron + KV are free.
+order book, **no LLM**) — grades the previous round, and stores the whole tracker in **KV** as a
+single consolidated record (read back per-coin via `?picks=COIN`).
+- **Costs nothing beyond the free tier:** no Anthropic calls on the schedule. The cron writes
+  **one** KV key per run (all coins + the pooled model together), so it stays well under the free
+  tier's limit of **1,000 KV writes/day** — even running 24/7 it's ~96 writes/day.
 - **Read it:** open `…workers.dev/?picks=ETH` (or `?picks` for all coins) — latest pick, rolling
   history, and hit rate. The app shows this in its **24/7 Auto-Tracker** panel and feeds the
   record into the AI prompt.

@@ -19,6 +19,14 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Stays inside Cloudflare's free tier + a layer of motion polish.** The 24/7 Worker now saves the
+  entire auto-tracker (every coin + the pooled learning model) as **one** KV record per cron run
+  instead of ~7, and the 15-min cron no longer re-writes the crowd-odds cache (the app keeps that
+  warm only while it's open) — cutting background KV writes ~7× so a full day stays well under
+  Cloudflare's free **1,000 writes/day**. Alongside it: the **High-conviction toggle** moved to the
+  left of the Auto Pick header, the live pick colour now **eases** between green/red/amber instead of
+  snapping, every control gives a **tactile press**, and the timer bar gained a sweeping sheen that
+  **pulses** through the final two minutes.
 - **Accurate round settlement + a "which to follow" verdict.** Rounds are now graded against
   the **definitive close** — the finalized Coinbase 15-minute candle for that round, not a
   possibly-stale live tick — so the logged direction matches what you see on Coinbase even if
@@ -297,7 +305,9 @@ Each run, per coin with a Kalshi series:
 1. Grades the previous round's pick (latest price vs the stored strike).
 2. Makes a fresh pick the simple way: the **Kalshi market price** nudged by **1-min momentum**
    and **order-book imbalance**, with **SKIP** near 50/50 (`freePick`).
-3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV` under `picks:<COIN>`.
+3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV`. The whole auto-tracker —
+   every coin **and** the pooled model — lives in **one** consolidated record (read back per-coin
+   via `?picks=COIN`), so a cron run is a single KV write and stays inside the free tier.
 
 Read it at `…/?picks=ETH` (or `?picks` for all coins). The app shows it in the **24/7
 Auto-Tracker** panel (`fetchAutoTracker` / `renderAutoTracker`), and the Worker folds the
@@ -324,8 +334,8 @@ AI and the auto-tracker panel. Design choices are grounded in the literature:
   rounds (~26 days/coin) to even confirm. The model is therefore used as a **faint, calibrated
   tilt + abstention aid**, never a crystal ball — and the panel labels its confidence by sample
   size (*warming up → building → established*). It lives in `worker.js` (`featuresFor`,
-  `trainModel`, `predictBlend`, `modelInsights`) and persists in KV (`picks:<COIN>.model` +
-  the shared `model:global`).
+  `trainModel`, `predictBlend`, `modelInsights`) and persists in KV alongside the rest of the
+  auto-tracker state, in one consolidated record (see *Data persistence*).
 
 ---
 
@@ -459,8 +469,7 @@ Server-side, in Worker **KV** (`CROWD_KV`):
 | Key | Holds |
 |---|---|
 | `crowd:<series>` | shared Kalshi crowd-odds cache (stale-serve through 429s) |
-| `picks:<COIN>` | 24/7 auto-tracker: latest pick + history + hit rate + the per-coin learned model |
-| `model:global` | the pooled online-learning model shared across coins |
+| `auto:state` | the entire 24/7 auto-tracker in **one** record — every coin's pick/history/hit-rate/learned model **and** the pooled global model. Written once per cron run (a single KV write, to stay under the free tier's 1,000/day); read back per-coin via `?picks=COIN`. Seeds itself from the older `picks:<COIN>` + `model:global` keys on first run, then they expire. |
 
 ---
 

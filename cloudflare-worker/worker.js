@@ -72,11 +72,10 @@ export default {
       }
       // Auto-tracker readout: ?picks=ETH for one coin, or ?picks for all configured coins.
       if (u.searchParams.has("picks")) {
+        const st = await loadState(env);
         const coin = (u.searchParams.get("picks") || "").toUpperCase();
-        if (coin) return json((await kvGetRaw(env, "picks:" + coin)) || { coin, empty: true });
-        const out = {};
-        for (const c of AUTO_COINS) { const r = await kvGetRaw(env, "picks:" + c); if (r) out[c] = r; }
-        return json(out);
+        if (coin) return json(st.coins[coin] || { coin, empty: true });
+        return json(st.coins || {});
       }
       // One-time cleanup: ?reset=ETH zeroes the auto-tracker's record for a coin (hit-rate
       // counters + history + pending) so it rebuilds on correctly-graded rounds only. The learned
@@ -86,11 +85,13 @@ export default {
         if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
         const coin = (u.searchParams.get("reset") || "").toUpperCase();
         if (!coin) return json({ error: "specify a coin, e.g. ?reset=ETH" }, 400);
-        const prev = (await kvGetRaw(env, "picks:" + coin)) || { coin };
+        const st = await loadState(env);
+        const prev = st.coins[coin] || { coin };
         const keepModel = u.searchParams.get("model") !== "1";
         const fresh = { coin, pending: null, history: [], graded: 0, correct: 0, hitRatePct: null, lastActual: null, updated: Date.now() };
         if (keepModel && prev.model) { fresh.model = prev.model; fresh.learned = prev.learned || null; }
-        await kvPutRaw(env, "picks:" + coin, fresh);
+        st.coins[coin] = fresh;
+        await saveState(env, st);
         return json({ ok: true, coin, reset: true, modelKept: keepModel && !!prev.model, clearedGraded: prev.graded || 0 });
       }
       // Quick health check: shows which provider is wired up.
@@ -119,7 +120,7 @@ export default {
     // Give the AI the full picture: the 24/7 auto-tracker's own record (its market-anchored
     // guesses + how they actually settled) on top of the client's live history.
     let autopicks = null;
-    try { autopicks = await kvGetRaw(env, "picks:" + coin); } catch (_) {}
+    try { const st = await loadState(env); autopicks = st.coins[coin] || null; } catch (_) {}
 
     let ai;
     try { ai = await getAIRead(env, provider, body, crowd, autopicks); }
@@ -133,10 +134,13 @@ export default {
   // when no tab is open. Coins run sequentially so the shared (pooled) model updates cleanly.
   async scheduled(event, env, ctx) {
     ctx.waitUntil((async () => {
+      // One consolidated KV record for the whole auto-tracker (every coin + the pooled model),
+      // so a cron run is a SINGLE KV write instead of ~7 — keeping us inside the free tier's
+      // 1,000 writes/day. (Previously each coin and the global model each wrote their own key.)
+      const st = await loadState(env);
       const coins = AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]);
-      const global = padModel((await kvGetRaw(env, "model:global")) || newModel());
-      for (const c of coins) { try { await runCoinPick(env, c, global); } catch (_) {} }
-      await kvPutRaw(env, "model:global", global);
+      for (const c of coins) { try { await runCoinPick(env, c, st); } catch (_) {} }
+      await saveState(env, st);
     })());
   },
 };
@@ -168,7 +172,7 @@ const KV_TTL = 1800;          // seconds KV keeps an entry
 // Returns crowd odds, preferring a fresh cache and falling back to the last good value
 // (flagged stale) when Kalshi rate-limits us. env.CROWD_KV (if bound) shares one good
 // fetch across every Worker isolate — essential because Kalshi 429s Cloudflare's IPs.
-async function getKalshiCrowd(env, seriesTicker) {
+async function getKalshiCrowd(env, seriesTicker, persist = true) {
   const now = Date.now();
   let cached = crowdMem.get(seriesTicker);
   if ((!cached || now - cached.t >= FRESH_MS) && env.CROWD_KV) {
@@ -182,7 +186,10 @@ async function getKalshiCrowd(env, seriesTicker) {
     if (data) {
       const entry = { t: now, data };
       crowdMem.set(seriesTicker, entry);
-      if (env.CROWD_KV) await kvPut(env, seriesTicker, entry);   // share with other isolates
+      // Persist to the shared cache only on the live (app) path. The 15-min cron passes
+      // persist=false — it still READS this cache, but never writes it, so the free-tier KV
+      // write budget is spent on data that matters. The app keeps this cache warm while in use.
+      if (env.CROWD_KV && persist) await kvPut(env, seriesTicker, entry);   // share with other isolates
       return data;
     }
     return staleOrNull(cached, now);
@@ -600,6 +607,21 @@ async function kvPutRaw(env, key, val) {
   try { if (env.CROWD_KV) await env.CROWD_KV.put(key, JSON.stringify(val), { expirationTtl: 60 * 60 * 24 * 30 }); } catch (_) {}
 }
 
+// The entire auto-tracker — every coin's pick/history/learned-model plus the pooled global
+// model — lives under ONE KV key. A cron run reads it once and writes it once, turning ~7 KV
+// writes/run into 1 and keeping us comfortably under the free tier's 1,000 writes/day. The
+// first read after upgrading seeds itself from the older per-key layout (picks:<COIN> +
+// model:global), so no history or learning is lost; the legacy keys then expire on their own.
+const STATE_KEY = "auto:state";
+async function loadState(env) {
+  let st = await kvGetRaw(env, STATE_KEY);
+  if (st && st.coins) { st.global = padModel(st.global || newModel()); return st; }
+  st = { v: 2, global: padModel((await kvGetRaw(env, "model:global")) || newModel()), coins: {} };
+  for (const c of AUTO_COINS) { const r = await kvGetRaw(env, "picks:" + c); if (r) st.coins[c] = r; }
+  return st;
+}
+async function saveState(env, st) { st.updated = Date.now(); await kvPutRaw(env, STATE_KEY, st); }
+
 // --- Online learning model (per-coin + pooled global) --------------------
 // A tiny online logistic regression that learns, per coin, how round-open signals map to the
 // chance price finishes OVER. Updated once per round from the graded outcome (free, no LLM).
@@ -676,16 +698,16 @@ function modelInsights(coin, global, history) {
   return { n: coin.n, confidence, tendencies: tend, afterUpOverPct: afterUp, afterDownOverPct: afterDown };
 }
 
-async function runCoinPick(env, coin, global) {
+async function runCoinPick(env, coin, st) {
   const series = env["KALSHI_SERIES_" + coin], product = CB_PRODUCT[coin];
   if (!series || !product) return;
+  const global = st.global;
   const [crowd, micro, obi] = await Promise.all([
-    getKalshiCrowd(env, series).catch(() => null),
+    getKalshiCrowd(env, series, false).catch(() => null),   // false: read the shared cache, don't spend a KV write
     cbMicro(product).catch(() => null),
     cbObi(product).catch(() => null),
   ]);
-  const key = "picks:" + coin;
-  const rec = (await kvGetRaw(env, key)) || { coin, pending: null, history: [], graded: 0, correct: 0 };
+  const rec = st.coins[coin] || (st.coins[coin] = { coin, pending: null, history: [], graded: 0, correct: 0 });
   const coinModel = padModel(rec.model || newModel());
 
   // 1) grade the previous pick once its round has closed — and LEARN from the outcome.
@@ -740,5 +762,5 @@ async function runCoinPick(env, coin, global) {
   rec.learned = modelInsights(coinModel, global, rec.history);      // plain-language read for the prompt + app
   rec.hitRatePct = rec.graded ? Math.round(rec.correct / rec.graded * 100) : null;
   rec.updated = Date.now();
-  await kvPutRaw(env, key, rec);
+  // No per-coin write here — the whole auto-tracker is persisted once per cron run by saveState().
 }

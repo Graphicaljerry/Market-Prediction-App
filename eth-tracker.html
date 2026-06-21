@@ -152,9 +152,10 @@
   /* ---------- Section header ---------- */
   .sec { font-size: 13px; font-weight: 600; color: var(--label-2); margin: 0 4px 10px; }
   .sec .tiny { color: var(--label-3); font-weight: 500; }
-  /* "High-conviction only" switch in the Auto Pick header */
-  .m-signal .sec { overflow: hidden; }
-  .hiConvToggle { float: right; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 11px; font-weight: 700;
+  /* "High-conviction only" switch — sits inline at the LEFT of the Auto Pick header, in line
+     with the rest of the interface (no longer floated off to the right edge). */
+  .m-signal .sec { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .hiConvToggle { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 11px; font-weight: 700;
     color: var(--label-3); user-select: none; padding: 3px 9px 3px 7px; border: 1px solid var(--separator); border-radius: 999px; transition: color .18s ease, border-color .18s ease; }
   .hiConvToggle input { appearance: none; -webkit-appearance: none; margin: 0; width: 26px; height: 15px; border-radius: 999px; background: var(--surface-3);
     position: relative; cursor: pointer; transition: background .18s ease; flex: 0 0 auto; }
@@ -266,8 +267,32 @@
   .timer { font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
   .timer.warn { color: var(--red); }
   .timerBarWrap { height: 4px; border-radius: 3px; background: rgba(118,118,128,0.24); margin-top: 16px; overflow: hidden; }
-  #timerBar { height: 100%; width: 100%; background: var(--green); transition: width .9s linear, background .3s; border-radius: 3px; }
-  #timerBar.warn { background: var(--red); }
+  #timerBar { height: 100%; width: 100%; position: relative; overflow: hidden; border-radius: 3px;
+    background: linear-gradient(90deg, #0bbf4e, var(--green));
+    box-shadow: 0 0 9px rgba(13,224,89,.5); transition: width .9s linear, background .4s ease, box-shadow .5s ease; }
+  #timerBar.warn { background: linear-gradient(90deg, #ff6b3d, var(--red)); box-shadow: 0 0 9px rgba(255,69,58,.55);
+    animation: barWarnPulse 1.05s ease-in-out infinite; }
+  /* A soft sheen sweeps the bar so it feels alive as it ticks down; it pulses in the final 2 min. */
+  #timerBar::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(100deg, transparent 18%, rgba(255,255,255,.32) 50%, transparent 82%);
+    transform: translateX(-100%); animation: barSheen 2.8s ease-in-out infinite; }
+  @keyframes barSheen { 0% { transform: translateX(-100%); } 55%, 100% { transform: translateX(240%); } }
+  @keyframes barWarnPulse { 0%,100% { box-shadow: 0 0 6px rgba(255,69,58,.45); } 50% { box-shadow: 0 0 17px 2px rgba(255,69,58,.95); } }
+  body.is-scrolling #timerBar::after { animation-play-state: paused; }
+
+  /* ---------- Motion polish: smooth color flips + tactile press feedback ---------- */
+  /* Ease the live-pick color changes (green↔red↔amber) instead of snapping. */
+  .reco .dir, .reco .scopeTag, .buyLine, .oddsPct, .oddsLbl, .consensus {
+    transition: color .5s ease, background-color .5s ease, border-color .5s ease; }
+  /* Every control dips slightly when tapped/clicked. */
+  .seg button, .ihelp, .secToggle, .hiConvToggle, .aiSetup > summary {
+    transition: transform .14s cubic-bezier(.34,1.4,.64,1), background .22s ease, color .18s ease, border-color .18s ease; }
+  .seg button:active, .tfBtn:active, .btn:active, .ihelp:active, .clearBtn:active,
+  .hiConvToggle:active, .secToggle:active, .aiSetup > summary:active { transform: scale(.955); }
+  @media (prefers-reduced-motion: reduce) {
+    #timerBar::after { display: none; } #timerBar.warn { animation: none; }
+    .reco .dir, .buyLine, .oddsPct, .consensus { transition: none; }
+  }
   .timerSub { font-size: 12px; color: var(--label-3); margin-top: 11px; }
   /* "what to bet next round" — a compact forward look that lives in the timer card */
   .nextPick { margin-top: 14px; padding-top: 12px; border-top: .5px solid var(--separator); display: flex; flex-direction: column; gap: 3px; }
