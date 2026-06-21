@@ -35,7 +35,7 @@
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
 
-  html { background: var(--bg); overflow-x: hidden; }
+  html { background: var(--bg); overflow-x: hidden; overscroll-behavior: none; }
   html, body {
     color: var(--label);
     font-family: "Space Mono", ui-monospace, "SF Mono", monospace;
@@ -45,8 +45,16 @@
     position: relative; background: transparent;
     max-width: 1120px; margin: 0 auto;
     padding: max(14px, env(safe-area-inset-top)) clamp(16px, 3.5vw, 44px) calc(40px + env(safe-area-inset-bottom));
-    min-height: 100vh; overflow-x: hidden;
+    min-height: 100vh; overflow-x: hidden; overscroll-behavior-y: none;
   }
+  /* ---- smooth full-page scrolling ----
+     While actively scrolling, pause the ambient glow drift so the blurred orbs behind the
+     glass cards don't force a backdrop-filter repaint on every frame (it resumes ~0.2s after
+     you stop). overscroll-behavior above kills the iOS rubber-band/scroll-chaining that made
+     the page feel like it sprang back to a fixed spot. */
+  body.is-scrolling .card.orb::before, body.is-scrolling .card.orb::after,
+  body.is-scrolling .pageGlow { animation-play-state: paused; }
+  html.modal-open { overflow: hidden; }   /* lock the page behind the info sheet */
   /* never let a long token (an API error, a URL, a rationale) force horizontal scroll */
   .card, .module, .reco, .toprow, .grid { min-width: 0; max-width: 100%; }
   .aiMuted, .aiWhyText, .aiRationale, .buyHint, .accNote, .miniChartLbl, .autoLearned,
@@ -200,6 +208,13 @@
   #timerBar { height: 100%; width: 100%; background: var(--green); transition: width .9s linear, background .3s; border-radius: 3px; }
   #timerBar.warn { background: var(--red); }
   .timerSub { font-size: 12px; color: var(--label-3); margin-top: 11px; }
+  /* "what to bet next round" — a compact forward look that lives in the timer card */
+  .nextPick { margin-top: 14px; padding-top: 12px; border-top: .5px solid var(--separator); display: flex; flex-direction: column; gap: 3px; }
+  .nextPick:empty { display: none; }
+  .nextPick .npLbl { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--label-3); }
+  .nextPick .npPick { font-size: 17px; font-weight: 800; letter-spacing: -.01em; color: var(--label); }
+  .nextPick .npPick.over { color: var(--green); } .nextPick .npPick.under { color: var(--red); } .nextPick .npPick.skip { color: var(--orange); }
+  .nextPick .npHint { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); letter-spacing: 0; text-transform: none; margin-top: 3px; opacity: .9; }
 
   /* ---------- Recommendation ---------- */
   .reco { text-align: center; }
@@ -233,7 +248,7 @@
   .miniChart { width: 100%; height: 120px; display: block; margin-top: 12px; border-radius: 10px; background: rgba(44,44,46,0.50); }
   .miniChartLbl { font-size: 11.5px; color: var(--label-3); text-align: center; margin-top: 7px; font-weight: 500; }
   /* timeframe zoom selector above the chart */
-  .tfBar { display: flex; gap: 4px; margin-top: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tfBar { display: flex; gap: 4px; margin-top: 16px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; touch-action: pan-x; }
   .tfBar::-webkit-scrollbar { display: none; }
   .tfBtn { flex: 0 0 auto; min-height: 28px; padding: 4px 11px; border-radius: 8px; background: transparent; color: var(--label-2);
     border: 1px solid var(--separator); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .18s ease; }
@@ -346,6 +361,10 @@
   .aiRow .v.o { color:var(--green); } .aiRow .v.u { color:var(--red); }
   .aiWhy { margin-top:10px; }
   .aiWhyText { font-size:13px; color:var(--label-2); line-height:1.55; margin-top:6px; }
+  /* AI rationale collapsed into a dropdown (same chevron/treatment as the setup panel below) */
+  .aiSummary[open] .aiWhyBody { padding-top:2px; }
+  .aiSummary > summary .aiSumHint { color:var(--label-3); font-weight:600; font-size:11.5px; }
+  .aiSummary > summary .aiSumHint.o { color:var(--green); } .aiSummary > summary .aiSumHint.u { color:var(--red); }
   .aiSetup { margin-top:14px; border-top:.5px solid var(--separator); }
   .aiSetup > summary { list-style:none; cursor:pointer; font-size:12.5px; font-weight:600; color:var(--label-2); padding:11px 0 4px; display:flex; align-items:center; gap:7px; }
   .aiSetup > summary::-webkit-details-marker { display:none; }
@@ -422,6 +441,7 @@
     <div id="timer" class="timer mono">--:--</div>
     <div class="timerBarWrap"><div id="timerBar"></div></div>
     <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
+    <div id="nextPick" class="nextPick"></div>
   </div>
 
   </div>
@@ -456,7 +476,10 @@
     <!-- The read: the market crowd + AI verdict that feed the blended % above -->
     <div class="panelDivider"><span>The read</span></div>
     <div id="blend" class="blend"></div>
-    <div id="aiWhy" class="aiWhy hidden"></div>
+    <details id="aiWhy" class="aiWhy aiSetup aiSummary hidden">
+      <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span></summary>
+      <div class="aiWhyBody"></div>
+    </details>
     <div class="aiMuted" id="aiIntro">Add the live <b>Kalshi crowd odds</b> + a <b>Claude</b> read to the blend above — connect your Cloudflare Worker below (optional).</div>
     <details id="aiSetup" class="aiSetup">
       <summary>&#9881; AI Co-Pilot setup</summary>
@@ -933,7 +956,7 @@
       atLabel: nowClock(), forLabel: hma(currentRoundEnd)
     };
     state.lockingNext = false;
-    renderPickCard(); updateBetWindow(state.remaining == null ? 999 : state.remaining);
+    renderPickCard(); renderNextPick(); updateBetWindow(state.remaining == null ? 999 : state.remaining);
   }
   function clearLocks() { if (state.lockTimer) { clearTimeout(state.lockTimer); state.lockTimer = null; } state.lockingNext = false; }
 
@@ -1012,6 +1035,33 @@
       hintEl.textContent = "Your locked pick for this round — live status below.";
       lblEl.textContent = "chance " + (call.dir === "OVER" ? "UP" : "DOWN");
     }
+  }
+
+  // A compact, always-visible "what to bet the NEXT round" line in the timer card. Shows a
+  // live lean for the upcoming round and firms up to a 🔒 LOCKED pick in the final 2 min
+  // (the moment the bet actually commits). Idempotent — only touches the DOM when the text
+  // changes — so it's safe to call every tick without thrashing scroll.
+  function renderNextPick() {
+    var el = $("nextPick"); if (!el) return;
+    var ns = currentRoundEnd, ne = new Date(currentRoundEnd.getTime() + 15 * 60000);
+    var lbl = '<span class="npLbl">⏭ Next round ' + rangeHM(ns, ne) + '</span>';
+    var L = state.lockedNext, html;
+    if (L && L.dir === "SKIP") {
+      html = lbl + '<span class="npPick skip">🔒 SKIP — no clear edge</span>';
+    } else if (L && L.dir) {
+      var lcls = L.dir === "OVER" ? "over" : "under";
+      html = lbl + '<span class="npPick ' + lcls + '">🔒 BUY ' + L.dir + (L.dir === "OVER" ? " ↑" : " ↓") + ' · ' + L.pct + '% likely ' + (L.dir === "OVER" ? "UP" : "DOWN") +
+        '<span class="npHint">locked ' + (L.atLabel || nowClock()) + ' — this is your next-round bet</span></span>';
+    } else if (state.lastRecoObj) {
+      var o = combinedOdds(state.lastRecoObj), pd = o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP";
+      var pcls = pd === "OVER" ? "over" : pd === "UNDER" ? "under" : "skip";
+      var body = pd === "SKIP" ? "Leaning flat — no clear side yet" : ("Leaning " + pd + (pd === "OVER" ? " ↑ " : " ↓ ") + pctFor(o.pOver, pd) + "%");
+      html = lbl + '<span class="npPick ' + pcls + '">' + body + '<span class="npHint">live preview · locks in the final 2 min</span></span>';
+    } else {
+      html = lbl + '<span class="npPick skip">Reading signals…<span class="npHint">your next-round pick locks in the final 2 min</span></span>';
+    }
+    if (el._html === html) return;   // no layout work unless the line actually changed
+    el._html = html; el.innerHTML = html;
   }
 
   // ---------- Rendering ----------
@@ -1366,8 +1416,18 @@
     elTimerBar.style.width = (remaining / 900 * 100) + "%";
     elTimerSub.textContent = "Round closes at " + hma(currentRoundEnd);
     updateBetWindow(remaining);
-    renderPickCard();
-    drawMiniChart();
+    // The pick card + mini chart only change on a data refresh, a lock, or when we cross the
+    // 2-min "next round" line — rebuilding them every second just thrashed layout and fought
+    // the scroll (the page sprang back to a fixed spot). The countdown above is the one thing
+    // that truly updates each tick; render the rest only when the window mode actually flips.
+    var nextMode = remaining <= BET_WINDOW;
+    // Re-render on the mode flip, and keep ticking through the brief "locking…" phase until
+    // the next-round pick is actually committed (renderPickCard drives ensureLockedNext). This
+    // self-stops the moment state.lockedNext is set, so it's at most a few seconds of work.
+    if (nextMode !== state._nextMode || (nextMode && !state.lockedNext)) {
+      state._nextMode = nextMode; renderPickCard(); drawMiniChart();
+    }
+    renderNextPick();
   }
 
   // In the final BET_WINDOW seconds, surface the freshest call for the NEXT round.
@@ -1567,10 +1627,11 @@
     "Volume": { t: "Volume", d: "Trade volume versus the 20-bar average. High volume on an up candle signals real buying conviction; on a down candle, real selling. Shown for context — it doesn't vote." },
     "Order Book": { t: "Order Book pressure", d: "Live look at the resting buy and sell orders right next to the current price (within ±0.15%). 'Buyers heavier' means more size is waiting to buy than sell — short-term upward pressure; 'Sellers heavier' is the reverse. It's a fast, short-horizon read (it can flip within seconds), so it's shown for context and only nudges the blended odds a little." }
   };
-  function openInfo(key) { var t = EXPLAIN[key]; if (!t) return; $("infoTitle").textContent = t.t; $("infoText").textContent = t.d; $("infoSheet").classList.add("open"); }
+  function setSheet(open) { $("infoSheet").classList.toggle("open", open); document.documentElement.classList.toggle("modal-open", open); }
+  function openInfo(key) { var t = EXPLAIN[key]; if (!t) return; $("infoTitle").textContent = t.t; $("infoText").textContent = t.d; setSheet(true); }
   document.addEventListener("click", function (e) { var hit = e.target.closest && e.target.closest("[data-info]"); if (hit) openInfo(hit.getAttribute("data-info")); });
-  $("infoClose").addEventListener("click", function () { $("infoSheet").classList.remove("open"); });
-  $("infoSheet").addEventListener("click", function (e) { if (e.target === $("infoSheet")) $("infoSheet").classList.remove("open"); });
+  $("infoClose").addEventListener("click", function () { setSheet(false); });
+  $("infoSheet").addEventListener("click", function (e) { if (e.target === $("infoSheet")) setSheet(false); });
 
   // ---------- AI Co-Pilot (optional Cloudflare Worker) ----------
   var WORKER_KEY = "workerUrl_v1", AI_MODEL_KEY = "aiModel_v1";
@@ -1817,16 +1878,22 @@
   function renderWhy() {
     var el = $("aiWhy"); if (!el) return;
     var ai = state.lastAI, scope = state.aiScope;
-    if (!ai || !ai.rationale) { el.classList.add("hidden"); el.innerHTML = ""; return; }
+    var body = el.querySelector(".aiWhyBody"), hint = $("aiSumHint");
+    if (!ai || !ai.rationale) { el.classList.add("hidden"); el.removeAttribute("open"); if (body) body.innerHTML = ""; if (hint) hint.textContent = ""; return; }
     var s = scope ? '<div class="aiScope' + (scope.nextRound ? ' next' : '') + '">' + scope.label + ' · as of ' + scope.asOf + '</div>' : '';
-    el.innerHTML = s + '<div class="aiWhyText"></div>';
-    el.querySelector(".aiWhyText").textContent = ai.rationale;   // textContent: never inject model output as HTML
-    el.classList.remove("hidden");
+    body.innerHTML = s + '<div class="aiWhyText"></div>';
+    body.querySelector(".aiWhyText").textContent = ai.rationale;   // textContent: never inject model output as HTML
+    if (hint) hint.className = "aiSumHint" + (ai.verdict === "OVER" ? " o" : ai.verdict === "UNDER" ? " u" : "");
+    if (hint) hint.textContent = ai.verdict ? (ai.verdict + (ai.confidence ? " · " + ai.confidence : "")) : "";
+    el.classList.remove("hidden");   // collapsed by default — tap "AI summary" to read the full rationale
   }
   function renderAIError(msg) {
-    var el = $("aiWhy"); el.classList.remove("hidden"); el.innerHTML = "";
+    var el = $("aiWhy"); if (!el) return;
+    el.classList.remove("hidden"); el.setAttribute("open", "");   // surface errors expanded so they're not hidden in the dropdown
+    var hint = $("aiSumHint"); if (hint) { hint.textContent = "error"; hint.className = "aiSumHint u"; }
+    var body = el.querySelector(".aiWhyBody"); if (!body) return; body.innerHTML = "";
     var d = document.createElement("div"); d.className = "aiMuted"; d.style.color = "var(--red)";
-    d.textContent = "AI unavailable: " + msg; el.appendChild(d);
+    d.textContent = "AI unavailable: " + msg; body.appendChild(d);
   }
   $("aiRun").addEventListener("click", function () {
     try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {}
@@ -1847,6 +1914,12 @@
   (function () { var b = $("moreAuto"); if (b) b.addEventListener("click", function () { $("autoHistory").classList.toggle("collapsed"); updateSeeMore("autoHistory", "moreAuto", _autoHistLen); }); })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
   window.addEventListener("resize", drawMiniChart);
+  // Pause the ambient glow drift while the page is actively scrolling, then resume shortly
+  // after it stops — keeps mobile scrolling smooth without losing the idle motion.
+  (function () { var t; window.addEventListener("scroll", function () {
+    var c = document.body.classList; if (!c.contains("is-scrolling")) c.add("is-scrolling");
+    clearTimeout(t); t = setTimeout(function () { c.remove("is-scrolling"); }, 200);
+  }, { passive: true }); })();
 })();
 </script>
 </body>
