@@ -384,6 +384,9 @@
   .seeMore:active { opacity: .6; }
   .hrow { display: grid; grid-template-columns: auto 1fr auto; gap: 5px 10px; align-items: center; padding: 13px 14px; border-radius: 13px; margin-bottom: 9px; font-size: 14px; background: var(--surface-2); }
   .hrow.w { background: rgba(48,209,88,.10); } .hrow.l { background: rgba(255,69,58,.10); }
+  .hrow.s { background: rgba(118,118,128,.10); }   /* sat-out round — logged, not scored */
+  .hrow .hpred.skip { color: var(--label-3); font-weight: 600; }
+  .hrow .hres.s { color: var(--label-3); }
   .hrow .htime { font-size: 13px; color: var(--label-2); }
   .hrow .hpred { font-weight: 600; }
   .hrow .hpred.over { color: var(--green); } .hrow .hpred.under { color: var(--red); }
@@ -1114,7 +1117,7 @@
     var reco = state.lastRecoObj; if (!reco) return "—";
     var o = combinedOdds(reco), upPct = Math.round(o.pOver * 100), f = state.leanFlips || 0;
     var stab = f === 0 ? "steady" : f <= 2 ? (f + " flip" + (f > 1 ? "s" : "") + " this round") : (f + " flips · choppy");
-    var agree = shownDir === "SKIP" ? "" : (pctFor(o.pOver, shownDir) >= 50 ? " · ✓ agrees" : " · ⚠ drifted");
+    var agree = shownDir === "SKIP" ? "" : (pctFor(o.pOver, shownDir) >= 50 ? " · agrees" : " · drifted");
     return "Live: " + reco.bull + "↑ " + reco.bear + "↓ · " + upPct + "% UP" + agree + " · " + stab;
   }
   function leanClass() { var f = state.leanFlips || 0; return f >= 3 ? "bear" : (f === 0 ? "bull" : "neu"); }
@@ -1657,7 +1660,7 @@
       var dirTxt = L.dir === "OVER" ? "BUY OVER ↑" : "BUY UNDER ↓";
       var head = L.conv.level === "strong" ? "STRONG · LOCKED" : L.conv.level === "edge" ? "EDGE vs CROWD · LOCKED" : "LOCKED PICK";
       var dpct = state.lastRecoObj ? pctFor(combinedOdds(state.lastRecoObj).pOver, L.dir) : L.pct;
-      var drift = dpct >= 50 ? "✓ live still agrees · " + dpct + "%" : "⚠ live drifted · " + dpct + "% now";
+      var drift = dpct >= 50 ? "live still agrees · " + dpct + "%" : "live drifted · " + dpct + "% now";
       el.className = "betwin active " + cls + (L.conv.level !== "normal" ? " " + L.conv.level : "");
       el.innerHTML = head + " · NEXT round " + nextLabel +
         "<br><span class=\"big mono\">" + dirTxt + "</span> · " + L.pct + "% likely " + (L.dir === "OVER" ? "UP" : "DOWN") +
@@ -1765,9 +1768,11 @@
       pct: ref ? (close - ref) / ref * 100 : 0, feat: pr.feat || null
     };
     state.lastSettled = rec;                   // drives the real-time "last close" readout
-    // Only OVER/UNDER picks score; SKIP picks (and the rare exactly-FLAT close) are shown but not graded.
-    if ((pr.pickDir === "OVER" || pr.pickDir === "UNDER") && (actual === "OVER" || actual === "UNDER")) {
-      rec.correct = actual === pr.pickDir;
+    // Log EVERY round that resolved, so you can SEE the rounds happening — but only SCORE the ones
+    // where the Co-Pilot actually bet a side. SKIP rounds are listed as "sat out", not win/loss
+    // (rec.correct stays undefined), so the hit rate still reflects real bets only.
+    if (actual === "OVER" || actual === "UNDER") {
+      if (pr.pickDir === "OVER" || pr.pickDir === "UNDER") rec.correct = (actual === pr.pickDir);
       state.rounds.unshift(rec);
       if (state.rounds.length > 700) state.rounds.pop();   // ~7 days of 15-min rounds
       saveRounds(); renderAccuracy(); renderRounds();
@@ -1782,7 +1787,7 @@
     var gp = state.gradePending;
     if (gp) {
       el.className = "lastClose pending";
-      el.textContent = "⏳ Round " + disp12(gp.endLabel) + " closing near " + (gp.provClose != null ? fmtMoney(gp.provClose) : "—") + " · confirming exact close…";
+      el.textContent = "Round " + disp12(gp.endLabel) + " closing near " + (gp.provClose != null ? fmtMoney(gp.provClose) : "—") + " · confirming exact close…";
       return;
     }
     var r = state.lastSettled;
@@ -1794,7 +1799,7 @@
     var sub = "";
     if (r.avg60 != null) {
       var avgSide = sideVs(r.avg60, r.ref), diff = avgSide && r.actual && avgSide !== r.actual;
-      sub = '<span class="lcSub' + (diff ? " warn" : "") + '">' + (diff ? "⚠ " : "") +
+      sub = '<span class="lcSub' + (diff ? " warn" : "") + '">' +
         "Kalshi-style 60-sec avg " + fmtMoney(r.avg60) + " → " + (avgSide || "—") +
         (diff ? " — official settle may differ" : " · same side") + "</span>";
     }
@@ -1836,16 +1841,23 @@
   function loadRounds() { try { var s = localStorage.getItem("pickTracker_v1"); if (s) state.rounds = JSON.parse(s) || []; } catch (e) {} }
 
   function renderAccuracy() {
-    var graded = state.rounds.length, correct = 0, streak = 0, i;
-    for (i = 0; i < graded; i++) if (state.rounds[i].correct) correct++;
-    for (i = 0; i < graded; i++) { if (state.rounds[i].correct) streak++; else break; }
-    $("sGraded").textContent = graded;
+    // Score only the rounds the Co-Pilot actually bet (rec.correct defined); sat-out rounds are
+    // listed in the log but don't count toward the hit rate or streak.
+    var rounds = state.rounds, scored = 0, correct = 0, streak = 0, sat = 0, i, r;
+    for (i = 0; i < rounds.length; i++) {
+      r = rounds[i];
+      if (r.correct === undefined) { sat++; continue; }
+      scored++; if (r.correct) correct++;
+    }
+    for (i = 0; i < rounds.length; i++) { r = rounds[i]; if (r.correct === undefined) continue; if (r.correct) streak++; else break; }
+    $("sGraded").textContent = scored;
     $("sCorrect").textContent = correct;
     $("sStreak").textContent = streak;
-    $("sHitRate").textContent = graded ? Math.round(correct / graded * 100) + "%" : "—";
-    $("sHitRate").className = "v mono " + (graded ? (correct / graded >= 0.5 ? "pos" : "neg") : "");
-    var note = graded ? (correct + " of " + graded + " auto-picks correct") : "Grading begins at the next 15-min close.";
-    if (graded >= 8) note += " · odds now calibrated to your results";
+    $("sHitRate").textContent = scored ? Math.round(correct / scored * 100) + "%" : "—";
+    $("sHitRate").className = "v mono " + (scored ? (correct / scored >= 0.5 ? "pos" : "neg") : "");
+    var note = scored ? (correct + " of " + scored + " bets correct") : "No bets yet — the Co-Pilot is sitting out so far.";
+    if (sat) note += " · " + sat + " sat out";
+    if (scored >= 8) note += " · odds calibrated to your results";
     $("accNote").textContent = note;
   }
 
@@ -1858,20 +1870,24 @@
   }
   function renderRounds() {
     var n = state.rounds.length;
-    if (!n) { $("history").innerHTML = '<div class="empty">No graded rounds yet.</div>'; }
+    if (!n) { $("history").innerHTML = '<div class="empty">No rounds yet — they will appear here as each 15-min round closes.</div>'; }
     else {
       var html = "";
       state.rounds.forEach(function (r) {
-        var ok = r.correct, moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
+        var scored = r.correct !== undefined;             // false for sat-out rounds (listed, not scored)
+        var moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
         var split = r.avg60 != null && r.ref != null && sideVs(r.avg60, r.ref) && sideVs(r.avg60, r.ref) !== r.actual;
-        html += '<div class="hrow ' + (ok ? "w" : "l") + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
-          '<span class="hpred ' + (r.pick === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.pick + '</span>' +
-          '<span class="hres ' + (ok ? "w" : "l") + '">' + (ok ? "✓" : "✗") + '</span>' +
-          '<span class="hmeta mono"' + (split ? ' title="Coinbase close and the 60-sec Kalshi-style average landed on opposite sides — official Kalshi settlement may differ"' : '') + '>' + r.actual + (r.close != null ? " @ " + fmtMoney(r.close) : "") + (split ? " ⚠" : "") + ' · ' + moveStr + '</span></div>';
+        var rowCls = !scored ? "s" : (r.correct ? "w" : "l");
+        var predCls = r.pick === "OVER" ? "over" : r.pick === "UNDER" ? "under" : "skip";
+        var resTxt = !scored ? "—" : (r.correct ? "✓" : "✗");
+        html += '<div class="hrow ' + rowCls + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
+          '<span class="hpred ' + predCls + '">' + r.coin + " " + (scored ? r.pick : "sat out") + '</span>' +
+          '<span class="hres ' + rowCls + '">' + resTxt + '</span>' +
+          '<span class="hmeta mono"' + (split ? ' title="Coinbase close and the 60-sec average landed on opposite sides — Kalshi may settle differently"' : '') + '>' + r.actual + (r.close != null ? " @ " + fmtMoney(r.close) : "") + (split ? " (!)" : "") + ' · ' + moveStr + '</span></div>';
       });
       $("history").innerHTML = html;
     }
-    var rc = $("recentCount"); if (rc) rc.textContent = n ? ("· " + n + " graded") : "· auto-graded";
+    var rc = $("recentCount"); if (rc) rc.textContent = n ? ("· " + n + " rounds") : "· auto-graded";
     updateSeeMore("history", "moreRounds", n);
   }
 
