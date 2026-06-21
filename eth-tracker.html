@@ -103,6 +103,13 @@
   .appname { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
   .live { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--label-2); }
   .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: livepulse 2s infinite; }
+  .brandMark { width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto; display: none;
+    background: linear-gradient(140deg, var(--blue) 0%, #5b8cff 100%); box-shadow: 0 2px 8px rgba(10,132,255,.35); }
+  .brandText { display: flex; flex-direction: column; justify-content: center; line-height: 1.18; min-width: 0; }
+  .brandSub { font-size: 11px; color: var(--label-3); font-weight: 500; display: none; white-space: nowrap; }
+  .navExch { display: none; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--label-2);
+    background: rgba(28,28,30,.55); border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 7px 12px; }
+  .navExchDot { width: 13px; height: 13px; border-radius: 50%; background: var(--blue); flex: 0 0 auto; }
   @keyframes livepulse { 0%,100%{opacity:1;} 50%{opacity:.25;} }
 
   /* ---------- Segmented control ---------- */
@@ -163,26 +170,61 @@
   /* ---------- Responsive dashboard layout ---------- */
   .module { break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid; }
   /* mobile: swap the 6-up segmented control for a compact dropdown */
-  @media (max-width: 759px) {
+  /* grid-area names — applied only when .layout becomes a grid (tablet/desktop); ignored on mobile */
+  .m-hero { grid-area: hero; } .m-timer { grid-area: timer; } .m-signal { grid-area: signal; }
+  .m-chart { grid-area: chart; } .m-read { grid-area: read; } .m-indicators { grid-area: ind; }
+  .m-accuracy { grid-area: acc; } .m-recent { grid-area: recent; } .m-autotracker { grid-area: auto; }
+
+  /* MOBILE (default, < 768px): dropdown coin picker, single vertical stack */
+  @media (max-width: 767px) {
     .seg { display: none; }
     .coinSelectWrap { display: flex; }
-    /* more air between the lower sections so the page breathes */
-    main.grid { margin-top: 10px; }
-    main.grid > .module { margin-top: 18px; }
-    main.grid > .module:first-child { margin-top: 0; }
+    .m-chart .chartSec { display: none; }
+    .layout .module { margin-top: 18px; }
+    .layout .m-hero { margin-top: 0; }
   }
-  @media (min-width: 760px) {
-    .seg { max-width: 540px; }
-    /* hero + timer stacked on the left, the taller consolidated Auto Pick on the right */
-    .toprow { display: grid; grid-template-columns: 1fr 1.15fr; column-gap: 18px; align-items: start; }
-    .toprow > .module:nth-child(1) { grid-column: 1; grid-row: 1; }
-    .toprow > .module:nth-child(2) { grid-column: 1; grid-row: 2; }
-    .toprow > .module:nth-child(3) { grid-column: 2; grid-row: 1 / span 2; }
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); column-gap: 18px; align-items: start; }
+
+  /* TABLET + DESKTOP: horizontal nav row, segmented coin tabs, big page title hidden */
+  @media (min-width: 768px) {
+    body { max-width: 1200px; }
+    .coinHero { display: none; }
+    .coinSelectWrap { display: none; }
+    .appnav { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 24px; }
+    .topbar { padding: 0; gap: 12px; flex: 0 0 auto; justify-content: flex-start; }
+    .brandMark { display: block; }
+    .seg { display: flex; margin: 0; flex: 1 1 300px; justify-content: center; max-width: none; }
   }
-  @media (min-width: 1180px) {
-    .grid { grid-template-columns: repeat(3, 1fr); }
+
+  /* TABLET (768–1199): two-column areas, side-by-side rows */
+  @media (min-width: 768px) and (max-width: 1199px) {
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start;
+      grid-template-areas:
+        "hero   timer"
+        "signal signal"
+        "chart  chart"
+        "read   read"
+        "ind    ind"
+        "acc    recent"
+        "auto   auto"; }
+    .m-chart .chartSec { display: none; }
+  }
+
+  /* DESKTOP (≥1200): three-column terminal + full-width rows below */
+  @media (min-width: 1200px) {
+    body { max-width: 1480px; }
     .price { font-size: 50px; }
+    .brandSub, .navExch { display: flex; }
+    .layout { display: grid; grid-template-columns: 320px minmax(0,1fr) 340px; gap: 20px; align-items: start;
+      grid-template-areas:
+        "hero   chart  timer"
+        "signal chart  read"
+        "signal chart  acc"
+        "signal chart  recent"
+        "ind    ind    ind"
+        "auto   auto   auto"; }
+    .m-chart { align-self: stretch; }
+    .m-chart .chartCard { height: 100%; display: flex; flex-direction: column; }
+    .m-chart .miniChart { flex: 1 1 auto; height: auto; min-height: 520px; }
   }
 
   /* ---------- Hero / price ---------- */
@@ -417,9 +459,14 @@
   <div class="pageGlow g2" aria-hidden="true"></div>
   <div class="pageGlow g3" aria-hidden="true"></div>
 
+  <header class="appnav">
   <div class="topbar">
-    <div class="appname" id="title">15-Min Tracker</div>
-    <div class="live"><span class="dot"></span> Live</div>
+    <div class="brandMark" aria-hidden="true"></div>
+    <div class="brandText">
+      <div class="appname" id="title">15-Min Tracker</div>
+      <div class="brandSub" id="brandSub">Live terminal · ETH selected</div>
+    </div>
+    <div class="live navLive"><span class="dot"></span> Live</div>
   </div>
 
   <!-- COIN SWITCHER -->
@@ -442,13 +489,16 @@
       <option value="XRP">XRP</option>
     </select>
   </div>
+  <div class="navExch mono" aria-hidden="true"><span class="navExchDot"></span> Coinbase</div>
+  </header>
 
   <h1 class="coinHero" id="coinHero">Ethereum</h1>
 
-  <section class="toprow">
+  <div class="layout">
+  <section class="toprow" style="display:contents">
 
   <!-- HERO PRICE -->
-  <div class="module">
+  <div class="module m-hero">
   <div class="card hero orb">
     <div class="heroTop">
       <div class="coinInfo">
@@ -472,7 +522,7 @@
   </div>
 
   <!-- TIMER -->
-  <div class="module">
+  <div class="module m-timer">
   <div class="card flat timerCard">
     <div class="timerLabel">Next round closes in</div>
     <div id="timer" class="timer mono">--:--</div>
@@ -484,9 +534,9 @@
 
   </div>
 
-  <!-- RECOMMENDATION -->
-  <div class="module">
-  <div class="sec">Auto Pick <span class="tiny">· your bet + the read</span> <button class="ihelp" data-info="autopick">?</button></div>
+  <!-- AUTO PICK · the signal -->
+  <div class="module m-signal">
+  <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span> <button class="ihelp" data-info="autopick">?</button></div>
   <div class="card orb">
     <div id="reco" class="reco skip">
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
@@ -499,6 +549,13 @@
       <div class="tally mono" id="recoTally">—</div>
       <div class="lean mono" id="liveLean">—</div>
     </div>
+  </div>
+  </div>
+
+  <!-- LIVE CHART -->
+  <div class="module m-chart">
+  <div class="sec chartSec" id="chartSec">ETH / USD <span class="tiny">· 15m</span></div>
+  <div class="card orb chartCard">
     <div class="tfBar" id="tfBar">
       <button class="tfBtn active" data-tf="live">Live</button>
       <button class="tfBtn" data-tf="1m">1m</button>
@@ -511,9 +568,13 @@
     </div>
     <canvas id="miniChart" class="miniChart"></canvas>
     <div class="miniChartLbl" id="miniChartLbl">Live price vs the line you must beat</div>
+  </div>
+  </div>
 
-    <!-- The read: the market crowd + AI verdict that feed the blended % above -->
-    <div class="panelDivider"><span>The read</span></div>
+  <!-- THE READ · crowd + AI Co-Pilot -->
+  <div class="module m-read">
+  <div class="sec">AI Co-Pilot <span class="tiny">· the read</span> <button class="ihelp" data-info="autopick">?</button></div>
+  <div class="card orb">
     <div id="blend" class="blend"></div>
     <details id="aiWhy" class="aiWhy aiSetup aiSummary hidden">
       <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span></summary>
@@ -546,7 +607,7 @@
 
   </section>
 
-  <main class="grid">
+  <main class="grid" style="display:contents">
 
   <!-- (AI Co-Pilot is now consolidated into the Auto Pick panel above) -->
 
@@ -561,7 +622,7 @@
   </div>
 
   <!-- ACCURACY -->
-  <div class="module">
+  <div class="module m-accuracy">
   <div class="sec">Pick Accuracy <span class="tiny">· auto-graded</span> <button class="ihelp" data-info="accuracy">?</button></div>
   <div class="card flat">
     <div class="scoreGrid">
@@ -576,7 +637,7 @@
   </div>
 
   <!-- HISTORY -->
-  <div class="module">
+  <div class="module m-recent">
   <div class="sec">Recent Rounds <span class="tiny" id="recentCount">· auto-graded</span> <button class="clearBtn" id="clearLog">Clear</button></div>
   <div class="card flat">
     <div id="history" class="history collapsed"><div class="empty">No graded rounds yet.</div></div>
@@ -605,6 +666,7 @@
   </details>
   </div>
   </main>
+  </div><!-- /.layout -->
 
   <div id="infoSheet"><div class="infoCard"><h3 id="infoTitle">—</h3><p id="infoText">—</p><button class="closeBtn" id="infoClose">Got it</button></div></div>
 
@@ -1442,7 +1504,7 @@
   }
   function drawMiniChart() {
     var cv = $("miniChart"); if (!cv || !cv.getContext) return;
-    var W = cv.clientWidth || cv.offsetWidth || 300, H = 120, dpr = window.devicePixelRatio || 1;
+    var W = cv.clientWidth || cv.offsetWidth || 300, H = cv.clientHeight || 120, dpr = window.devicePixelRatio || 1;
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     if (state.chartTF && state.chartTF !== "live") {
       var ctx2 = cv.getContext("2d"); ctx2.setTransform(dpr, 0, 0, dpr, 0, 0); ctx2.clearRect(0, 0, W, H);
