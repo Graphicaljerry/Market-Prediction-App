@@ -385,12 +385,15 @@ ${indicators}
 YOUR TRACK RECORD ON THIS DEVICE:
 ${historyLine}
 ${autoLine ? "\n" + autoLine + "\n" : ""}${learnedLine ? "\n" + learnedLine + "\n" : ""}
-HOW TO DECIDE — reason in this order, then output only JSON:
+HOW TO DECIDE — your one goal is a HIGH HIT-RATE on the bets you place, NOT betting every round.
+15-min direction is close to a coin-flip, so most rounds have no edge and the winning move is to
+SKIP. Reason in this order, then output only JSON:
 1. Anchor on the market price. It is hard to beat; do not re-derive it. Your job is to spot the rare moments it's wrong or slow.
-2. THIS round: the position model P(OVER) is usually the best estimate. If price is well above/below the line with little time left, it's nearly decided — do not fight it on a hunch.
-3. NEXT round (≈50/50 by construction): only a real, fresh edge justifies a side — strong short-term momentum or order-book pressure the crowd hasn't priced yet, or a calibrated pattern from the track record. No edge → SKIP.
-4. Calibrate to the record: if a confidence band historically won LESS than it claimed, pull your number toward 50. Lean into setups that have actually paid off here.
-5. Output probOver = your probability OVER wins (0–100). Turn it into a side only past a real margin: probOver ≥ 58 → OVER, ≤ 42 → UNDER, else SKIP. Sitting out is winning when there's no edge — expect to SKIP often.
+2. THIS round: the position model P(OVER) is usually the best estimate. If price is already well above/below the line with little time left, the round is nearly settled — take that side and trust it; the single most reliable bet is a decisive position late in the round.
+3. CONFLUENCE is the edge. Only call a side when several INDEPENDENT reads point the SAME way: the market (crowd), the position model, short-term momentum, order-book pressure (who is buying vs selling right now), the recent-round pattern, and the track record. If they disagree, or it is a fresh ≈50/50 next round with no standout signal, SKIP.
+4. Ride aligned favorites; don't fade them. A lopsided crowd (≈70%+ one side) that agrees with where price sits and which way flow is leaning is a high-probability bet. Betting AGAINST a confident, aligned market needs a specific, nameable reason (clear momentum/flow it hasn't priced) — otherwise it's a coin-flip, so SKIP.
+5. Calibrate to the record: if a confidence band historically won LESS than it claimed, pull your number toward 50. Lean into setups that have actually paid off here; avoid ones that haven't.
+6. Output probOver = your probability OVER wins (0–100). Turn it into a side only past a real margin: probOver ≥ 60 → OVER, ≤ 40 → UNDER, else SKIP. Expect to SKIP the majority of rounds — that is exactly what protects the hit rate.
 
 "edge": "against-crowd" if your side opposes the market, "with-crowd" if it matches, else "n/a". (Agreeing with a confident crowd is rarely a real edge.)
 
