@@ -432,7 +432,7 @@ async function readAnthropic(key, model, prompt) {
           schema: {
             type: "object",
             properties: {
-              probOver: { type: "integer", minimum: 0, maximum: 100 },
+              probOver: { type: "integer" },
               verdict: { type: "string", enum: ["OVER", "UNDER", "SKIP"] },
               confidence: { type: "string", enum: ["Low", "Medium", "High"] },
               edge: { type: "string", enum: ["with-crowd", "against-crowd", "n/a"] },

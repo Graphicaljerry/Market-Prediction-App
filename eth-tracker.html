@@ -28,7 +28,7 @@
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
 
-  html { background: var(--bg); }
+  html { background: var(--bg); overflow-x: hidden; }
   html, body {
     color: var(--label);
     font-family: "Space Mono", ui-monospace, "SF Mono", monospace;
@@ -38,8 +38,12 @@
     position: relative; background: transparent;
     max-width: 1120px; margin: 0 auto;
     padding: max(14px, env(safe-area-inset-top)) clamp(16px, 3.5vw, 44px) calc(40px + env(safe-area-inset-bottom));
-    min-height: 100vh;
+    min-height: 100vh; overflow-x: hidden;
   }
+  /* never let a long token (an API error, a URL, a rationale) force horizontal scroll */
+  .card, .module, .reco, .toprow, .grid { min-width: 0; max-width: 100%; }
+  .aiMuted, .aiWhyText, .aiRationale, .buyHint, .accNote, .miniChartLbl, .autoLearned,
+  .nextRibbon, .scopeTag, .conf, .tally, .lean, .isub, .hmeta, .infoCard p { overflow-wrap: anywhere; word-break: break-word; }
   /* ---------- Aurora glow ---------- */
   /* A fixed, layered glow that colours itself to the live recommendation: green when the
      pick is OVER, red when UNDER, amber when SKIP. Each layer drifts very slowly and
@@ -268,7 +272,8 @@
   .pos { color: var(--green); } .neg { color: var(--red); }
 
   /* ---------- History ---------- */
-  .history { max-height: 340px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  /* lists are already capped to 10 rows in JS — show them in full so a row never half-clips */
+  .history { overflow: visible; }
   .hrow { display: grid; grid-template-columns: auto 1fr auto; gap: 5px 10px; align-items: center; padding: 13px 14px; border-radius: 13px; margin-bottom: 9px; font-size: 14px; background: var(--surface-2); }
   .hrow.w { background: rgba(48,209,88,.10); } .hrow.l { background: rgba(255,69,58,.10); }
   .hrow .htime { font-size: 13px; color: var(--label-2); }
@@ -558,6 +563,8 @@
   function hma(d){ return hm(d) + " " + ampm(d.getHours()); }                                     // 2:45 PM
   function hms(d){ return hm(d) + ":" + pad(d.getSeconds()) + " " + ampm(d.getHours()); }         // 2:45:09 PM
   function rangeHM(a, b){ return hm(a) + "–" + hm(b) + " " + ampm(b.getHours()); }                 // 2:45–3:00 PM
+  // Normalize a stored time string to 12-hour (older history rows were saved as 24-hour "HH:MM").
+  function disp12(t){ if (!t) return ""; if (/[AP]M/i.test(t)) return t; var m = /^(\d{1,2}):(\d{2})/.exec(t); if (!m) return t; var h = +m[1]; return (h % 12 || 12) + ":" + m[2] + " " + ampm(h); }
   function fmtMoney(n){ var a = Math.abs(n), d = a >= 1 ? 2 : a >= 0.1 ? 4 : a >= 0.01 ? 5 : a >= 0.0001 ? 6 : 8; return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
 
   // ---------- Indicator math ----------
@@ -1477,7 +1484,7 @@
     var html = "";
     state.rounds.slice(0, 10).forEach(function (r) {
       var ok = r.correct, moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
-      html += '<div class="hrow ' + (ok ? "w" : "l") + '"><span class="htime mono">' + r.time + '</span>' +
+      html += '<div class="hrow ' + (ok ? "w" : "l") + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
         '<span class="hpred ' + (r.pick === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.pick + '</span>' +
         '<span class="hres ' + (ok ? "w" : "l") + '">' + (ok ? "✓" : "✗") + '</span>' +
         '<span class="hmeta mono">Actual ' + r.actual + ' · ' + moveStr + '</span></div>';
@@ -1724,7 +1731,7 @@
       lat.innerHTML = (p.side === "SKIP" ? "SKIP — no clear edge" : "Auto pick: " + p.side + " · " + p.prob + "%") + '<span class="sub">' + sub + '</span>';
     } else { lat.className = "autoLatest"; lat.textContent = ""; }
     var rows = (d.history || []).slice(0, 10).map(function (h) {
-      var w = h.correct ? "w" : "l", tlabel = h.ts ? hma(new Date(h.ts)) : (h.time || "");
+      var w = h.correct ? "w" : "l", tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
       return '<div class="hrow ' + w + '"><span class="htime">' + tlabel + '</span>' +
         '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
         '<span class="hres ' + w + '">' + (h.correct ? "✓ " : "✗ ") + h.actual + '</span></div>';
