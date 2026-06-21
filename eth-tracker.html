@@ -152,6 +152,16 @@
   /* ---------- Section header ---------- */
   .sec { font-size: 13px; font-weight: 600; color: var(--label-2); margin: 0 4px 10px; }
   .sec .tiny { color: var(--label-3); font-weight: 500; }
+  /* "High-conviction only" switch in the Auto Pick header */
+  .m-signal .sec { overflow: hidden; }
+  .hiConvToggle { float: right; display: inline-flex; align-items: center; gap: 7px; cursor: pointer; font-size: 11px; font-weight: 700;
+    color: var(--label-3); user-select: none; padding: 3px 9px 3px 7px; border: 1px solid var(--separator); border-radius: 999px; transition: color .18s ease, border-color .18s ease; }
+  .hiConvToggle input { appearance: none; -webkit-appearance: none; margin: 0; width: 26px; height: 15px; border-radius: 999px; background: var(--surface-3);
+    position: relative; cursor: pointer; transition: background .18s ease; flex: 0 0 auto; }
+  .hiConvToggle input::after { content: ""; position: absolute; top: 1.5px; left: 1.5px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .18s ease; }
+  .hiConvToggle input:checked { background: #0a84ff; }
+  .hiConvToggle input:checked::after { transform: translateX(11px); }
+  .hiConvToggle:has(input:checked) { color: var(--label); border-color: rgba(10,132,255,.5); }
 
   /* ---------- Card ---------- */
   .card {
@@ -552,7 +562,9 @@
 
   <!-- AUTO PICK · the signal -->
   <div class="module m-signal">
-  <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span> <button class="ihelp" data-info="autopick">?</button></div>
+  <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span> <button class="ihelp" data-info="autopick">?</button>
+    <label class="hiConvToggle"><input type="checkbox" id="hiConvOnly" /><span>High-conviction only</span></label>
+  </div>
   <div class="card orb">
     <div id="reco" class="reco skip">
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
@@ -698,7 +710,8 @@
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null,
     chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null,
-    chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })() };
+    chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
+    hiConvOnly: (function () { try { return localStorage.getItem("hiConvOnly_v1") === "1"; } catch (e) { return false; } })() };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -1162,6 +1175,18 @@
     }
     if (!call) return;
 
+    // High-conviction-only mode: mute anything that isn't a strong/edge setup, so you act only on confluence.
+    var hiConv = call.conv && (call.conv.level === "strong" || call.conv.level === "edge");
+    if (state.hiConvOnly && call.dir !== "SKIP" && !hiConv) {
+      setGlow("SKIP"); state.shownDir = "SKIP";
+      el.className = "reco skip";
+      scopeEl.textContent = nextMode ? ("NEXT round " + nsH + "–" + neH) : ("THIS round · closes " + nsH);
+      buyEl.className = "buyLine skip"; buyEl.textContent = "Holding — no high-conviction setup";
+      hintEl.textContent = "High-conviction only is ON — acting only when indicators, AI and the crowd line up. Leaning " + call.dir + " now, but not strong enough.";
+      pctEl.textContent = "—"; lblEl.textContent = "holding";
+      return;
+    }
+
     if (call.dir === "SKIP") {
       el.className = "reco skip";
       scopeEl.textContent = nextMode ? ("NEXT round " + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "")) : ("THIS round · closes " + nsH);
@@ -1185,6 +1210,7 @@
       hintEl.textContent = "Your locked pick for this round — live status below.";
       lblEl.textContent = "chance " + (call.dir === "OVER" ? "UP" : "DOWN");
     }
+    if (state.hiConvOnly && hiConv) scopeEl.textContent += " · " + (call.conv.level === "strong" ? "HIGH CONVICTION" : "EDGE vs CROWD");
   }
 
   // One plain-English line that reconciles the two systems so you know which to trust:
@@ -1976,6 +2002,15 @@
     b.addEventListener("click", function () { setChartType(b.getAttribute("data-ct")); });
   });
   setChartType(state.chartType);   // reflect the saved Line/Candles preference on load
+  (function () {
+    var t = $("hiConvOnly"); if (!t) return;
+    t.checked = state.hiConvOnly;
+    t.addEventListener("change", function () {
+      state.hiConvOnly = t.checked;
+      try { localStorage.setItem("hiConvOnly_v1", t.checked ? "1" : "0"); } catch (e) {}
+      renderPickCard();   // re-render the headline immediately under the new filter
+    });
+  })();
   // ---------- Help sheet ----------
   var EXPLAIN = {
     autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine. The 'Which to follow' line right under the call reconciles it with the always-on 24/7 auto-tracker: agree → higher conviction (this is your call); split → coin-flip territory, sitting out is the safe play. Follow this Co-Pilot pick as the headline; use the tracker to gauge how much to trust it." },
