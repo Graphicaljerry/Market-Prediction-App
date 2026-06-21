@@ -495,7 +495,7 @@
 
   <!-- HISTORY -->
   <div class="module">
-  <div class="sec">Recent Rounds <span class="tiny">· last 10</span> <button class="clearBtn" id="clearLog">Clear</button></div>
+  <div class="sec">Recent Rounds <span class="tiny" id="recentCount">· auto-graded</span> <button class="clearBtn" id="clearLog">Clear</button></div>
   <div class="card flat">
     <div id="history" class="history"><div class="empty">No graded rounds yet.</div></div>
   </div>
@@ -1482,7 +1482,7 @@
   function renderRounds() {
     if (!state.rounds.length) { $("history").innerHTML = '<div class="empty">No graded rounds yet.</div>'; return; }
     var html = "";
-    state.rounds.slice(0, 10).forEach(function (r) {
+    state.rounds.forEach(function (r) {
       var ok = r.correct, moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
       html += '<div class="hrow ' + (ok ? "w" : "l") + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
         '<span class="hpred ' + (r.pick === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.pick + '</span>' +
@@ -1490,6 +1490,7 @@
         '<span class="hmeta mono">Actual ' + r.actual + ' · ' + moveStr + '</span></div>';
     });
     $("history").innerHTML = html;
+    var rc = $("recentCount"); if (rc) rc.textContent = "· " + state.rounds.length + " graded";
   }
 
   // ---------- Coin switching ----------
@@ -1730,7 +1731,7 @@
       lat.className = "autoLatest " + cls;
       lat.innerHTML = (p.side === "SKIP" ? "SKIP — no clear edge" : "Auto pick: " + p.side + " · " + p.prob + "%") + '<span class="sub">' + sub + '</span>';
     } else { lat.className = "autoLatest"; lat.textContent = ""; }
-    var rows = (d.history || []).slice(0, 10).map(function (h) {
+    var rows = (d.history || []).map(function (h) {
       var w = h.correct ? "w" : "l", tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
       return '<div class="hrow ' + w + '"><span class="htime">' + tlabel + '</span>' +
         '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
