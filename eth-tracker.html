@@ -24,7 +24,14 @@
     --red: #ff453a;
     --orange: #ff9f0a;
     --blue: #0a84ff;
+    /* live status accent — flips green↔red↔amber with the current pick (see body.glow-*) */
+    --accent: var(--green);
+    --accent-rgb: 13,224,89;
   }
+  /* the whole UI's accent follows the up/down status of the pick */
+  body.glow-over  { --accent: var(--green);  --accent-rgb: 13,224,89; }
+  body.glow-under { --accent: var(--red);    --accent-rgb: 255,69,58; }
+  body.glow-skip  { --accent: var(--orange); --accent-rgb: 255,159,10; }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
 
@@ -43,28 +50,40 @@
   /* never let a long token (an API error, a URL, a rationale) force horizontal scroll */
   .card, .module, .reco, .toprow, .grid { min-width: 0; max-width: 100%; }
   .aiMuted, .aiWhyText, .aiRationale, .buyHint, .accNote, .miniChartLbl, .autoLearned,
-  .nextRibbon, .scopeTag, .conf, .tally, .lean, .isub, .hmeta, .infoCard p { overflow-wrap: anywhere; word-break: break-word; }
+  .scopeTag, .conf, .tally, .lean, .isub, .hmeta, .infoCard p { overflow-wrap: anywhere; word-break: break-word; }
   /* ---------- Section glow ("Bullish Orbs") ----------
      Soft radial glows that live INSIDE each glowing card and scroll with it — never a fixed,
      sticky backdrop. Green by default; crossfades to red when the pick is UNDER. Each card
      clips its own orb so the glow stays contained within that section. */
-  .card.orb { position: relative; overflow: hidden; isolation: isolate; }
+  .card.orb {
+    position: relative; overflow: hidden; isolation: isolate;
+    /* glass picks up the live accent colour — a faint coloured edge + inner bloom */
+    border-color: rgba(var(--accent-rgb), 0.22);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.35), inset 0 1px 34px rgba(var(--accent-rgb), 0.06);
+    transition: border-color .8s ease, box-shadow .8s ease;
+  }
   .card.orb::before, .card.orb::after {
     content: ""; position: absolute; z-index: -1; pointer-events: none;
-    border-radius: 50%; filter: blur(12px); opacity: 1; transition: background .9s ease;
+    border-radius: 50%; filter: blur(14px); opacity: 1;
+    transition: background .9s ease; will-change: transform;
   }
   .card.orb::before { width: 78%; height: 70%; right: -16%; top: -22%;
-    background: radial-gradient(closest-side, rgba(13,224,89,0.34), transparent 72%); }
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.36), transparent 72%);
+    animation: orbCircleA 26s linear infinite; }
   .card.orb::after  { width: 64%; height: 56%; left: -14%; bottom: -20%;
-    background: radial-gradient(closest-side, rgba(13,224,89,0.22), transparent 72%); }
-  body.glow-under .card.orb::before { background: radial-gradient(closest-side, rgba(255,69,58,0.32), transparent 72%); }
-  body.glow-under .card.orb::after  { background: radial-gradient(closest-side, rgba(255,69,58,0.20), transparent 72%); }
-  /* a couple of free-floating orbs anchored to the page (scroll with it, not the viewport) */
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.22), transparent 72%);
+    animation: orbCircleB 34s linear infinite; }
+  /* slow, subtle circular drift (the element orbits ~9px without spinning itself) */
+  @keyframes orbCircleA { from { transform: rotate(0deg) translateX(9px) rotate(0deg); } to { transform: rotate(360deg) translateX(9px) rotate(-360deg); } }
+  @keyframes orbCircleB { from { transform: rotate(0deg) translateX(12px) rotate(0deg); } to { transform: rotate(-360deg) translateX(12px) rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .card.orb::before, .card.orb::after { animation: none; } }
+  /* free-floating page orbs (scroll with the page, not the viewport) — also drift gently */
   .pageGlow { position: absolute; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(40px);
-    background: radial-gradient(closest-side, rgba(13,224,89,0.16), transparent 70%); }
-  .pageGlow.g1 { width: 300px; height: 200px; right: -60px; top: 360px; }
-  .pageGlow.g2 { width: 440px; height: 420px; left: -130px; bottom: 60px; }
-  .pageGlow.g3 { width: 400px; height: 380px; right: -110px; bottom: 0; }
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.16), transparent 70%); transition: background .9s ease; will-change: transform; }
+  .pageGlow.g1 { width: 300px; height: 200px; right: -60px; top: 360px; animation: orbCircleB 40s linear infinite; }
+  .pageGlow.g2 { width: 440px; height: 420px; left: -130px; bottom: 60px; animation: orbCircleA 52s linear infinite; }
+  .pageGlow.g3 { width: 400px; height: 380px; right: -110px; bottom: 0; animation: orbCircleB 46s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .pageGlow { animation: none; } }
 
   .mono { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
@@ -114,7 +133,7 @@
   .card {
     background: rgba(28,28,30,0.55);
     -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
-    border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 18px; margin-bottom: 24px;
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 18px; margin-bottom: 28px;
     box-shadow: 0 8px 30px rgba(0,0,0,0.35);
     transition: border-color .4s ease;
   }
@@ -136,6 +155,10 @@
   @media (max-width: 759px) {
     .seg { display: none; }
     .coinSelectWrap { display: flex; }
+    /* more air between the lower sections so the page breathes */
+    main.grid { margin-top: 10px; }
+    main.grid > .module { margin-top: 18px; }
+    main.grid > .module:first-child { margin-top: 0; }
   }
   @media (min-width: 760px) {
     .seg { max-width: 540px; }
@@ -188,20 +211,11 @@
 
   .scopeTag { font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--label-3); margin-bottom: 12px; }
   .reco.over .scopeTag { color: var(--green); } .reco.under .scopeTag { color: var(--red); }
-  /* prominent "next round" ribbon (the 2-min-prior locked suggestion) */
-  .nextRibbon { display: none; }
-  .nextRibbon.show { display: block; margin: 0 0 14px; padding: 9px 12px; border-radius: 11px; font-size: 12.5px; font-weight: 700;
-    letter-spacing: .01em; line-height: 1.4; border: 1px solid transparent; animation: nextPulse 2.4s ease-in-out infinite; }
-  .nextRibbon .nrLock { display: inline-block; font-size: 11px; font-weight: 600; opacity: .8; }
-  .nextRibbon.over  { background: rgba(48,209,88,.15);  color: var(--green);  border-color: rgba(48,209,88,.5); }
-  .nextRibbon.under { background: rgba(255,69,58,.15);  color: var(--red);    border-color: rgba(255,69,58,.5); }
-  .nextRibbon.skip  { background: rgba(255,159,10,.13); color: var(--orange); border-color: rgba(255,159,10,.45); }
-  @keyframes nextPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); } 50% { box-shadow: 0 0 14px 0 rgba(255,255,255,.06); } }
-  .buyLine { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; border-radius: 14px; padding: 14px 10px; }
+  .buyLine { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; padding: 10px 6px 6px; }
   .buyLine .buySub { display: block; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; margin-top: 4px; opacity: .85; }
-  .buyLine.over { color: var(--green); background: rgba(48,209,88,.13); }
-  .buyLine.under { color: var(--red); background: rgba(255,69,58,.13); }
-  .buyLine.skip { color: var(--orange); background: rgba(255,159,10,.11); font-size: 22px; }
+  .buyLine.over { color: var(--green); }
+  .buyLine.under { color: var(--red); }
+  .buyLine.skip { color: var(--orange); font-size: 22px; }
   .buyHint { font-size: 12.5px; color: var(--label-2); font-weight: 500; margin-top: 9px; }
   .oddsRow { margin-top: 12px; display: flex; align-items: baseline; justify-content: center; gap: 8px; }
   .oddsPct { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; }
@@ -268,6 +282,13 @@
   /* ---------- History ---------- */
   /* lists are already capped to 10 rows in JS — show them in full so a row never half-clips */
   .history { overflow: visible; }
+  /* collapse long logs to 5 rows behind a "See more" button (data stays intact) */
+  .history.collapsed .hrow:nth-of-type(n+6) { display: none; }
+  .seeMore { display: block; width: 100%; margin-top: 10px; padding: 9px; background: transparent;
+    border: 1px solid var(--separator); border-radius: 10px; color: var(--label-2); font: inherit;
+    font-size: 12px; font-weight: 700; letter-spacing: .02em; cursor: pointer; transition: color .2s, border-color .2s; }
+  .seeMore:hover { color: var(--label); border-color: rgba(var(--accent-rgb), 0.45); }
+  .seeMore:active { opacity: .6; }
   .hrow { display: grid; grid-template-columns: auto 1fr auto; gap: 5px 10px; align-items: center; padding: 13px 14px; border-radius: 13px; margin-bottom: 9px; font-size: 14px; background: var(--surface-2); }
   .hrow.w { background: rgba(48,209,88,.10); } .hrow.l { background: rgba(255,69,58,.10); }
   .hrow .htime { font-size: 13px; color: var(--label-2); }
@@ -409,7 +430,6 @@
   <div class="sec">Auto Pick <span class="tiny">· your bet + the read</span> <button class="ihelp" data-info="autopick">?</button></div>
   <div class="card orb">
     <div id="reco" class="reco skip">
-      <div class="nextRibbon" id="nextRibbon"></div>
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
       <div class="buyLine skip" id="buyLine">Analyzing…</div>
       <div class="buyHint" id="buyHint">Loading live market data…</div>
@@ -495,7 +515,8 @@
   <div class="module">
   <div class="sec">Recent Rounds <span class="tiny" id="recentCount">· auto-graded</span> <button class="clearBtn" id="clearLog">Clear</button></div>
   <div class="card flat">
-    <div id="history" class="history"><div class="empty">No graded rounds yet.</div></div>
+    <div id="history" class="history collapsed"><div class="empty">No graded rounds yet.</div></div>
+    <button class="seeMore" id="moreRounds" style="display:none"></button>
   </div>
 
   </div>
@@ -512,7 +533,8 @@
       <div class="stat"><div class="v mono" id="aPick">—</div><div class="k">Now</div></div>
     </div>
     <div id="autoLearned" class="autoLearned"></div>
-    <div id="autoHistory" class="history" style="margin-top:14px"></div>
+    <div id="autoHistory" class="history collapsed" style="margin-top:14px"></div>
+    <button class="seeMore" id="moreAuto" style="display:none"></button>
     <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. Claude reads this record too.</div>
   </div>
 
@@ -952,21 +974,6 @@
 
     // colour the ambient glow to the live recommendation (over=green / under=red / skip=amber)
     setGlow(locking ? "SKIP" : call ? call.dir : "SKIP");
-
-    // prominent "next round" ribbon — restores the 2-min-prior suggestion inside this card
-    var ribbon = $("nextRibbon");
-    if (ribbon) {
-      if (nextMode && (call || locking)) {
-        var rdir = locking ? "skip" : call.dir === "OVER" ? "over" : call.dir === "UNDER" ? "under" : "skip";
-        ribbon.className = "nextRibbon show " + rdir;
-        ribbon.innerHTML = locking
-          ? "&#9203; Locking your NEXT-round pick…"
-          : (call.dir === "SKIP"
-              ? "&#9197; NEXT ROUND " + nsH + "–" + neH + " · SKIP — too close to call"
-              : "&#9197; NEXT ROUND &middot; <b>BUY " + (call.dir === "OVER" ? "OVER &uarr;" : "UNDER &darr;") + "</b> when it opens " + nsH +
-                " <span class=\"nrLock\">&#128274; locked " + (call.atLabel || "") + "</span>");
-      } else { ribbon.className = "nextRibbon"; ribbon.innerHTML = ""; }
-    }
 
     leanEl.textContent = liveLeanLine(call ? call.dir : "SKIP");
     leanEl.className = "lean mono " + leanClass();
@@ -1477,18 +1484,29 @@
     $("accNote").textContent = note;
   }
 
+  // Collapse a log to 5 rows behind a "See more" toggle (all rows stay in the DOM).
+  function updateSeeMore(histId, btnId, n) {
+    var b = $(btnId); if (!b) return;
+    if (n <= 5) { b.style.display = "none"; return; }
+    b.style.display = "block";
+    b.textContent = $(histId).classList.contains("collapsed") ? ("See all " + n + "  ↓") : "Show fewer  ↑";
+  }
   function renderRounds() {
-    if (!state.rounds.length) { $("history").innerHTML = '<div class="empty">No graded rounds yet.</div>'; return; }
-    var html = "";
-    state.rounds.forEach(function (r) {
-      var ok = r.correct, moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
-      html += '<div class="hrow ' + (ok ? "w" : "l") + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
-        '<span class="hpred ' + (r.pick === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.pick + '</span>' +
-        '<span class="hres ' + (ok ? "w" : "l") + '">' + (ok ? "✓" : "✗") + '</span>' +
-        '<span class="hmeta mono">Actual ' + r.actual + ' · ' + moveStr + '</span></div>';
-    });
-    $("history").innerHTML = html;
-    var rc = $("recentCount"); if (rc) rc.textContent = "· " + state.rounds.length + " graded";
+    var n = state.rounds.length;
+    if (!n) { $("history").innerHTML = '<div class="empty">No graded rounds yet.</div>'; }
+    else {
+      var html = "";
+      state.rounds.forEach(function (r) {
+        var ok = r.correct, moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
+        html += '<div class="hrow ' + (ok ? "w" : "l") + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
+          '<span class="hpred ' + (r.pick === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.pick + '</span>' +
+          '<span class="hres ' + (ok ? "w" : "l") + '">' + (ok ? "✓" : "✗") + '</span>' +
+          '<span class="hmeta mono">Actual ' + r.actual + ' · ' + moveStr + '</span></div>';
+      });
+      $("history").innerHTML = html;
+    }
+    var rc = $("recentCount"); if (rc) rc.textContent = n ? ("· " + n + " graded") : "· auto-graded";
+    updateSeeMore("history", "moreRounds", n);
   }
 
   // ---------- Coin switching ----------
@@ -1700,7 +1718,7 @@
     try { var u = new URL(base); Object.keys(params).forEach(function (k) { u.searchParams.set(k, params[k]); }); return u.toString(); }
     catch (e) { return base + (base.indexOf("?") < 0 ? "?" : "&") + Object.keys(params).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&"); }
   }
-  var _lastAutoAt = 0;
+  var _lastAutoAt = 0, _autoHistLen = 0;
   function fetchAutoTracker(coin, force) {
     var url = workerGet({ picks: coin }); if (!url) return;
     var now = Date.now();
@@ -1737,6 +1755,8 @@
         '<span class="hres ' + w + '">' + (h.correct ? "✓ " : "✗ ") + h.actual + '</span></div>';
     }).join("");
     $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet.</div>';
+    _autoHistLen = (d.history || []).length;
+    updateSeeMore("autoHistory", "moreAuto", _autoHistLen);
     // what the per-coin online model has learned
     var lr = d.learned, le = $("autoLearned");
     if (le) {
@@ -1822,6 +1842,8 @@
   $("coinBadge").innerHTML = COIN_ICONS[state.coin] ? '<img alt="" src="' + COIN_ICONS[state.coin] + '">' : "";
   (function () { var s = $("coinSelect"); if (s) s.value = state.coin; var si = $("coinSelIcon"); if (si) si.src = COIN_ICONS[state.coin] || ""; })();
   var _cl = $("clearLog"); if (_cl) _cl.addEventListener("click", function () { if (confirm("Clear all graded rounds and accuracy stats?")) { state.rounds = []; saveRounds(); renderAccuracy(); renderRounds(); } });
+  (function () { var b = $("moreRounds"); if (b) b.addEventListener("click", function () { $("history").classList.toggle("collapsed"); updateSeeMore("history", "moreRounds", state.rounds.length); }); })();
+  (function () { var b = $("moreAuto"); if (b) b.addEventListener("click", function () { $("autoHistory").classList.toggle("collapsed"); updateSeeMore("autoHistory", "moreAuto", _autoHistLen); }); })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
   window.addEventListener("resize", drawMiniChart);
 })();
