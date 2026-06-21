@@ -221,6 +221,8 @@
   .lastClose .lcLbl { display: block; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--label-3); margin-bottom: 2px; }
   .lastClose.over { color: var(--green); } .lastClose.under { color: var(--red); }
   .lastClose.skip, .lastClose.pending { color: var(--label-3); }
+  .lastClose .lcSub { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); margin-top: 3px; letter-spacing: 0; }
+  .lastClose .lcSub.warn { color: var(--orange); }
   /* "which to follow" — reconciles the Co-Pilot pick with the 24/7 tracker in one line */
   .consensus { font-size: 13px; font-weight: 600; line-height: 1.5; margin: 12px 0 2px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--separator); background: rgba(255,255,255,0.04); color: var(--label-2); text-align: left; }
   .consensus:empty { display: none; }
@@ -895,6 +897,16 @@
   function rangePhrase(pos) {
     return pos >= 0.8 ? "riding its highs" : pos <= 0.2 ? "near its lows" : pos >= 0.6 ? "upper half of its range" : pos <= 0.4 ? "lower half of its range" : "mid-range";
   }
+  // Kalshi-style settlement proxy: the average of the observed prices in the FINAL 60 seconds of
+  // the round (CF Benchmarks, Kalshi's real source, averages ~60 readings in the last minute).
+  // Drawn from the live tick track; null if we didn't see enough ticks (e.g. a backgrounded tab).
+  function avgLast60(hist, openTime) {
+    if (!hist || !hist.length) return null;
+    var closeMs = openTime + 900000, from = closeMs - 60000, sum = 0, n = 0, i;
+    for (i = 0; i < hist.length; i++) if (hist[i].t >= from && hist[i].t <= closeMs + 2000) { sum += hist[i].p; n++; }
+    return n >= 5 ? sum / n : null;
+  }
+  function sideVs(price, ref) { return (price == null || ref == null) ? null : price > ref ? "OVER" : price < ref ? "UNDER" : "FLAT"; }
   // Standard normal CDF (Abramowitz & Stegun 26.2.17) — for the position/barrier model.
   function normCdf(z) {
     var t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989422804 * Math.exp(-z * z / 2);
@@ -1606,6 +1618,7 @@
     state.pendingRound = null;
     if (!pr || pr.partial) return;
     pr.provClose = state.lastPrice;          // freshest tick — provisional until the candle confirms
+    pr.avg60 = avgLast60(state.priceHist, pr.openTime);   // Kalshi-style 60-sec average, captured before the chart resets
     pr.tries = 0;
     state.gradePending = pr;
     renderLastClose();                        // "closing near $X · confirming…"
@@ -1636,7 +1649,7 @@
     var actual = (ref != null && close != null) ? (close > ref ? "OVER" : close < ref ? "UNDER" : "FLAT") : null;
     var rec = {
       coin: pr.coin, time: pr.endLabel, pick: pr.pickDir, actual: actual,
-      close: close, ref: ref, openPrice: pr.openPrice, src: src,
+      close: close, ref: ref, openPrice: pr.openPrice, src: src, avg60: pr.avg60 != null ? pr.avg60 : null,
       pct: ref ? (close - ref) / ref * 100 : 0, feat: pr.feat || null
     };
     state.lastSettled = rec;                   // drives the real-time "last close" readout
@@ -1665,9 +1678,16 @@
     var cls = !graded ? "skip" : r.correct ? "over" : "under";
     var dirTxt = r.actual === "OVER" ? "OVER ↑" : r.actual === "UNDER" ? "UNDER ↓" : "FLAT";
     var tail = graded ? (r.correct ? " · pick won ✓" : " · pick missed ✗") : (r.pick === "SKIP" ? " · sat out" : "");
+    var sub = "";
+    if (r.avg60 != null) {
+      var avgSide = sideVs(r.avg60, r.ref), diff = avgSide && r.actual && avgSide !== r.actual;
+      sub = '<span class="lcSub' + (diff ? " warn" : "") + '">' + (diff ? "⚠ " : "") +
+        "Kalshi-style 60-sec avg " + fmtMoney(r.avg60) + " → " + (avgSide || "—") +
+        (diff ? " — official settle may differ" : " · same side") + "</span>";
+    }
     el.className = "lastClose " + cls;
     el.innerHTML = '<span class="lcLbl">Last round ' + disp12(r.time) + '</span>' +
-      "closed " + fmtMoney(r.close) + " · " + dirTxt + " the line " + fmtMoney(r.ref) + tail;
+      "closed " + fmtMoney(r.close) + " · " + dirTxt + " the line " + fmtMoney(r.ref) + tail + sub;
   }
 
   function saveRounds() { try { localStorage.setItem("pickTracker_v1", JSON.stringify(state.rounds)); } catch (e) {} }
@@ -1701,10 +1721,11 @@
       var html = "";
       state.rounds.forEach(function (r) {
         var ok = r.correct, moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
+        var split = r.avg60 != null && r.ref != null && sideVs(r.avg60, r.ref) && sideVs(r.avg60, r.ref) !== r.actual;
         html += '<div class="hrow ' + (ok ? "w" : "l") + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
           '<span class="hpred ' + (r.pick === "OVER" ? "over" : "under") + '">' + r.coin + " " + r.pick + '</span>' +
           '<span class="hres ' + (ok ? "w" : "l") + '">' + (ok ? "✓" : "✗") + '</span>' +
-          '<span class="hmeta mono">' + r.actual + (r.close != null ? " @ " + fmtMoney(r.close) : "") + ' · ' + moveStr + '</span></div>';
+          '<span class="hmeta mono"' + (split ? ' title="Coinbase close and the 60-sec Kalshi-style average landed on opposite sides — official Kalshi settlement may differ"' : '') + '>' + r.actual + (r.close != null ? " @ " + fmtMoney(r.close) : "") + (split ? " ⚠" : "") + ' · ' + moveStr + '</span></div>';
       });
       $("history").innerHTML = html;
     }
