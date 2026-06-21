@@ -238,7 +238,7 @@
   .moveStrip .msDot { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; line-height: 1; }
   .moveStrip .msDot.up { background: rgba(13,224,89,.16); color: var(--green); border: 1px solid rgba(13,224,89,.4); }
   .moveStrip .msDot.down { background: rgba(255,69,58,.16); color: var(--red); border: 1px solid rgba(255,69,58,.4); }
-  .moveStrip .msDot.now { box-shadow: 0 0 0 2px rgba(255,255,255,.18); }
+  .moveStrip .msDot.flat { background: rgba(118,118,128,.18); color: var(--label-2); border: 1px solid rgba(118,118,128,.4); }
 
   /* ---------- Recommendation ---------- */
   .reco { text-align: center; }
@@ -1296,7 +1296,7 @@
       var a = analyze(c);
       state.lastList = a.list;
       renderIndicators(a.list); renderLean(buildReco(a.list));
-      pushPricePoint(); drawMiniChart(); renderMoveStrip();
+      pushPricePoint(); drawMiniChart();
       var t = new Date();
       elUpdated.classList.remove("err");
       elUpdated.textContent = "Live · " + hms(t);
@@ -1617,6 +1617,16 @@
     var pr = state.pendingRound; if (!pr) return null;
     return pr.marketStrike != null ? pr.marketStrike : pr.openPrice;
   }
+  // Capture the round's real Kalshi strike — but ONLY during its active phase. In the final
+  // BET_WINDOW seconds the worker reframes to the NEXT round, so the strike it returns then is the
+  // next round's line; letting it overwrite ours would grade this round against the wrong line.
+  function setRoundStrike(strike) {
+    var pr = state.pendingRound;
+    if (!pr || typeof strike !== "number") return;
+    var secondsLeft = Math.max(0, Math.floor((currentRoundEnd - new Date()) / 1000));
+    if (secondsLeft <= BET_WINDOW && pr.marketStrike != null) return;   // keep the line we locked earlier this round
+    pr.marketStrike = strike;
+  }
 
   // Round boundary: hand the just-ended round off to be settled against the DEFINITIVE close
   // — the finalized Coinbase 15-min candle — instead of whatever the last live tick happened to
@@ -1635,8 +1645,17 @@
   }
   function candleCloseAt(t) {
     if (!state.candles) return null;
-    for (var i = state.candles.length - 1; i >= 0; i--) if (state.candles[i].t === t) return state.candles[i].c;
-    return null;
+    var found = null, hasLater = false, i, c;
+    for (i = 0; i < state.candles.length; i++) {
+      c = state.candles[i];
+      if (c.t === t) found = c.c;
+      else if (c.t > t) hasLater = true;
+    }
+    // Only trust the close once a LATER 15-min candle exists — proof this one has truly closed.
+    // While it's still the forming candle its "close" is just the latest live tick, which goes
+    // stale the instant the tab is backgrounded (e.g. when you flip to Coinbase to place the bet).
+    // Grading off that frozen price is exactly what logged rounds on the wrong side.
+    return (found != null && hasLater) ? found : null;
   }
   // Settle the pending round once Coinbase's finalized 15-min candle for it is available (its
   // close = the price right at the boundary, matching the candle/arrow you see on Coinbase). If
@@ -1646,8 +1665,8 @@
     var close = candleCloseAt(gp.openTime), src = "candle";
     if (close == null) {
       gp.tries = (gp.tries || 0) + 1;
-      if (gp.tries < 4) return;               // wait for the finalized candle (a few refreshes)
-      close = gp.provClose; src = "live";      // give up waiting — use the price captured at the boundary
+      if (gp.tries < 6) return;               // wait for the finalized candle (the definitive close)
+      close = gp.provClose; src = "live";      // only if the candle never posts — last-resort boundary tick
     }
     if (close == null) { state.gradePending = null; renderLastClose(); return; }
     finalizeGrade(gp, close, src);
@@ -1698,20 +1717,29 @@
     el.innerHTML = '<span class="lcLbl">Last round ' + disp12(r.time) + '</span>' +
       "closed " + fmtMoney(r.close) + " · " + dirTxt + " the line " + fmtMoney(r.ref) + tail + sub;
   }
-  // The last several 15-minute MARKET moves (price up vs down over each round) as the same arrow
-  // dots Coinbase shows — straight from the Coinbase candles, so it matches what you see there.
-  // This is raw direction (close vs the round's open); graded OVER/UNDER picks live in Recent Rounds.
+  // The last several COMPLETED 15-min rounds as up/down arrows — the same row Coinbase shows.
+  // Source of truth is the 24/7 tracker's server-graded outcomes (h.actual = OVER/UNDER vs the
+  // REAL Kalshi strike), so it matches Coinbase exactly; falls back to raw candle direction only
+  // when the tracker isn't connected. Completed rounds only (no live-flipping dot) and never called
+  // from the per-second loop, so it stays put and never fights the scroll.
   function renderMoveStrip() {
     var el = $("moveStrip"); if (!el) return;
-    var c = state.candles;
-    if (!c || c.length < 2) { if (el._html) { el._html = ""; el.innerHTML = ""; } return; }
-    var start = Math.max(0, c.length - 8), html = '<span class="msLbl">Recent 15-min</span>', i, cd, up, isNow;
-    for (i = start; i < c.length; i++) {
-      cd = c[i]; up = cd.c >= cd.o; isNow = (i === c.length - 1);
-      html += '<span class="msDot ' + (up ? "up" : "down") + (isNow ? " now" : "") + '" title="' +
-        hma(new Date(cd.t)) + (isNow ? " · live" : "") + ' — ' + (up ? "up" : "down") + '">' + (up ? "↑" : "↓") + '</span>';
+    var dots = [], auto = state.lastAuto, hist = auto && auto.history ? auto.history.slice() : null, i;
+    if (hist && hist.length) {
+      hist.sort(function (a, b) { return (a.ts || 0) - (b.ts || 0); });   // oldest → newest, order-safe
+      hist = hist.slice(-8);
+      for (i = 0; i < hist.length; i++) dots.push({ dir: hist[i].actual === "OVER" ? 1 : hist[i].actual === "UNDER" ? -1 : 0, t: hist[i].ts || null });
+    } else {
+      var c = state.candles;
+      if (c && c.length >= 2) for (i = Math.max(0, c.length - 9); i < c.length - 1; i++) dots.push({ dir: c[i].c >= c[i].o ? 1 : -1, t: c[i].t });   // completed candles only — skip the forming one
     }
-    if (el._html === html) return;   // only touch the DOM when a dot actually changed
+    if (!dots.length) { if (el._html) { el._html = ""; el.innerHTML = ""; } return; }
+    var html = '<span class="msLbl">Recent 15-min</span>';
+    for (i = 0; i < dots.length; i++) {
+      var d = dots[i], cls = d.dir > 0 ? "up" : d.dir < 0 ? "down" : "flat", ar = d.dir > 0 ? "↑" : d.dir < 0 ? "↓" : "·";
+      html += '<span class="msDot ' + cls + '" title="' + (d.t ? hma(new Date(d.t)) + " — " : "") + (d.dir > 0 ? "OVER / up" : d.dir < 0 ? "UNDER / down" : "flat") + '">' + ar + '</span>';
+    }
+    if (el._html === html) return;   // only touch the DOM when an outcome actually changed
     el._html = html; el.innerHTML = html;
   }
 
@@ -1967,7 +1995,7 @@
   function applyCrowd(d) {
     if (!d) return;
     if (d.crowd) state.lastCrowd = d.crowd;
-    if (state.pendingRound && d.crowd && typeof d.crowd.strike === "number") state.pendingRound.marketStrike = d.crowd.strike;
+    if (d.crowd && typeof d.crowd.strike === "number") setRoundStrike(d.crowd.strike);
     renderPickCard(); updateRoundStatus(); drawMiniChart(); renderBlend();
   }
 
@@ -1991,6 +2019,7 @@
   function renderAutoTracker(d) {
     var mod = $("autoMod"); if (!mod) return;
     state.lastAuto = d || null; renderConsensus();   // keep the "which to follow" line in sync with the tracker
+    renderMoveStrip();                                // refresh the "Recent 15-min" arrows from the freshly graded history
     var has = d && !d.empty && (d.pending || (d.history && d.history.length));
     if (!has) { mod.style.display = "none"; return; }
     mod.style.display = "";
@@ -2048,7 +2077,7 @@
 
   function renderAI(d, scope) {
     state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null;   // feed the blend + combined odds
-    if (state.pendingRound && d.crowd && typeof d.crowd.strike === "number") state.pendingRound.marketStrike = d.crowd.strike;   // real line to beat
+    if (d.crowd && typeof d.crowd.strike === "number") setRoundStrike(d.crowd.strike);   // real line to beat (active phase only)
     if (state.lockingNext && !state.lockedNext) commitLockedNext();   // settle the locked next-round pick on this fresh read
     state.aiScope = scope || null;
     renderPickCard(); updateRoundStatus(); drawMiniChart();
