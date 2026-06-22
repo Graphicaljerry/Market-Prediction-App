@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **The committed pick is now confluence-gated — it only commits firmly when independent reads agree.** Step three: instead of committing on any blend past a fixed ±0.08, `freePick` now measures **confluence** (how much of the signal-weight — crowd, momentum, order book, learned model — leans the *same* way) and **widens the SKIP band as the reads conflict** (±0.08 when aligned → ±0.18 when split). So a barely-lopsided pick built on disagreeing signals now **SKIPs instead of guessing**, which is the proven way to lift the *hit-rate on the bets it does place*. Each pick now carries `agree` (how many reads concur) and `conf` (share of weight behind the side), surfaced to the AI prompt ("3 of its reads agree"). The app's own Auto Pick card is unaffected (it always shows a side); this sharpens the 24/7 record and the AI's reality-check.
 - **The AI Co-Pilot now reads the new data after each round — margins, technicals and streaks.** The prompt now shows, for every recent 24/7 round, *how far it settled past the line* (e.g. `OVER by +0.12%`); the per-coin model's **current RSI(14) + MACD-histogram** at the open (flagged overbought/oversold, bullish/bearish); the **recent OVER/UNDER streak** ("3 OVER rounds in a row" — the arrow pattern, with a note that a run can be a trend *or* a reversal due); and **how decisively** recent rounds have been settling (razor-thin vs ±x%, with a *fragile, lower conviction* flag when most land within a hair of the line). The learned-model read also calls out any **RSI/MACD tendencies** it has picked up. So the AI reasons about the same arrows, indicators and margins you see — not just win/lose. *(Next: server-side Stochastic, and committed-pick confidence that scales with confluence + how decisively recent rounds resolved.)*
 - **The 24/7 model now learns from RSI + MACD, and every round records how far it settled past the line.** Step one of a bigger push to make the committed next-round pick more proven: the server now computes **RSI(14)** and the **MACD(12,26,9) histogram** from 1-min closes and feeds them to the per-coin learned model as two new features (alongside order-flow, momentum, vol-regime, crowd, last-direction, time-of-day and round-shape). Grading also captures each round's **settlement margin** — how far past the line it closed, in **$ and %** (`over` / `overPct`, plus `rec.lastMargin`) — so the model and the AI can tell a razor-thin round from a blowout. Saved models migrate automatically (new weights start at 0).
 - **Recent Rounds list now matches the arrows.** Each row's OVER/UNDER outcome is reconciled against the client's own accurate grading (the same source the arrows trust, matched by 15-min bucket), so the list can't disagree with the arrow strip; the worker's verdict is the fallback only for rounds the app never saw.
@@ -333,8 +334,12 @@ Each run, per coin with a Kalshi series:
    `cbAvg60`) — fast and Kalshi-free so grading can never stall — then **reconciles** it to Kalshi's
    own settled result (`result: yes/no` → OVER/UNDER, literally what you bet on) on a later cron,
    kept off the critical path (`reconcileKalshi`, ≤1 Kalshi call/coin/cron).
-2. Makes a fresh pick the simple way: the **Kalshi market price** nudged by **1-min momentum**
-   and **order-book imbalance**, with **SKIP** near 50/50 (`freePick`).
+2. Makes a fresh pick the simple way: the **Kalshi market price** nudged by **1-min momentum**,
+   **order-book imbalance** and the learned model, with **SKIP** near 50/50 (`freePick`). The
+   commit is **confluence-gated** — it only fires when several *independent* reads point the same
+   way, demanding more edge (a wider SKIP band, ±0.08 aligned → ±0.18 split) when they conflict —
+   and reports how many reads agree (`agree`) and the share of signal-weight behind the side
+   (`conf`), so a low-agreement pick or a SKIP is itself an honest "this round is a coin-flip".
 3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV`. The whole auto-tracker —
    every coin **and** the pooled model — lives in **one** consolidated record (read back per-coin
    via `?picks=COIN`), so a cron run is a single KV write and stays inside the free tier.

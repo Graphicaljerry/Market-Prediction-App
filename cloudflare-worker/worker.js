@@ -363,7 +363,7 @@ Recent (pick->result [signals]): ${recent}.`
   const apHist = ap && Array.isArray(ap.history) ? ap.history : [];
   const apRecent = apHist.slice(0, 14).map((x) => `${x.time} ${x.side}->${x.actual} ${x.correct ? "OK" : "X"}${typeof x.overPct === "number" ? " by " + (x.overPct > 0 ? "+" : "") + x.overPct + "%" : ""}`).join(", ");
   const autoLine = (ap && (ap.graded || apHist.length))
-    ? `24/7 AUTO-TRACKER (an independent, market-anchored system — Kalshi price + momentum + order book, NO AI — that picks and is graded every round even while the user is away): ${ap.hitRatePct ?? "n/a"}% over ${ap.graded || apHist.length} rounds.${ap.pending ? ` Its current pick: ${ap.pending.side}${ap.pending.side !== "SKIP" ? " " + ap.pending.prob + "%" : ""} (crowd ${ap.pending.signals && ap.pending.signals.crowdOver}% over).` : ""} Recent guesses->results: ${apRecent}. Treat it as a reality check on the market: where this dumb-but-honest system keeps winning, the market is efficient — agree with it; where it has been wrong lately, look for the edge it's missing.`
+    ? `24/7 AUTO-TRACKER (an independent, market-anchored system — Kalshi price + momentum + order book, NO AI — that picks and is graded every round even while the user is away): ${ap.hitRatePct ?? "n/a"}% over ${ap.graded || apHist.length} rounds.${ap.pending ? ` Its current pick: ${ap.pending.side === "SKIP" ? "SKIP (no confident edge — its reads conflict)" : ap.pending.side + " " + ap.pending.prob + "%" + (typeof ap.pending.agree === "number" ? " · " + ap.pending.agree + " of its independent reads agree" + (typeof ap.pending.conf === "number" ? " (" + Math.round(ap.pending.conf * 100) + "% of signal-weight)" : "") : "")} (crowd ${ap.pending.signals && ap.pending.signals.crowdOver}% over). A SKIP or a low-agreement pick is itself a signal that the next round is a coin-flip.` : ""} Recent guesses->results: ${apRecent}. Treat it as a reality check on the market: where this dumb-but-honest system keeps winning, the market is efficient — agree with it; where it has been wrong lately, look for the edge it's missing.`
     : (ap && ap.pending ? `24/7 auto-tracker current pick: ${ap.pending.side}${ap.pending.side !== "SKIP" ? " " + ap.pending.prob + "%" : ""} (not enough graded rounds yet).` : "");
 
   // What the per-coin online model has learned (faint tilts on a near-efficient market).
@@ -683,7 +683,10 @@ async function cbObi(product) {
 }
 // Market-anchored free pick: crowd price nudged by momentum + book + the learned model;
 // SKIP near 50/50. modelOver shrinks to 0.5 while the model is cold, so it only sways the
-// pick once it has actually learned something.
+// pick once it has actually learned something. CONFLUENCE-GATED: on a near-efficient market the
+// only real edge is several INDEPENDENT reads pointing the same way, so we demand more edge to
+// commit when the reads conflict (wider SKIP band) and less when they align — and report how many
+// agree (`agree`) and the share of signal-weight in agreement (`conf`) so the pick can be sized.
 function freePick(crowdOverPct, mom, obi, modelOver) {
   const parts = [];
   if (typeof crowdOverPct === "number") parts.push({ p: Math.max(0.02, Math.min(0.98, crowdOverPct / 100)), w: 0.55 });
@@ -692,8 +695,16 @@ function freePick(crowdOverPct, mom, obi, modelOver) {
   if (typeof modelOver === "number") parts.push({ p: Math.max(0.05, Math.min(0.95, modelOver)), w: 0.2 });
   if (!parts.length) return null;
   let ws = 0, ac = 0; for (const x of parts) { ws += x.w; ac += x.p * x.w; }
-  const pOver = ac / ws;
-  return { pOver, side: pOver >= 0.58 ? "OVER" : pOver <= 0.42 ? "UNDER" : "SKIP" };
+  const pOver = ac / ws, dir = pOver >= 0.5 ? 1 : -1;
+  // Confluence: weighted share of reads leaning the SAME way as the blend (and a plain count).
+  let agreeW = 0, agreeN = 0, totW = 0;
+  for (const x of parts) { totW += x.w; if ((x.p - 0.5) * dir > 0.005) { agreeW += x.w; agreeN++; } }
+  const conf = totW ? agreeW / totW : 0;
+  // Commit threshold widens as the reads split: ±0.08 when fully aligned (the old band) up to ±0.18
+  // when they're at odds — so a conflicted, barely-lopsided blend now SKIPs instead of guessing.
+  const band = 0.08 + 0.10 * (1 - conf);
+  const side = pOver >= 0.5 + band ? "OVER" : pOver <= 0.5 - band ? "UNDER" : "SKIP";
+  return { pOver, side, conf: Math.round(conf * 100) / 100, agree: agreeN };
 }
 async function kvGetRaw(env, key) {
   try { if (!env.CROWD_KV) return null; const s = await env.CROWD_KV.get(key); return s ? JSON.parse(s) : null; } catch (_) { return null; }
@@ -869,6 +880,7 @@ async function runCoinPick(env, coin, st) {
         coin, ticker: crowd.ticker || null, strike: crowd.strike, openPrice: micro ? micro.price : crowd.strike, side: fp.side,
         pOver: Math.round(fp.pOver * 100),
         prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
+        conf: fp.conf, agree: fp.agree,                              // confluence: share of reads (0–1) + count agreeing
         modelOver: Math.round(modelOver * 100),
         closeMs: crowd.closeTime ? new Date(crowd.closeTime).getTime() : nowTs + 900000,
         ts: nowTs,                                                   // client formats this to 12-hour local time
