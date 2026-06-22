@@ -322,6 +322,9 @@
   .nextPick .npPick { font-size: 17px; font-weight: 800; letter-spacing: -.01em; color: var(--label); }
   .nextPick .npPick.over { color: var(--green); } .nextPick .npPick.under { color: var(--red); } .nextPick .npPick.skip { color: var(--orange); }
   .nextPick .npHint { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); letter-spacing: 0; text-transform: none; margin-top: 3px; opacity: .9; }
+  .nextPick .npTag { display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--label-2); background: var(--surface-3); border: 1px solid var(--separator); border-radius: 5px; padding: 1px 5px; margin-left: 7px; vertical-align: middle; }
+  .liveTag { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .05em; border-radius: 5px; padding: 1px 6px; margin-right: 7px; vertical-align: middle; color: var(--green); background: rgba(13,224,89,.16); border: 1px solid rgba(13,224,89,.4); }
+  .liveTag.next { color: var(--label-2); background: var(--surface-3); border-color: var(--separator); }
   /* real-time "what the last round actually closed at" — appears the moment the timer turns over */
   .lastClose { margin-top: 12px; padding-top: 11px; border-top: .5px solid var(--separator); font-size: 12.5px; font-weight: 600; color: var(--label-2); line-height: 1.5; }
   .lastClose:empty { display: none; }
@@ -1166,6 +1169,8 @@
   }
   function loadLateRounds() { try { var s = localStorage.getItem("lateTracker_v1"); state.lateRounds = s ? (JSON.parse(s) || []) : []; } catch (e) { state.lateRounds = []; } }
   function saveLateRounds() { try { localStorage.setItem("lateTracker_v1", JSON.stringify(state.lateRounds || [])); } catch (e) {} }
+  function loadClearTs() { try { var s = localStorage.getItem("clearTs_v1"); state.clearTs = s ? (JSON.parse(s) || {}) : {}; } catch (e) { state.clearTs = {}; } }
+  function saveClearTs() { try { localStorage.setItem("clearTs_v1", JSON.stringify(state.clearTs || {})); } catch (e) {} }
   function renderLateRecord() {
     var el = $("lateRecord"); if (!el) return;
     var r = (state.lateRounds || []).filter(function (x) { return x.coin === state.coin && (x.actual === "OVER" || x.actual === "UNDER"); });
@@ -1306,15 +1311,15 @@
       '<span class="buySub">' + (call.dir === "OVER" ? "betting the price goes UP" : "betting the price goes DOWN") + "</span>";
     pctEl.textContent = call.pct + "%";
     if (nextMode) {
-      scopeEl.textContent = "NEXT round " + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "");
-      hintEl.textContent = "Locked — buy " + call.dir + " when the next round opens.";
+      scopeEl.innerHTML = '<span class="liveTag next">◷ NEXT</span>round ' + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "");
+      hintEl.textContent = "Locked for the round that opens next — buy " + call.dir + " when it starts.";
       lblEl.textContent = "likely " + (call.dir === "OVER" ? "UP" : "DOWN");
     } else {
-      scopeEl.textContent = "THIS round · closes " + nsH;
-      hintEl.textContent = "Your locked pick for this round — live status below.";
+      scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
+      hintEl.textContent = "The round you're in right now — your locked pick, live status below.";
       lblEl.textContent = "chance " + (call.dir === "OVER" ? "UP" : "DOWN");
     }
-    if (state.hiConvOnly && hiConv) scopeEl.textContent += " · " + (call.conv.level === "strong" ? "HIGH CONVICTION" : "EDGE vs CROWD");
+    if (state.hiConvOnly && hiConv) scopeEl.innerHTML += " · " + (call.conv.level === "strong" ? "HIGH CONVICTION" : "EDGE vs CROWD");
   }
 
   // One plain-English line that reconciles the two systems so you know which to trust:
@@ -1351,7 +1356,7 @@
   function renderNextPick() {
     var el = $("nextPick"); if (!el) return;
     var ns = currentRoundEnd, ne = new Date(currentRoundEnd.getTime() + 15 * 60000);
-    var lbl = '<span class="npLbl">Next round ' + rangeHM(ns, ne) + '</span>';
+    var lbl = '<span class="npLbl">Next round ' + rangeHM(ns, ne) + '<span class="npTag">preview</span></span>';
     var L = state.lockedNext, html;
     if (L && L.dir) {
       // Once locked, the Auto Pick card shows this same next-round pick in full — don't repeat it
@@ -1362,9 +1367,9 @@
       var pcls = pd === "OVER" ? "over" : pd === "UNDER" ? "under" : "skip";
       var body = pd === "SKIP" ? "Leaning flat — no clear side yet" : ("Leaning " + pd + (pd === "OVER" ? " ↑ " : " ↓ ") + pctFor(o.pOver, pd) + "%");
       var rrp = roundRange(), rtail = rrp ? " · price " + rangePhrase(rrp.pos) : "";
-      html = lbl + '<span class="npPick ' + pcls + '">' + body + '<span class="npHint">live preview · locks in the final 2 min' + rtail + '</span></span>';
+      html = lbl + '<span class="npPick ' + pcls + '">' + body + '<span class="npHint">a heads-up on the round <b>after</b> this one — not the bet you\'re in now · locks in the final 2 min' + rtail + '</span></span>';
     } else {
-      html = lbl + '<span class="npPick skip">Reading signals…<span class="npHint">your next-round pick locks in the final 2 min</span></span>';
+      html = lbl + '<span class="npPick skip">Reading signals…<span class="npHint">a preview of the round after this one — locks in the final 2 min</span></span>';
     }
     if (el._html === html) return;   // no layout work unless the line actually changed
     el._html = html; el.innerHTML = html;
@@ -2048,14 +2053,23 @@
   function renderMoveStrip() {
     var el = $("moveStrip"); if (!el) return;
     var byBucket = {}, i, j;
+    var clearBucket = state.clearTs && state.clearTs[state.coin] ? Math.floor(state.clearTs[state.coin] / 900000) : 0;
     function sideDir(actual) { return actual === "OVER" ? 1 : actual === "UNDER" ? -1 : 0; }   // grader verdict -> arrow
-    function add(dir, t, graded) { if (!t || !dir) return; var b = Math.floor(t / 900000); if (byBucket[b] === undefined) byBucket[b] = { dir: dir, t: t, graded: !!graded }; }
-    var auto = state.lastAuto, hist = auto && auto.history ? auto.history : null;
-    if (hist) for (i = 0; i < hist.length; i++) add(sideDir(hist[i].actual), hist[i].ts, true);                                                   // (1) server-graded vs Kalshi strike
+    function add(dir, t, graded) {
+      if (!t || !dir) return;
+      var b = Math.floor(t / 900000);
+      if (clearBucket && b < clearBucket) return;          // hide rounds from before this coin's last Clear log — keeps the strip in step with the log
+      if (byBucket[b] === undefined) byBucket[b] = { dir: dir, t: t, graded: !!graded };
+    }
+    // Prefer the SAME verdicts the Recent Rounds log shows (client-graded, 60-sec settle) so the
+    // arrows and the log can't disagree on screen; fall back to the server history for older rounds
+    // the log doesn't carry, then to raw candles as a last resort.
     var rs = state.rounds;
-    if (rs) for (i = 0; i < rs.length; i++) if (rs[i].coin === state.coin && rs[i].endMs) add(sideDir(rs[i].actual), rs[i].endMs - 900000, true);  // (2) client-graded vs the line
+    if (rs) for (i = 0; i < rs.length; i++) if (rs[i].coin === state.coin && rs[i].endMs) add(sideDir(rs[i].actual), rs[i].endMs - 900000, true);  // (1) client log — matches the log rows
     var ls = state.lastSettled;
-    if (ls && ls.endMs) add(sideDir(ls.actual), ls.endMs - 900000, true);                                                                         // (3) the round we just settled
+    if (ls && ls.endMs) add(sideDir(ls.actual), ls.endMs - 900000, true);                                                                         // (2) the round we just settled
+    var auto = state.lastAuto, hist = auto && auto.history ? auto.history : null;
+    if (hist) for (i = 0; i < hist.length; i++) add(sideDir(hist[i].actual), hist[i].ts, true);                                                   // (3) server history — older context the log lacks
     var c = state.candles;
     if (c) for (j = Math.max(0, c.length - 9); j < c.length - 1; j++) add(c[j].c > c[j].o ? 1 : c[j].c < c[j].o ? -1 : 0, c[j].t, false);          // (4) candle proxy, last resort
     var keys = Object.keys(byBucket).map(Number).sort(function (a, b) { return a - b; }).slice(-8);
@@ -2482,7 +2496,7 @@
   (function () { var s = $("aiBudget"); if (s) s.addEventListener("change", function () { try { localStorage.setItem(AI_BUDGET_KEY, s.value); } catch (e) {} }); })();
   document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshCrowd(true); });   // returning to the tab: free market refresh
 
-  loadRounds(); loadLateRounds();
+  loadRounds(); loadLateRounds(); loadClearTs();
   renderAccuracy(); renderRounds(); renderLateRecord(); tickTimer(); refresh(); connectWS();
   (function initAI() { $("aiModel").value = getModel(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); } })();
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { var im = b.querySelector(".cico"); if (im) im.src = COIN_ICONS[b.getAttribute("data-coin")] || ""; });
@@ -2494,7 +2508,8 @@
     // 1) local log + arrows for this coin
     state.rounds = state.rounds.filter(function (r) { return r.coin !== coin; });
     state.lateRounds = (state.lateRounds || []).filter(function (r) { return r.coin !== coin; });
-    saveRounds(); saveLateRounds(); state.lastSettled = null; renderAccuracy(); renderRounds(); renderLateRecord(); renderLastClose();
+    state.clearTs = state.clearTs || {}; state.clearTs[coin] = Date.now();   // gate the arrows + server history to post-clear rounds, so they reset with the log
+    saveRounds(); saveLateRounds(); saveClearTs(); state.lastSettled = null; renderAccuracy(); renderRounds(); renderLateRecord(); renderLastClose();
     // 2) blank the 24/7 panel immediately (renderAutoTracker leaves stats untouched when empty)
     state.lastAuto = null;
     var z = { aGraded: "0", aCorrect: "0", aHit: "—", aPick: "—" };
