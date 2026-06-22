@@ -49,7 +49,7 @@
   }
   /* Best-bet ticker — a sticky footer that ranks all coins and surfaces the strongest bet now */
   body.has-bestbar { padding-bottom: calc(74px + env(safe-area-inset-bottom)); }
-  .bestBar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; display: flex; align-items: center; gap: 11px;
+  .bestBar { position: fixed; left: 0; right: 0; bottom: 0; max-width: 1120px; margin-inline: auto; z-index: 60; display: flex; align-items: center; gap: 11px;
     padding: 10px clamp(16px, 3.5vw, 44px); padding-bottom: calc(10px + env(safe-area-inset-bottom));
     background: rgba(18,18,20,.82); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
     border-top: 1px solid var(--separator); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .3s ease, opacity .3s ease; }
@@ -66,7 +66,7 @@
   .bbGo { font-size: 15px; font-weight: 800; color: var(--label-2); flex: none; white-space: nowrap; }
   @media (max-width: 560px) { .bbRank { display: none; } }
   /* expanded full ranking, slides up above the ticker */
-  .bestList { position: fixed; left: 0; right: 0; bottom: calc(53px + env(safe-area-inset-bottom)); z-index: 59; max-height: 54vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  .bestList { position: fixed; left: 0; right: 0; bottom: calc(53px + env(safe-area-inset-bottom)); max-width: 1120px; margin-inline: auto; z-index: 59; max-height: 54vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
     padding: 6px clamp(12px, 3vw, 40px) 10px; background: rgba(14,14,16,.94); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
     border-top: 1px solid var(--separator); box-shadow: 0 -16px 44px rgba(0,0,0,.5); transition: transform .28s ease, opacity .28s ease; }
   .bestList.hidden { transform: translateY(14px); opacity: 0; pointer-events: none; }
@@ -376,8 +376,8 @@
   .consensus.under { border-color: rgba(255,69,58,.4); background: rgba(255,69,58,.08); } .consensus.under b { color: var(--red); }
   .consensus.split { border-color: rgba(255,159,10,.45); background: rgba(255,159,10,.08); } .consensus.split b { color: var(--orange); }
   /* recent 15-min market moves — the same up/down arrows Coinbase shows, from Coinbase candles */
-  .moveStrip { display: flex; align-items: center; gap: 4px; margin-top: 14px; flex-wrap: nowrap; }
-  .moveStrip.open { flex-wrap: wrap; }
+  .moveStrip { display: flex; align-items: center; gap: 4px; margin-top: 14px; flex-wrap: nowrap; overflow: hidden; }
+  .moveStrip.open { flex-wrap: wrap; overflow: visible; }
   .moveStrip:empty { display: none; }
   .msMore { flex: none; margin-left: 3px; font-size: 12px; font-weight: 800; line-height: 1; color: var(--label-3); background: var(--surface-2); border: 1px solid var(--separator); border-radius: 999px; padding: 4px 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .msMore:hover { color: var(--label); border-color: rgba(var(--accent-rgb), .45); }
@@ -2508,7 +2508,11 @@
       if (byBucket[b2] === undefined) byBucket[b2] = { dir: c[j].c > c[j].o ? 1 : c[j].c < c[j].o ? -1 : 0, t: c[j].t, graded: false };
     }
     var allKeys = Object.keys(byBucket).map(Number).sort(function (a, b) { return a - b; });
-    var open = !!state.moveOpen, keys = open ? allKeys.slice(-24) : allKeys.slice(-MOVE_WANT);
+    // Fit the closed row to the card width so arrows never overflow/overlap the wrapper (esp. the
+    // narrow desktop column): reserve ~135px for the label + ▾ button, ~24px per dot, clamp 4–10.
+    var avail = el.clientWidth || (el.parentElement && el.parentElement.clientWidth) || 320;
+    var fit = Math.max(4, Math.min(10, Math.floor((avail - 135) / 24)));
+    var open = !!state.moveOpen, keys = open ? allKeys.slice(-24) : allKeys.slice(-fit);
     el.className = "moveStrip" + (open ? " open" : "");
     if (!keys.length) { if (el._html) { el._html = ""; el.innerHTML = ""; } return; }
     var html = '<span class="msLbl">Recent 15-min</span>', k, d, cls, ar, verdict;
@@ -2517,7 +2521,7 @@
       verdict = d.dir > 0 ? "OVER / up" : d.dir < 0 ? "UNDER / down" : "flat";
       html += '<span class="msDot ' + cls + '" title="' + hma(new Date(d.t)) + " — " + verdict + (d.graded ? (d.confirmed ? " · confirmed vs Kalshi" : " · graded vs the line") : " · estimate (ungraded)") + '">' + ar + '</span>';
     }
-    if (allKeys.length > MOVE_WANT) html += '<button class="msMore" id="msMoreBtn" title="' + (open ? "Show fewer" : "Show more rounds") + '">' + (open ? "▴" : "▾") + '</button>';
+    if (allKeys.length > fit) html += '<button class="msMore" id="msMoreBtn" title="' + (open ? "Show fewer" : "Show more rounds") + '">' + (open ? "▴" : "▾") + '</button>';
     if (el._html === html) return;   // only touch the DOM when an outcome actually changed
     el._html = html; el.innerHTML = html;
   }
@@ -3044,6 +3048,7 @@
   });
   (function () { var b = $("moreRounds"); if (b) b.addEventListener("click", function () { $("history").classList.toggle("collapsed"); updateSeeMore("history", "moreRounds", state.rounds.length); }); })();
   (function () { var ms = $("moveStrip"); if (ms) ms.addEventListener("click", function (e) { if (e.target && e.target.id === "msMoreBtn") { state.moveOpen = !state.moveOpen; renderMoveStrip(); } }); })();
+  window.addEventListener("resize", function () { clearTimeout(state._msrz); state._msrz = setTimeout(renderMoveStrip, 150); });   // re-fit the arrow count to the new width
   (function () {
     var bb = $("bestBar"); if (bb) bb.addEventListener("click", function () { state.bestOpen = !state.bestOpen; renderBestBar(); });
     var bl = $("bestList"); if (bl) bl.addEventListener("click", function (e) {
