@@ -80,26 +80,26 @@
   /* big soft glow behind the glass — gentle multi-stop falloff to fully transparent so there is
      no hard disc edge; heavy blur feathers it further (bumped again on desktop below). */
   .card.orb::before { width: 92%; height: 104%; right: -16%; top: -20%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.42) 0%, rgba(var(--accent-rgb), 0.13) 46%, transparent 90%);
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.34) 0%, rgba(var(--accent-rgb), 0.16) 34%, rgba(var(--accent-rgb), 0.05) 64%, transparent 100%);
     animation: orbCircleA 26s linear infinite; }
   .card.orb::after  { width: 74%; height: 84%; left: -16%; bottom: -20%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.24) 0%, rgba(var(--accent-rgb), 0.08) 46%, transparent 90%);
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.20) 0%, rgba(var(--accent-rgb), 0.09) 34%, rgba(var(--accent-rgb), 0.03) 64%, transparent 100%);
     animation: orbCircleB 34s linear infinite; }
   /* slow, subtle circular drift (the element orbits ~9px without spinning itself) */
   @keyframes orbCircleA { from { transform: rotate(0deg) translateX(9px) rotate(0deg); } to { transform: rotate(360deg) translateX(9px) rotate(-360deg); } }
   @keyframes orbCircleB { from { transform: rotate(0deg) translateX(12px) rotate(0deg); } to { transform: rotate(-360deg) translateX(12px) rotate(360deg); } }
   @media (prefers-reduced-motion: reduce) { .card.orb::before, .card.orb::after { animation: none; } }
   /* free-floating page orbs (scroll with the page, not the viewport) — also drift gently */
-  .pageGlow { position: absolute; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(64px);
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.15) 0%, rgba(var(--accent-rgb), 0.05) 48%, transparent 92%); transition: background .9s ease; will-change: transform; }
+  .pageGlow { position: absolute; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(88px);
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.12) 0%, rgba(var(--accent-rgb), 0.06) 30%, rgba(var(--accent-rgb), 0.02) 58%, transparent 100%); transition: background .9s ease; will-change: transform; }
   .pageGlow.g1 { width: 300px; height: 200px; right: -60px; top: 360px; animation: orbCircleB 40s linear infinite; }
   .pageGlow.g2 { width: 440px; height: 420px; left: -130px; bottom: 60px; animation: orbCircleA 52s linear infinite; }
   .pageGlow.g3 { width: 400px; height: 380px; right: -110px; bottom: 0; animation: orbCircleB 46s linear infinite; }
   @media (prefers-reduced-motion: reduce) { .pageGlow { animation: none; } }
   /* on big screens the orbs are largest, so feather them even more to kill any visible edge */
   @media (min-width: 1024px) {
-    .card.orb::before, .card.orb::after { filter: blur(76px); }
-    .pageGlow { filter: blur(104px); }
+    .card.orb::before, .card.orb::after { filter: blur(88px); }
+    .pageGlow { filter: blur(130px); }
   }
 
   .mono { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
@@ -279,8 +279,8 @@
   @keyframes flashUpdate { 0%{opacity:1;} 40%{opacity:.45;} 100%{opacity:1;} }
   .updated { font-size: 12px; color: var(--label-3); margin-top: 14px; display: flex; justify-content: space-between; }
   .err { color: var(--red); }
-  .roundStatus { font-size: 13px; color: var(--label-2); margin-top: 9px; font-weight: 600; }
-  .roundStatus .o { color: var(--green); } .roundStatus .u { color: var(--red); }
+  .roundStatus { font-size: 13.5px; color: var(--label-2); margin-top: 9px; font-weight: 700; letter-spacing: -.01em; transition: color .35s ease; }
+  .roundStatus.over { color: #2fe06a; } .roundStatus.under { color: #ff5b51; }
 
   /* ---------- Timer ---------- */
   .timerCard { text-align: center; }
@@ -342,8 +342,11 @@
   .consensus.under { border-color: rgba(255,69,58,.4); background: rgba(255,69,58,.08); } .consensus.under b { color: var(--red); }
   .consensus.split { border-color: rgba(255,159,10,.45); background: rgba(255,159,10,.08); } .consensus.split b { color: var(--orange); }
   /* recent 15-min market moves — the same up/down arrows Coinbase shows, from Coinbase candles */
-  .moveStrip { display: flex; align-items: center; gap: 5px; margin-top: 14px; flex-wrap: wrap; }
+  .moveStrip { display: flex; align-items: center; gap: 5px; margin-top: 14px; flex-wrap: nowrap; }
+  .moveStrip.open { flex-wrap: wrap; }
   .moveStrip:empty { display: none; }
+  .msMore { flex: none; margin-left: 4px; font-size: 12px; font-weight: 800; line-height: 1; color: var(--label-3); background: var(--surface-2); border: 1px solid var(--separator); border-radius: 999px; padding: 4px 9px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .msMore:hover { color: var(--label); border-color: rgba(var(--accent-rgb), .45); }
   .moveStrip .msLbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--label-3); margin-right: 3px; }
   .moveStrip .msDot { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; line-height: 1; }
   .moveStrip .msDot.up { background: rgba(13,224,89,.16); color: var(--green); border: 1px solid rgba(13,224,89,.4); }
@@ -2033,13 +2036,13 @@
   function updateRoundStatus() {
     var el = $("roundStatus");
     var strike = roundStrike();
-    if (strike == null || state.lastPrice == null) { el.textContent = "Waiting for round open…"; return; }
+    if (strike == null || state.lastPrice == null) { el.className = "roundStatus mono"; el.textContent = "Waiting for round open…"; return; }
     var d = state.lastPrice - strike, pct = strike ? d / strike * 100 : 0;
     var side = d > 0 ? "OVER" : d < 0 ? "UNDER" : "FLAT";
-    var cls = d > 0 ? "o" : d < 0 ? "u" : "";
     var arrow = d > 0 ? "▲" : d < 0 ? "▼" : "•";
+    el.className = "roundStatus mono" + (d > 0 ? " over" : d < 0 ? " under" : "");   // whole line lights up green/red for hierarchy
     el.innerHTML = "Beat " + fmtMoney(strike) + " · " + arrow + " " + (d >= 0 ? "+" : "−") + fmtMoney(Math.abs(d)) +
-      " (" + (pct >= 0 ? "+" : "") + pct.toFixed(3) + "%) · <span class=\"" + cls + "\">" + side + "</span>";
+      " (" + (pct >= 0 ? "+" : "") + pct.toFixed(3) + "%) · " + side;
   }
 
   // ---------- Timer ----------
@@ -2312,7 +2315,9 @@
     if (hist) for (i = 0; i < hist.length; i++) add(sideDir(hist[i].actual), hist[i].ts, true);                                                   // (3) server history — older context the log lacks
     var c = state.candles;
     if (c) for (j = Math.max(0, c.length - 9); j < c.length - 1; j++) add(c[j].c > c[j].o ? 1 : c[j].c < c[j].o ? -1 : 0, c[j].t, false);          // (4) candle proxy, last resort
-    var keys = Object.keys(byBucket).map(Number).sort(function (a, b) { return a - b; }).slice(-8);
+    var allKeys = Object.keys(byBucket).map(Number).sort(function (a, b) { return a - b; });
+    var open = !!state.moveOpen, keys = open ? allKeys.slice(-16) : allKeys.slice(-6);   // one row by default; expand for more
+    el.className = "moveStrip" + (open ? " open" : "");
     if (!keys.length) { if (el._html) { el._html = ""; el.innerHTML = ""; } return; }
     var html = '<span class="msLbl">Recent 15-min</span>', k, d, cls, ar, verdict;
     for (k = 0; k < keys.length; k++) {
@@ -2320,6 +2325,7 @@
       verdict = d.dir > 0 ? "OVER / up" : d.dir < 0 ? "UNDER / down" : "flat";
       html += '<span class="msDot ' + cls + '" title="' + hma(new Date(d.t)) + " — " + verdict + (d.graded ? " · graded vs the line" : " · est. from candle") + '">' + ar + '</span>';
     }
+    if (allKeys.length > 6) html += '<button class="msMore" id="msMoreBtn" title="' + (open ? "Show fewer" : "Show more rounds") + '">' + (open ? "▴" : "▾") + '</button>';
     if (el._html === html) return;   // only touch the DOM when an outcome actually changed
     el._html = html; el.innerHTML = html;
   }
@@ -2771,6 +2777,7 @@
     }).catch(function () { if (ahy) ahy.innerHTML = '<div class="empty">Local log cleared — couldn’t reach the 24/7 tracker to reset it.</div>'; });
   });
   (function () { var b = $("moreRounds"); if (b) b.addEventListener("click", function () { $("history").classList.toggle("collapsed"); updateSeeMore("history", "moreRounds", state.rounds.length); }); })();
+  (function () { var ms = $("moveStrip"); if (ms) ms.addEventListener("click", function (e) { if (e.target && e.target.id === "msMoreBtn") { state.moveOpen = !state.moveOpen; renderMoveStrip(); } }); })();
   (function () { var b = $("moreAuto"); if (b) b.addEventListener("click", function () { $("autoHistory").classList.toggle("collapsed"); updateSeeMore("autoHistory", "moreAuto", _autoHistLen); }); })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
   window.addEventListener("resize", drawMiniChart);
