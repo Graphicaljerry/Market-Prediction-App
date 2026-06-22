@@ -101,27 +101,30 @@
      sticky backdrop. Green by default; crossfades to red when the pick is UNDER. Each card
      clips its own orb so the glow stays contained within that section. */
   .card.orb {
-    position: relative;   /* no clipping — the glow bleeds past the edges and shows through the glass */
+    position: relative; overflow: hidden;   /* CONTAIN the glow inside the rounded card so it can't
+                                                bleed past the glass and leave a hard-edged disc on the page */
     border-color: rgba(var(--accent-rgb), 0.22);
     box-shadow: 0 8px 30px rgba(0,0,0,0.35), inset 0 1px 40px rgba(var(--accent-rgb), 0.07);
     transition: border-color .8s ease, box-shadow .8s ease;
   }
   .card.orb::before, .card.orb::after {
     content: ""; position: absolute; z-index: -1; pointer-events: none;
-    border-radius: 50%; filter: blur(52px); opacity: 1;
-    transition: background .9s ease; will-change: transform;
+    border-radius: 50%; filter: blur(34px); opacity: .85;
+    transition: background .9s ease; will-change: transform, opacity;
   }
-  /* big soft glow behind the glass — gentle multi-stop falloff to fully transparent so there is
-     no hard disc edge; heavy blur feathers it further (bumped again on desktop below). */
-  .card.orb::before { width: 92%; height: 104%; right: -16%; top: -20%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.34) 0%, rgba(var(--accent-rgb), 0.16) 34%, rgba(var(--accent-rgb), 0.05) 64%, transparent 100%);
-    animation: orbCircleA 26s linear infinite; }
-  .card.orb::after  { width: 74%; height: 84%; left: -16%; bottom: -20%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.20) 0%, rgba(var(--accent-rgb), 0.09) 34%, rgba(var(--accent-rgb), 0.03) 64%, transparent 100%);
-    animation: orbCircleB 34s linear infinite; }
-  /* slow, subtle circular drift (the element orbits ~9px without spinning itself) */
+  /* soft glow behind the glass — kept INSIDE the card and faded to transparent well before the edge
+     (5-stop falloff + a modest blur) so the rounded clip only ever cuts a near-transparent region →
+     no hard edge anywhere; a slow breathing pulse + drift keeps it alive. */
+  .card.orb::before { width: 82%; height: 74%; right: 2%; top: -4%;
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.30) 0%, rgba(var(--accent-rgb), 0.17) 28%, rgba(var(--accent-rgb), 0.08) 50%, rgba(var(--accent-rgb), 0.02) 72%, transparent 90%);
+    animation: orbCircleA 26s linear infinite, orbBreath 7.5s ease-in-out infinite; }
+  .card.orb::after  { width: 70%; height: 64%; left: 0%; bottom: -2%;
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.18) 0%, rgba(var(--accent-rgb), 0.10) 28%, rgba(var(--accent-rgb), 0.04) 52%, rgba(var(--accent-rgb), 0.01) 74%, transparent 90%);
+    animation: orbCircleB 34s linear infinite, orbBreath 9s ease-in-out infinite -3s; }
+  /* slow, subtle circular drift (the element orbits ~9px without spinning itself) + a breathing glow */
   @keyframes orbCircleA { from { transform: rotate(0deg) translateX(9px) rotate(0deg); } to { transform: rotate(360deg) translateX(9px) rotate(-360deg); } }
   @keyframes orbCircleB { from { transform: rotate(0deg) translateX(12px) rotate(0deg); } to { transform: rotate(-360deg) translateX(12px) rotate(360deg); } }
+  @keyframes orbBreath { 0%,100% { opacity: .55; } 50% { opacity: .95; } }
   @media (prefers-reduced-motion: reduce) { .card.orb::before, .card.orb::after { animation: none; } }
   /* free-floating page orbs (scroll with the page, not the viewport) — also drift gently */
   .pageGlow { position: absolute; z-index: -1; pointer-events: none; border-radius: 50%; filter: blur(88px);
@@ -132,7 +135,7 @@
   @media (prefers-reduced-motion: reduce) { .pageGlow { animation: none; } }
   /* on big screens the orbs are largest, so feather them even more to kill any visible edge */
   @media (min-width: 1024px) {
-    .card.orb::before, .card.orb::after { filter: blur(88px); }
+    .card.orb::before, .card.orb::after { filter: blur(48px); }
     .pageGlow { filter: blur(130px); }
   }
 
@@ -333,6 +336,13 @@
     transform: translateX(-100%); animation: barSheen 2.8s ease-in-out infinite; }
   @keyframes barSheen { 0% { transform: translateX(-100%); } 55%, 100% { transform: translateX(240%); } }
   @keyframes barWarnPulse { 0%,100% { box-shadow: 0 0 6px rgba(255,69,58,.45); } 50% { box-shadow: 0 0 17px 2px rgba(255,69,58,.95); } }
+  /* Urgency ramps as the clock nears zero: faster pulse in the final 30s, hardest in the final 10s. */
+  #timerBar.urgent { animation-duration: .6s; }
+  #timerBar.critical { animation-name: barCritPulse; animation-duration: .36s; }
+  @keyframes barCritPulse { 0%,100% { box-shadow: 0 0 7px rgba(255,69,58,.55); } 50% { box-shadow: 0 0 24px 4px rgba(255,69,58,1); } }
+  #timer.critical { animation: timerCrit .36s ease-in-out infinite; }
+  @keyframes timerCrit { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: .8; } }
+  @media (prefers-reduced-motion: reduce) { #timerBar.urgent, #timerBar.critical, #timer.critical { animation: none; } }
   body.is-scrolling #timerBar::after { animation-play-state: paused; }
 
   /* ---------- Motion polish: smooth color flips + tactile press feedback ---------- */
@@ -2111,9 +2121,9 @@
       ctx.strokeStyle = "rgba(48,209,88,.32)"; ctx.beginPath(); ctx.moveTo(0, yH); ctx.lineTo(W, yH); ctx.stroke();
       ctx.strokeStyle = "rgba(255,69,58,.32)"; ctx.beginPath(); ctx.moveTo(0, yL); ctx.lineTo(W, yL); ctx.stroke();
       ctx.setLineDash([]);
-      ctx.font = "9px -apple-system, system-ui, sans-serif"; ctx.textAlign = "right";
-      ctx.fillStyle = "rgba(48,209,88,.8)"; ctx.fillText("H " + fmtMoney(rr.hi), W - 4, yH - 3 < 11 ? yH + 11 : yH - 3);
-      ctx.fillStyle = "rgba(255,69,58,.8)"; ctx.fillText("L " + fmtMoney(rr.lo), W - 4, yL - 3 < 11 ? yL + 11 : yL - 3);
+      ctx.font = "800 14px -apple-system, system-ui, sans-serif"; ctx.textAlign = "right";   // same size as the "beat" label
+      ctx.fillStyle = "rgba(48,209,88,.9)"; ctx.fillText("H " + fmtMoney(rr.hi), W - 5, yH - 5 < 13 ? yH + 15 : yH - 5);
+      ctx.fillStyle = "rgba(255,69,58,.9)"; ctx.fillText("L " + fmtMoney(rr.lo), W - 5, yL - 5 < 13 ? yL + 15 : yL - 5);
     }
     ctx.lineWidth = 2; ctx.lineJoin = "round";
     for (i = 0; i < hist.length - 1; i++) {
@@ -2237,6 +2247,10 @@
     var warn = remaining <= 120;
     elTimer.classList.toggle("warn", warn);
     elTimerBar.classList.toggle("warn", warn);
+    elTimerBar.classList.toggle("urgent", remaining <= 30 && remaining > 0);     // final 30s → pulse faster
+    var critical = remaining <= 10 && remaining > 0;                              // final 10s → most intense + the digits throb
+    elTimerBar.classList.toggle("critical", critical);
+    elTimer.classList.toggle("critical", critical);
     elTimerBar.style.width = (remaining / 900 * 100) + "%";
     elTimerSub.textContent = "Round closes at " + hma(currentRoundEnd);
     updateBetWindow(remaining);
