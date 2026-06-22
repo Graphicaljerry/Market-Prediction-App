@@ -63,8 +63,24 @@
   .bbTop .o { color: var(--green); } .bbTop .u { color: var(--red); }
   .bbSub { font-size: 11px; font-weight: 600; color: var(--label-3); line-height: 1.18; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bbRank { font-size: 11px; font-weight: 700; color: var(--label-3); white-space: nowrap; flex: none; }
-  .bbGo { font-size: 13px; font-weight: 800; color: var(--label-2); flex: none; white-space: nowrap; }
+  .bbGo { font-size: 15px; font-weight: 800; color: var(--label-2); flex: none; white-space: nowrap; }
   @media (max-width: 560px) { .bbRank { display: none; } }
+  /* expanded full ranking, slides up above the ticker */
+  .bestList { position: fixed; left: 0; right: 0; bottom: calc(53px + env(safe-area-inset-bottom)); z-index: 59; max-height: 54vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    padding: 6px clamp(12px, 3vw, 40px) 10px; background: rgba(14,14,16,.94); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    border-top: 1px solid var(--separator); box-shadow: 0 -16px 44px rgba(0,0,0,.5); transition: transform .28s ease, opacity .28s ease; }
+  .bestList.hidden { transform: translateY(14px); opacity: 0; pointer-events: none; }
+  .blHead { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--label-3); padding: 8px 6px 6px; }
+  .blRow { display: flex; align-items: center; gap: 9px; padding: 9px 8px; border-radius: 11px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .blRow:hover { background: rgba(255,255,255,.045); }
+  .blRow.active { background: rgba(255,255,255,.07); }
+  .blPos { width: 15px; font-size: 12px; font-weight: 800; color: var(--label-3); flex: none; text-align: center; }
+  .blIco { width: 21px; height: 21px; border-radius: 50%; flex: none; object-fit: cover; background: var(--surface-2); }
+  .blCoin { font-size: 14px; font-weight: 800; color: var(--label); flex: none; min-width: 44px; }
+  .blSide { font-size: 13px; font-weight: 800; flex: none; }
+  .blSide.o { color: var(--green); } .blSide.u { color: var(--red); } .blSide.s { color: var(--label-3); }
+  .blMeta { font-size: 11px; font-weight: 600; color: var(--label-3); margin-left: auto; text-align: right; white-space: nowrap; }
+  .blMeta b { color: var(--label-2); font-weight: 800; }
   /* overflow-x:clip (not hidden) clips sideways bleed WITHOUT forcing overflow-y to `auto` — the
      latter turned the centered, max-width body into its own scroll container and put a phantom
      scrollbar mid-screen on desktop. With clip, the viewport scrolls normally. */
@@ -800,15 +816,16 @@
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.
   </div>
 
-  <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to jump to that coin -->
-  <div id="bestBar" class="bestBar hidden" role="button" tabindex="0" aria-label="Best bet across all coins">
+  <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
+  <div id="bestList" class="bestList hidden" aria-label="All coins ranked"></div>
+  <div id="bestBar" class="bestBar hidden" role="button" tabindex="0" aria-label="Best bet across all coins — tap to compare all">
     <span class="bbTrophy">🏆</span>
     <span class="bbBody">
       <span class="bbTop" id="bbTop">Finding the strongest bet…</span>
       <span class="bbSub" id="bbSub">across all coins · this 15-min round</span>
     </span>
     <span class="bbRank" id="bbRank"></span>
-    <span class="bbGo" id="bbGo"></span>
+    <span class="bbGo" id="bbGo">⌄</span>
   </div>
 
 <script>
@@ -2432,24 +2449,29 @@
     var coin = state.coin, log = moveLogFor(coin), changed = false, i;
     var clearBucket = state.clearTs && state.clearTs[coin] ? Math.floor(state.clearTs[coin] / 900000) : 0;
     function sideDir(actual) { return actual === "OVER" ? 1 : actual === "UNDER" ? -1 : 0; }
-    // Freeze the FIRST authoritative verdict for a bucket; estimates may be upgraded, graded never flips.
-    function grade(dir, t) {
+    // Authority levels: 2 = Kalshi-confirmed (the DEFINITIVE settled result — exactly what Robinhood
+    // pays out on), 1 = provisional grade (candle close vs the line). Higher authority overrides;
+    // two equal provisional grades keep the FIRST one (no flicker). So an arrow can only ever change
+    // when Kalshi confirms the real outcome — never from a candle estimate or a re-poll. As the 24/7
+    // tracker reconciles each round to Kalshi, the arrows converge to exactly what Robinhood shows.
+    function record(dir, t, lvl) {
       if (!dir || !t) return;
       var b = Math.floor(t / 900000);
       if (clearBucket && b < clearBucket) return;          // keep the strip in step with the log after Clear
-      var cur = log[b];
-      if (!cur || !cur.g) { log[b] = { d: dir, g: 1, t: b * 900000 + 900000 }; changed = true; }
+      var cur = log[b], curLvl = cur ? (cur.lvl != null ? cur.lvl : 1) : -1;
+      if (!cur) { log[b] = { d: dir, lvl: lvl, t: b * 900000 + 900000 }; changed = true; return; }
+      if (lvl > curLvl) { if (cur.d !== dir || curLvl !== lvl) changed = true; cur.d = dir; cur.lvl = lvl; }   // only a higher authority (Kalshi) corrects a grade
     }
-    var rs = state.rounds;                                  // (1) client log — graded vs the actual line you see
-    if (rs) for (i = 0; i < rs.length; i++) if (rs[i].coin === coin && rs[i].endMs && (rs[i].actual === "OVER" || rs[i].actual === "UNDER")) grade(sideDir(rs[i].actual), rs[i].endMs - 900000);
-    var lsx = state.lastSettled;                            // (2) the round just settled this session
-    if (lsx && lsx.endMs && (lsx.actual === "OVER" || lsx.actual === "UNDER")) grade(sideDir(lsx.actual), lsx.endMs - 900000);
-    var auto = state.lastAuto, hist = auto && auto.history ? auto.history : null;   // (3) server history — older rounds the app never saw
-    if (hist) for (i = 0; i < hist.length; i++) if (hist[i].ts && (hist[i].actual === "OVER" || hist[i].actual === "UNDER")) grade(sideDir(hist[i].actual), hist[i].ts);
+    var rs = state.rounds;                                  // (1) client log — provisional (candle close vs the line you see)
+    if (rs) for (i = 0; i < rs.length; i++) if (rs[i].coin === coin && rs[i].endMs && (rs[i].actual === "OVER" || rs[i].actual === "UNDER")) record(sideDir(rs[i].actual), rs[i].endMs - 900000, 1);
+    var lsx = state.lastSettled;                            // (2) the round just settled this session — provisional
+    if (lsx && lsx.endMs && (lsx.actual === "OVER" || lsx.actual === "UNDER")) record(sideDir(lsx.actual), lsx.endMs - 900000, 1);
+    var auto = state.lastAuto, hist = auto && auto.history ? auto.history : null;   // (3) 24/7 server history — Kalshi-confirmed rounds are the definitive truth
+    if (hist) for (i = 0; i < hist.length; i++) if (hist[i].ts && (hist[i].actual === "OVER" || hist[i].actual === "UNDER")) record(sideDir(hist[i].actual), hist[i].ts, hist[i].src === "kalshi" ? 2 : 1);
     if (changed) saveMoveLog();
 
     var byBucket = {};
-    Object.keys(log).forEach(function (b) { byBucket[b] = { dir: log[b].d, t: log[b].t || (Number(b) * 900000 + 900000), graded: true }; });
+    Object.keys(log).forEach(function (b) { var e = log[b]; byBucket[b] = { dir: e.d, t: e.t || (Number(b) * 900000 + 900000), graded: true, confirmed: (e.lvl != null ? e.lvl : 1) >= 2 }; });
     var newestGraded = Object.keys(log).length ? Math.max.apply(null, Object.keys(log).map(Number)) : 0;
     var c = state.candles;                                  // dim estimate: fill OLDEST empty slots only, never at/after our newest graded round
     if (c) for (var j = Math.max(0, c.length - 16); j < c.length - 2; j++) {
@@ -2466,7 +2488,7 @@
     for (k = 0; k < keys.length; k++) {
       d = byBucket[keys[k]]; cls = (d.dir > 0 ? "up" : d.dir < 0 ? "down" : "flat") + (d.graded ? "" : " est"); ar = d.dir > 0 ? "↑" : d.dir < 0 ? "↓" : "·";
       verdict = d.dir > 0 ? "OVER / up" : d.dir < 0 ? "UNDER / down" : "flat";
-      html += '<span class="msDot ' + cls + '" title="' + hma(new Date(d.t)) + " — " + verdict + (d.graded ? " · graded vs the line" : " · estimate (ungraded)") + '">' + ar + '</span>';
+      html += '<span class="msDot ' + cls + '" title="' + hma(new Date(d.t)) + " — " + verdict + (d.graded ? (d.confirmed ? " · confirmed vs Kalshi" : " · graded vs the line") : " · estimate (ungraded)") + '">' + ar + '</span>';
     }
     if (allKeys.length > MOVE_WANT) html += '<button class="msMore" id="msMoreBtn" title="' + (open ? "Show fewer" : "Show more rounds") + '">' + (open ? "▴" : "▾") + '</button>';
     if (el._html === html) return;   // only touch the DOM when an outcome actually changed
@@ -2796,7 +2818,7 @@
   function renderBestBar() {
     var el = $("bestBar"); if (!el) return;
     var list = state.best || [];
-    if (!getWorkerUrl() || !list.length) { el.classList.add("hidden"); document.body.classList.remove("has-bestbar"); return; }
+    if (!getWorkerUrl() || !list.length) { el.classList.add("hidden"); document.body.classList.remove("has-bestbar"); state.bestOpen = false; renderBestList(); return; }
     var top = list[0];
     var arrow = top.side === "OVER" ? "↑" : "↓", sideCls = top.side === "OVER" ? "o" : "u";
     var meta = [];
@@ -2805,11 +2827,38 @@
     $("bbTop").innerHTML = "Best now: <b>" + top.coin + "</b> <span class=\"" + sideCls + "\">" + top.side + " " + arrow + "</span> · " + top.prob + "%";
     $("bbSub").textContent = (meta.length ? meta.join(" · ") + " · " : "") + "strongest of " + list.length + " coins this round";
     var others = list.slice(1, 4);
-    $("bbRank").textContent = others.length ? "then " + others.map(function (x) { return x.coin + (x.side === "OVER" ? "↑" : "↓"); }).join("  ") : "";
-    $("bbGo").textContent = top.coin === state.coin ? "● viewing" : "tap →";
+    $("bbRank").textContent = others.length ? "then " + others.map(function (x) { return x.coin + (x.side === "OVER" ? "↑" : x.side === "UNDER" ? "↓" : "·"); }).join("  ") : "";
+    $("bbGo").textContent = state.bestOpen ? "⌃" : "⌄";
     el.setAttribute("data-side", top.side);
     el.classList.remove("hidden"); document.body.classList.add("has-bestbar");
     state._bestTop = top.coin;
+    renderBestList();
+  }
+  // The full ranking, revealed when the ticker is tapped — every coin with its side, odds, how many
+  // reads agree, its confluence and its hit-rate. Tap a row to jump to that coin.
+  function renderBestList() {
+    var el = $("bestList"); if (!el) return;
+    var list = state.best || [];
+    if (!state.bestOpen || !list.length) { el.classList.add("hidden"); return; }
+    var html = '<div class="blHead">All coins ranked · this 15-min round · tap one to view</div>';
+    list.forEach(function (x, idx) {
+      var sc = x.side === "OVER" ? "o" : x.side === "UNDER" ? "u" : "s";
+      var arrow = x.side === "OVER" ? "↑" : x.side === "UNDER" ? "↓" : "·";
+      var meta = [];
+      if (x.agree != null) meta.push("<b>" + x.agree + "</b> agree");
+      if (x.conf != null) meta.push(Math.round(x.conf * 100) + "% conf");
+      if (x.hitRatePct != null && x.graded >= 8) meta.push(x.hitRatePct + "% hit");
+      var ico = (typeof COIN_ICONS !== "undefined" && COIN_ICONS[x.coin]) ? COIN_ICONS[x.coin] : "";
+      html += '<div class="blRow' + (x.coin === state.coin ? " active" : "") + '" data-coin="' + x.coin + '">' +
+        '<span class="blPos">' + (idx + 1) + '</span>' +
+        (ico ? '<img class="blIco" alt="" src="' + ico + '">' : '<span class="blIco"></span>') +
+        '<span class="blCoin">' + x.coin + '</span>' +
+        '<span class="blSide ' + sc + '">' + x.side + ' ' + arrow + ' ' + x.prob + '%</span>' +
+        '<span class="blMeta">' + (meta.length ? meta.join(" · ") : "—") + '</span>' +
+        '</div>';
+    });
+    el.innerHTML = html;
+    el.classList.remove("hidden");
   }
 
   function renderAutoTracker(d) {
@@ -2968,7 +3017,17 @@
   });
   (function () { var b = $("moreRounds"); if (b) b.addEventListener("click", function () { $("history").classList.toggle("collapsed"); updateSeeMore("history", "moreRounds", state.rounds.length); }); })();
   (function () { var ms = $("moveStrip"); if (ms) ms.addEventListener("click", function (e) { if (e.target && e.target.id === "msMoreBtn") { state.moveOpen = !state.moveOpen; renderMoveStrip(); } }); })();
-  (function () { var bb = $("bestBar"); if (!bb) return; bb.addEventListener("click", function () { var c = state._bestTop; if (c && c !== state.coin) setCoin(c); try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e) { window.scrollTo(0, 0); } }); })();
+  (function () {
+    var bb = $("bestBar"); if (bb) bb.addEventListener("click", function () { state.bestOpen = !state.bestOpen; renderBestBar(); });
+    var bl = $("bestList"); if (bl) bl.addEventListener("click", function (e) {
+      var t = e.target, row = t && t.closest ? t.closest(".blRow") : null;
+      if (!row) return;
+      var c = row.getAttribute("data-coin");
+      state.bestOpen = false;
+      if (c && c !== state.coin) setCoin(c); else renderBestBar();
+      try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch (e2) { window.scrollTo(0, 0); }
+    });
+  })();
   (function () { var b = $("moreAuto"); if (b) b.addEventListener("click", function () { $("autoHistory").classList.toggle("collapsed"); updateSeeMore("autoHistory", "moreAuto", _autoHistLen); }); })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
   window.addEventListener("resize", drawMiniChart);
