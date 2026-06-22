@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **The 24/7 model now learns from RSI + MACD, and every round records how far it settled past the line.** Step one of a bigger push to make the committed next-round pick more proven: the server now computes **RSI(14)** and the **MACD(12,26,9) histogram** from 1-min closes and feeds them to the per-coin learned model as two new features (alongside order-flow, momentum, vol-regime, crowd, last-direction, time-of-day and round-shape). Grading also captures each round's **settlement margin** — how far past the line it closed, in **$ and %** (`over` / `overPct`, plus `rec.lastMargin`) — so the model and the AI can tell a razor-thin round from a blowout. Saved models migrate automatically (new weights start at 0). *(More to come: feeding RSI/MACD/Stochastic, the arrow streaks and these margins into the AI prompt, and confidence that scales with how decisively recent rounds resolved.)*
 - **Recent Rounds list now matches the arrows.** Each row's OVER/UNDER outcome is reconciled against the client's own accurate grading (the same source the arrows trust, matched by 15-min bucket), so the list can't disagree with the arrow strip; the worker's verdict is the fallback only for rounds the app never saw.
 - **Beat-line hierarchy, softer gradient, tidier arrow strip.** The hero "Beat $X · … · OVER/UNDER" line now turns **bright green when price is over the line / red when under** (so it reads at a glance instead of getting lost); the ambient background glow uses softer multi-stop falloff + more blur (**no hard edges, all widths**); and the **Recent 15-min arrows** stay on **one row** with a **▾ dropdown** to reveal more history.
 - **Zoom + pan on the charts and indicators (Coinbase-style).** On a timeframe chart (1m+): **scroll-wheel or pinch to zoom**, **drag (mouse) / one-finger drag (touch) to pan**, **double-click/double-tap to reset**. Zooming the recent end keeps the **most recent price centered** with empty room to the right (not jammed against the edge), and the **Y-axis rescales to the visible candles** so zoomed price action fills the pane. The indicator sub-panes and EMA/Bollinger overlays follow in lockstep (they share the chart's x-positions via `state.vp` → `chartPts`). On touch a **long-press** still summons the crosshair and a **vertical drag still scrolls the page**; on desktop, hover still scrubs. The live tick view is unchanged (it's a single in-progress round).
@@ -348,9 +349,19 @@ round-open signals map to the chance price finishes OVER — then feeds what it'
 AI and the auto-tracker panel. Design choices are grounded in the literature:
 
 - **Features:** order-book imbalance, 1-min momentum, volatility regime, crowd lean,
-  **last-round direction** (continuation vs reversal), and **time-of-day** (sin/cos). Order
-  flow is the strongest short-horizon predictor — but it's a *seconds*-scale signal (Cont et
+  **last-round direction** (continuation vs reversal), **time-of-day** (sin/cos), **round-shape**
+  (where the latest price sat in the just-closed round's high–low range, an exhaustion tell), and
+  now two classic technicals computed server-side from 1-min closes — **RSI(14)** (re-centred so
+  +1 = overbought, −1 = oversold) and the **MACD(12,26,9) histogram** (price-scaled, `tanh`-squashed).
+  Order flow is the strongest short-horizon predictor — but it's a *seconds*-scale signal (Cont et
   al. 2010; Sirignano & Cont 2018), so at 15 min the model simply *learns* to down-weight it.
+  Saved models auto-migrate when features are added (`padModel` zero-pads the weight vector, so an
+  existing model behaves identically until it learns the new signal).
+- **Settlement margin recorded per round.** Every graded round now stores *how far past the line it
+  closed* — signed `$` and `%` (`over` / `overPct`) — so a near-miss and a blowout are no longer the
+  same data point. This feeds the AI's after-round read and the model's mean-reversion sense
+  (`rec.lastMargin`), and is the groundwork for confidence that scales with how decisively recent
+  rounds resolved.
 - **Online logistic regression with a constant learning rate** (η≈0.05, not 1/√t) so it keeps
   tracking a drifting market, with **L2 shrinkage** because samples are scarce.
 - **Partial pooling:** each coin's weights are shrunk toward a **shared global model** by how

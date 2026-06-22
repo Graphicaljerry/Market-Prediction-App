@@ -538,6 +538,42 @@ async function cbJson(path) {
   if (!r.ok) throw new Error("cb " + r.status);
   return r.json();
 }
+// --- Server-side technical indicators (computed on oldest→newest close arrays) ---
+// Wilder RSI(14): >70 overbought / <30 oversold; a momentum/exhaustion gauge the model learns from.
+function rsiOf(closes, period) {
+  period = period || 14;
+  if (!Array.isArray(closes) || closes.length < period + 1) return null;
+  let gain = 0, loss = 0;
+  for (let i = 1; i <= period; i++) { const d = closes[i] - closes[i - 1]; if (d >= 0) gain += d; else loss -= d; }
+  let avgG = gain / period, avgL = loss / period;
+  for (let i = period + 1; i < closes.length; i++) {           // Wilder smoothing
+    const d = closes[i] - closes[i - 1];
+    avgG = (avgG * (period - 1) + (d > 0 ? d : 0)) / period;
+    avgL = (avgL * (period - 1) + (d < 0 ? -d : 0)) / period;
+  }
+  if (avgL === 0) return 100;
+  return 100 - 100 / (1 + avgG / avgL);
+}
+// EMA series (SMA-seeded); index < period-1 is undefined. Used for MACD.
+function emaSeries(values, period) {
+  if (!Array.isArray(values) || values.length < period) return [];
+  const k = 2 / (period + 1), out = [];
+  let ema = values.slice(0, period).reduce((s, x) => s + x, 0) / period;
+  out[period - 1] = ema;
+  for (let i = period; i < values.length; i++) { ema = values[i] * k + ema * (1 - k); out[i] = ema; }
+  return out;
+}
+// MACD(12,26,9) histogram = (EMA12−EMA26) − signalEMA9. Positive = bullish momentum building.
+function macdHistOf(closes, fast, slow, signal) {
+  fast = fast || 12; slow = slow || 26; signal = signal || 9;
+  if (!Array.isArray(closes) || closes.length < slow + signal) return null;
+  const ef = emaSeries(closes, fast), es = emaSeries(closes, slow), macd = [];
+  for (let i = 0; i < closes.length; i++) { if (ef[i] != null && es[i] != null) macd.push(ef[i] - es[i]); }
+  if (macd.length < signal) return null;
+  const sig = emaSeries(macd, signal), lastSig = sig[sig.length - 1];
+  if (lastSig == null) return null;
+  return macd[macd.length - 1] - lastSig;   // histogram
+}
 // Last price + recent 1-min momentum + per-minute realized volatility from Coinbase 1-min candles.
 async function cbMicro(product) {
   const rows = await cbJson(`/products/${product}/candles?granularity=60`);   // [time,low,high,open,close,vol], newest first
@@ -559,7 +595,9 @@ async function cbMicro(product) {
     for (const r of seg) { if (r[2] > hi) hi = r[2]; if (r[1] < lo) lo = r[1]; }   // candle = [time,low,high,open,close,vol]
     if (hi > lo) rngClose = clampF((seg[0][4] - lo) / (hi - lo) * 2 - 1, -1, 1);
   }
-  return { price: pN, mom, sig, rngClose };   // sig = per-minute log-return stdev
+  const rsi = rsiOf(closes, 14);              // momentum/exhaustion (0–100)
+  const macdH = macdHistOf(closes, 12, 26, 9); // signed momentum-of-momentum in price units
+  return { price: pN, mom, sig, rngClose, rsi, macdH };   // sig = per-minute log-return stdev
 }
 // The price AT a round's close. We grade on the finalized boundary CANDLE close (cbCloseAt) — the
 // definitive price at closeMs, which matches the close / next-round strike Robinhood shows and is
@@ -678,7 +716,7 @@ async function saveState(env, st) { st.updated = Date.now(); await kvPutRaw(env,
 // Cont 2018, arXiv:1803.06917; Bugaenko 2004.08290), and a *pooled* feature→move mapping is
 // "universal" and beats isolated per-asset models — so we partial-pool each coin toward a
 // shared global model, weighted by how much data the coin has earned.
-const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin", "todCos", "rangeClose"];
+const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin", "todCos", "rangeClose", "rsi", "macdHist"];
 // Constant LR (NOT 1/sqrt(t)) so the model keeps tracking a drifting market; strong-ish L2
 // because samples are scarce. Tuning per research synthesis (online logistic regression
 // under distribution shift): eta ~0.05-0.15, L2 ~3e-3-1e-2.
@@ -704,8 +742,13 @@ function featuresFor(model, signals, prevActual, ts) {
   const crowdLean = typeof signals.crowdOver === "number" ? clampF((signals.crowdOver / 100 - 0.5) * 2, -1, 1) : 0;
   const lastDir = prevActual === "OVER" ? 1 : prevActual === "UNDER" ? -1 : 0;
   const rngClose = typeof signals.rngClose === "number" ? clampF(signals.rngClose, -1, 1) : 0;
+  // RSI re-centered to 0 at 50 (so +1 = fully overbought, −1 = oversold); MACD histogram scaled by
+  // price (it grows with price level) then squashed so a strong cross saturates near ±1.
+  const rsi = typeof signals.rsi === "number" ? clampF((signals.rsi - 50) / 50, -1, 1) : 0;
+  const macdH = (typeof signals.macdH === "number" && typeof signals.price === "number" && signals.price > 0)
+    ? Math.tanh(signals.macdH / signals.price * 800) : 0;
   const hourFrac = ((new Date(ts).getUTCHours()) + new Date(ts).getUTCMinutes() / 60) / 24;
-  return [obi, mom, volr, crowdLean, lastDir, Math.sin(2 * Math.PI * hourFrac), Math.cos(2 * Math.PI * hourFrac), rngClose];
+  return [obi, mom, volr, crowdLean, lastDir, Math.sin(2 * Math.PI * hourFrac), Math.cos(2 * Math.PI * hourFrac), rngClose, rsi, macdH];
 }
 function scoreModel(model, f) { let z = model.b; for (let i = 0; i < f.length; i++) z += model.w[i] * f[i]; return z; }
 // Partial-pooled probability: blend the coin's linear score toward the pooled (global) one by
@@ -775,9 +818,14 @@ async function runCoinPick(env, coin, st) {
       const actual = (typeof settle === "number" ? (settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT") : null);
       if (actual && actual !== "FLAT") {
         const correct = actual === p.side;
-        rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: typeof settle === "number" ? settle : null, ticker: p.ticker || null, src: "candle" });
+        // Settlement MARGIN: how far past the line it closed (signed: + = over, − = under), in $ and %.
+        // This is the "by how much" the model + AI now reason about — a near-miss vs a blowout differ.
+        const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
+        const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
+        rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, src: "candle" });
         if (rec.history.length > 200) rec.history.pop();
         rec.graded++; if (correct) rec.correct++;
+        rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
         // online update: the round's open-features -> did price finish OVER (1) or UNDER (0)?
         const closeOver = typeof settle === "number" ? (settle > (typeof p.openPrice === "number" ? p.openPrice : p.strike) ? 1 : 0) : (actual === "OVER" ? 1 : 0);
         if (Array.isArray(p.feat)) { trainModel(coinModel, p.feat, closeOver); trainModel(global, p.feat, closeOver); }
@@ -789,7 +837,7 @@ async function runCoinPick(env, coin, st) {
 
   // 2) make a fresh pick for the round that just opened (the current Kalshi market)
   if (crowd && typeof crowd.overPct === "number" && typeof crowd.strike === "number") {
-    const sigVals = { crowdOver: crowd.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose };
+    const sigVals = { crowdOver: crowd.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose, rsi: micro && micro.rsi, macdH: micro && micro.macdH, price: micro && micro.price };
     const nowTs = Date.now();
     const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
     if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;
