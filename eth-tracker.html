@@ -809,7 +809,7 @@
   <div class="card flat">
     <div id="autoLatest" class="autoLatest"></div>
     <div class="scoreGrid">
-      <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
+      <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Bets</div></div>
       <div class="stat"><div class="v mono pos" id="aCorrect">0</div><div class="k">Correct</div></div>
       <div class="stat"><div class="v mono" id="aHit">—</div><div class="k">Hit Rate</div></div>
       <div class="stat"><div class="v mono" id="aPick">—</div><div class="k">Now</div></div>
@@ -2903,11 +2903,9 @@
     if (!getWorkerUrl() || !list.length) { el.classList.add("hidden"); document.body.classList.remove("has-bestbar"); state.bestOpen = false; renderBestList(); return; }
     var top = list[0];
     var arrow = top.side === "OVER" ? "↑" : "↓", sideCls = top.side === "OVER" ? "o" : "u";
-    var meta = [];
-    if (top.agree != null) meta.push(top.agree + " reads agree");
-    if (top.hitRatePct != null && top.graded >= 8) meta.push(top.hitRatePct + "% hit · " + top.graded);
+    var bsub = (top.hitRatePct != null && top.graded >= 5) ? top.hitRatePct + "% hit · " : "";
     $("bbTop").innerHTML = "Best now: <b>" + top.coin + "</b> <span class=\"" + sideCls + "\">" + top.side + " " + arrow + "</span> · " + top.prob + "%";
-    $("bbSub").textContent = (meta.length ? meta.join(" · ") + " · " : "") + "strongest of " + list.length + " coins this round";
+    $("bbSub").textContent = bsub + "strongest of " + list.length + " coins this round";
     var others = list.slice(1, 4);
     $("bbRank").textContent = others.length ? "then " + others.map(function (x) { return x.coin + (x.side === "OVER" ? "↑" : x.side === "UNDER" ? "↓" : "·"); }).join("  ") : "";
     $("bbGo").textContent = state.bestOpen ? "⌃" : "⌄";
@@ -2927,16 +2925,15 @@
       var sc = x.side === "OVER" ? "o" : x.side === "UNDER" ? "u" : "s";
       var arrow = x.side === "OVER" ? "↑" : x.side === "UNDER" ? "↓" : "·";
       var meta = [];
-      if (x.agree != null) meta.push("<b>" + x.agree + "</b> agree");
-      if (x.conf != null) meta.push(Math.round(x.conf * 100) + "% conf");
-      if (x.hitRatePct != null && x.graded >= 8) meta.push(x.hitRatePct + "% hit");
+      if (x.hitRatePct != null && x.graded >= 5) meta.push("<b>" + x.hitRatePct + "%</b> hit");
+      if (x.betRatePct != null && (x.seen || 0) >= 5) meta.push("bets " + x.betRatePct + "%");
       var ico = (typeof COIN_ICONS !== "undefined" && COIN_ICONS[x.coin]) ? COIN_ICONS[x.coin] : "";
       html += '<div class="blRow' + (x.coin === state.coin ? " active" : "") + '" data-coin="' + x.coin + '">' +
         '<span class="blPos">' + (idx + 1) + '</span>' +
         (ico ? '<img class="blIco" alt="" src="' + ico + '">' : '<span class="blIco"></span>') +
         '<span class="blCoin">' + x.coin + '</span>' +
         '<span class="blSide ' + sc + '">' + x.side + ' ' + arrow + ' ' + x.prob + '%</span>' +
-        '<span class="blMeta">' + (meta.length ? meta.join(" · ") : "—") + '</span>' +
+        '<span class="blMeta">' + (meta.length ? meta.join(" · ") : "new") + '</span>' +
         '</div>';
     });
     el.innerHTML = html;
@@ -3000,8 +2997,8 @@
       var seen = (typeof d.shadowGraded === "number") ? d.shadowGraded : (d.seen || 0);
       if (seen && graded <= seen) {
         var betRate = Math.round(graded / seen * 100);
-        cov.innerHTML = '<b>' + graded + '</b> bets · <b>' + (seen - graded) + '</b> skipped · <span class="cov-skip">' + betRate + '% bet rate</span>' +
-          (typeof d.shadowHitPct === "number" ? ' · if it bet every round: <b>' + d.shadowHitPct + '%</b>' : '');
+        cov.innerHTML = 'Bet <span class="cov-skip">' + betRate + '%</span> of <b>' + seen + '</b> rounds' +
+          (typeof d.shadowHitPct === "number" ? ' · <b>' + d.shadowHitPct + '%</b> if it bet them all' : '');
       } else cov.innerHTML = '';
     }
     _autoHistLen = (d.history || []).length;

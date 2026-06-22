@@ -825,7 +825,9 @@ function rankBest(st) {
       conf: typeof p.conf === "number" ? Math.round(p.conf * 100) / 100 : null,
       agree: typeof p.agree === "number" ? p.agree : null,
       hitRatePct: typeof rec.hitRatePct === "number" ? rec.hitRatePct : null,
-      graded: n, closeMs: p.closeMs || null, score: Math.round(score * 1000) / 1000,
+      betRatePct: typeof rec.betRatePct === "number" ? rec.betRatePct : null,     // coverage — how often it commits
+      shadowHitPct: typeof rec.shadowHitPct === "number" ? rec.shadowHitPct : null, // if it bet every round
+      graded: n, seen: rec.shadowGraded || rec.seen || 0, closeMs: p.closeMs || null, score: Math.round(score * 1000) / 1000,
     });
   }
   out.sort((a, b) => b.score - a.score);
