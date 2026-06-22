@@ -1566,6 +1566,7 @@
   // ---------- Mini live chart (price vs the line to beat) ----------
   function resetChart() {
     state.priceHist = [];
+    if (state.chartTF === "live") state.vp = { a: 0, b: 1 };   // fresh zoom each new round on the live view
     var pr = state.pendingRound;
     // Anchor the line at the round's real open (left edge) so it spans the whole window
     // — even if you loaded mid-round (the 15-min candle's open price = the boundary price).
@@ -1924,11 +1925,14 @@
       return;
     }
     var roundStart = currentRoundEnd.getTime() - 900000, roundEnd = currentRoundEnd.getTime();
-    var prices = hist.map(function (x) { return x.p; }); prices.push(strike);
+    var vp = state.vp || { a: 0, b: 1 }, tLo = roundStart + vp.a * 900000, tHi = roundStart + vp.b * 900000;
+    var pad = (tHi - tLo) * 0.02, prices = [strike];
+    hist.forEach(function (x) { if (x.t >= tLo - pad && x.t <= tHi + pad) prices.push(x.p); });   // scale Y to the visible window
+    if (state.lastPrice != null && state.lastPrice > 0) prices.push(state.lastPrice);
     var min = Math.min.apply(null, prices), max = Math.max.apply(null, prices);
     var padY = (max - min) * 0.25 || (strike * 0.0004) || 1; min -= padY; max += padY;
     var top = 8, bot = 8;
-    function X(t) { return Math.max(0, Math.min(1, (t - roundStart) / (roundEnd - roundStart))) * W; }
+    function X(t) { return ((t - tLo) / (tHi - tLo)) * W; }   // viewport-aware (canvas clips what's out of view)
     function Y(p) { return top + (1 - (p - min) / (max - min)) * (H - top - bot); }
     drawPriceGrid(ctx, W, H, min, max, Y, false);   // faint price levels behind the live track (H/L labels stay)
     var yS = Y(strike), i, a, b, above;
@@ -1962,6 +1966,7 @@
     ctx.beginPath(); ctx.arc(X(last.t), Y(last.p), 3.5, 0, Math.PI * 2); ctx.fill();
     state.chartPts = hist.map(function (x) { return { x: X(x.t), y: Y(x.p), t: x.t, p: x.p }; });
     state.chartMeta = { kind: "live", W: W, H: H, strike: strike };
+    if (vp.a > 0.001 || vp.b < 0.999) { ctx.fillStyle = "rgba(235,235,245,.45)"; ctx.font = "9px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "right"; ctx.textBaseline = "alphabetic"; ctx.fillText("zoomed · double-tap to reset", W - 4, H - 5); }
     drawOverlays(ctx, hist.map(function (h) { return h.p; }), hist.map(function (h) { return X(h.t); }), Y);
     ctx.fillStyle = "rgba(235,235,245,.92)"; ctx.font = "800 14px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
     var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
@@ -2799,12 +2804,12 @@
     var cv = $("miniChart"); if (!cv) return;
     function setHover(clientX) { var r = cv.getBoundingClientRect(); state.hoverX = clientX - r.left; drawMiniChart(); }
     function clearHover() { if (state.hoverX != null) { state.hoverX = null; drawMiniChart(); } }
-    function zoomable() { return !!(state.chartTF && state.chartTF !== "live"); }   // zoom/pan only where there's a candle series
+    function zoomable() { return !!state.chartTF; }   // zoom/pan on every chart, including the live view
     function fx(clientX) { var r = cv.getBoundingClientRect(); return r.width ? Math.max(0, Math.min(1, (clientX - r.left) / r.width)) : 0; }
     function clampVp() {
       var vp = state.vp = state.vp || { a: 0, b: 1 };
       var span = Math.min(1, Math.max(0.05, vp.b - vp.a));
-      var maxB = 1 + span * 0.5;                          // allow right padding so the latest price can sit at the center
+      var maxB = state.chartTF === "live" ? 1 : 1 + span * 0.5;   // timeframe charts get right padding; the live view ends at the round close
       var a = vp.a, b = a + span;
       if (b > maxB) { b = maxB; a = b - span; }            // don't overscroll past the right padding
       if (a < 0) { a = 0; b = span; }                      // don't scroll before the first candle
@@ -2812,9 +2817,10 @@
     }
     function zoomAt(f, factor) {
       if (!zoomable()) return; var vp = state.vp, span = vp.b - vp.a, ns = Math.min(1, Math.max(0.05, span * factor));
-      if (ns >= 0.999) { vp.a = 0; vp.b = 1; }                               // fully zoomed out: all candles
-      else if (vp.b >= 0.98) { vp.a = 1 - ns * 0.5; vp.b = 1 + ns * 0.5; }    // viewing the latest → keep it CENTERED, room to the right
-      else { var focus = vp.a + f * span; vp.a = focus - f * ns; vp.b = focus + (1 - f) * ns; }   // panned into history → zoom at the cursor
+      var live = state.chartTF === "live";
+      if (ns >= 0.999) { vp.a = 0; vp.b = 1; }                                       // fully zoomed out
+      else if (!live && vp.b >= 0.98) { vp.a = 1 - ns * 0.5; vp.b = 1 + ns * 0.5; }   // timeframe + viewing the latest → keep it CENTERED, room to the right
+      else { var focus = vp.a + f * span; vp.a = focus - f * ns; vp.b = focus + (1 - f) * ns; }   // cursor-anchored (always on the live view)
       clampVp(); drawMiniChart();
     }
     function panFrac(df) { if (!zoomable() || !df) return; clampVp(); var vp = state.vp, span = vp.b - vp.a, s = -df * span; vp.a += s; vp.b += s; clampVp(); drawMiniChart(); }
