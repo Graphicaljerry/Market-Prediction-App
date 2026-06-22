@@ -83,21 +83,31 @@ export default {
         return json({ best: rankBest(st), ts: Date.now() });
       }
       // One-time cleanup: ?reset=ETH zeroes the auto-tracker's record for a coin (hit-rate
-      // counters + history + pending) so it rebuilds on correctly-graded rounds only. The learned
-      // model is kept by default (it self-heals); add &model=1 to wipe that too. Honors
-      // ACCESS_TOKEN like the POST path — set that secret first if you want this locked down.
+      // counters + history + pending) so it rebuilds on correctly-graded rounds only; ?reset=all does
+      // every coin ATOMICALLY in one state write (so the app's "Clear all" can't race per-coin resets
+      // into clobbering each other). The learned model is kept by default; add &model=1 to wipe it.
+      // Honors ACCESS_TOKEN like the POST path — set that secret first if you want this locked down.
       if (u.searchParams.has("reset")) {
         if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
         const coin = (u.searchParams.get("reset") || "").toUpperCase();
-        if (!coin) return json({ error: "specify a coin, e.g. ?reset=ETH" }, 400);
+        if (!coin) return json({ error: "specify a coin, e.g. ?reset=ETH (or ?reset=all)" }, 400);
         const st = await loadState(env);
-        const prev = st.coins[coin] || { coin };
         const keepModel = u.searchParams.get("model") !== "1";
-        const fresh = { coin, pending: null, history: [], graded: 0, correct: 0, hitRatePct: null, lastActual: null, updated: Date.now() };
-        if (keepModel && prev.model) { fresh.model = prev.model; fresh.learned = prev.learned || null; }
-        st.coins[coin] = fresh;
+        const resetOne = (cn) => {
+          const prev = st.coins[cn] || { coin: cn };
+          const fresh = { coin: cn, pending: null, history: [], graded: 0, correct: 0, hitRatePct: null, lastActual: null, updated: Date.now() };
+          if (keepModel && prev.model) { fresh.model = prev.model; fresh.learned = prev.learned || null; }
+          st.coins[cn] = fresh;
+          return prev.graded || 0;
+        };
+        if (coin === "ALL") {
+          let cleared = 0; for (const cn of AUTO_COINS) cleared += resetOne(cn);
+          await saveState(env, st);
+          return json({ ok: true, coin: "ALL", reset: true, coins: AUTO_COINS.length, modelKept: keepModel, clearedGraded: cleared });
+        }
+        const cleared = resetOne(coin);
         await saveState(env, st);
-        return json({ ok: true, coin, reset: true, modelKept: keepModel && !!prev.model, clearedGraded: prev.graded || 0 });
+        return json({ ok: true, coin, reset: true, modelKept: keepModel, clearedGraded: cleared });
       }
       // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });

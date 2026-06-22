@@ -805,7 +805,7 @@
 
   <!-- TRACK RECORD — 24/7 auto-tracker (server-side, free; grades a round every 15 min even when the app is closed) -->
   <div class="module m-autotracker" id="autoMod">
-  <div class="sec">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start the log fresh">Clear log</button></div>
+  <div class="sec">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
   <div class="card flat">
     <div id="autoLatest" class="autoLatest"></div>
     <div class="scoreGrid">
@@ -3095,29 +3095,49 @@
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { var im = b.querySelector(".cico"); if (im) im.src = COIN_ICONS[b.getAttribute("data-coin")] || ""; });
   $("coinBadge").innerHTML = COIN_ICONS[state.coin] ? '<img alt="" src="' + COIN_ICONS[state.coin] + '">' : "";
   (function () { var s = $("coinSelect"); if (s) s.value = state.coin; var si = $("coinSelIcon"); if (si) si.src = COIN_ICONS[state.coin] || ""; })();
-  var _cl = $("clearLog"); if (_cl) _cl.addEventListener("click", function () {
-    var coin = state.coin;
-    if (!confirm("Start the " + coin + " log fresh?\n\nThis wipes the recorded rounds, the Recent-15-min arrows and the hit-rate — here AND on the 24/7 tracker — so they rebuild on newly-settled rounds only. The learned model is kept.")) return;
-    // 1) local log + arrows for this coin
+  // Local wipe of one coin's rounds/arrows/clear-gate (no UI, no server). Caller saves + refreshes.
+  function clearCoinData(coin) {
     state.rounds = state.rounds.filter(function (r) { return r.coin !== coin; });
     state.lateRounds = (state.lateRounds || []).filter(function (r) { return r.coin !== coin; });
-    if (state.moveLog) { state.moveLog[coin] = {}; saveMoveLog(); }   // wipe this coin's frozen arrow ledger too
-    state.clearTs = state.clearTs || {}; state.clearTs[coin] = Date.now();   // gate the arrows + server history to post-clear rounds, so they reset with the log
-    saveRounds(); saveLateRounds(); saveClearTs(); state.lastSettled = null; renderAccuracy(); renderRounds(); renderLateRecord(); renderLastClose();
-    // 2) blank the 24/7 panel immediately (renderAutoTracker leaves stats untouched when empty)
-    state.lastAuto = null;
+    if (state.moveLog) state.moveLog[coin] = {};
+    state.clearTs = state.clearTs || {}; state.clearTs[coin] = Date.now();   // gate arrows + server history to post-clear rounds
+  }
+  function blankAutoPanel(msg) {
     var z = { aGraded: "0", aCorrect: "0", aHit: "—", aPick: "—" };
     Object.keys(z).forEach(function (id) { var e = $(id); if (e) { e.textContent = z[id]; e.className = "v mono"; } });
     var al = $("autoLatest"); if (al) { al.className = "autoLatest"; al.textContent = ""; }
     var alr = $("autoLearned"); if (alr) alr.innerHTML = "";
-    var ahy = $("autoHistory"); if (ahy) ahy.innerHTML = '<div class="empty">Cleared — rebuilding as new rounds settle.</div>';
-    renderMoveStrip();
-    // 3) zero the server record for this coin, then re-pull the fresh (empty) one
+    var cov = $("autoCoverage"); if (cov) cov.innerHTML = "";
+    var ahy = $("autoHistory"); if (ahy) ahy.innerHTML = '<div class="empty">' + (msg || "Cleared — rebuilding as new rounds settle.") + '</div>';
+  }
+  function resetCoinServer(coin) {   // zero the worker's record for a coin (keeps the learned model); resolves to the JSON or null
     var rurl = workerGet({ reset: coin });
-    if (rurl) fetch(rurl, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (res) {
-      if (res && res.ok) { _autoHistLen = 0; setTimeout(function () { fetchAutoTracker(coin, true); }, 1500); }
-      else if (ahy) ahy.innerHTML = '<div class="empty">Local log cleared. The 24/7 record couldn’t be reset from here' + (res && res.error ? " (" + res.error + ")" : "") + '.</div>';
-    }).catch(function () { if (ahy) ahy.innerHTML = '<div class="empty">Local log cleared — couldn’t reach the 24/7 tracker to reset it.</div>'; });
+    return rurl ? fetch(rurl, { cache: "no-store" }).then(function (r) { return r.json(); }).catch(function () { return null; }) : Promise.resolve(null);
+  }
+  var _cl = $("clearLog"); if (_cl) _cl.addEventListener("click", function () {
+    var coin = state.coin;
+    if (!confirm("Start the " + coin + " log fresh?\n\nThis wipes the recorded rounds, the Recent-15-min arrows and the hit-rate — here AND on the 24/7 tracker — so they rebuild on newly-settled rounds only. The learned model is kept.")) return;
+    clearCoinData(coin);
+    saveRounds(); saveLateRounds(); saveClearTs(); saveMoveLog();
+    state.lastSettled = null; state.lastAuto = null; renderAccuracy(); renderRounds(); renderLateRecord(); renderLastClose();
+    blankAutoPanel(); renderMoveStrip();
+    resetCoinServer(coin).then(function (res) {
+      if (res && res.ok) { _autoHistLen = 0; setTimeout(function () { fetchAutoTracker(coin, true); fetchBest(true); }, 1500); }
+      else { var ahy = $("autoHistory"); if (ahy) ahy.innerHTML = '<div class="empty">Local log cleared. The 24/7 record couldn’t be reset from here' + (res && res.error ? " (" + res.error + ")" : "") + '.</div>'; }
+    });
+  });
+  var _ca = $("clearAll"); if (_ca) _ca.addEventListener("click", function () {
+    var coins = Object.keys(COINS);
+    if (!confirm("Start ALL " + coins.length + " coins fresh?\n\nThis wipes every coin's recorded rounds, arrows and hit-rate — here AND on the 24/7 tracker — so they rebuild on newly-settled rounds only. The learned models are kept.")) return;
+    coins.forEach(clearCoinData);
+    saveRounds(); saveLateRounds(); saveClearTs(); saveMoveLog();
+    state.lastSettled = null; state.lastAuto = null; state.best = [];
+    renderAccuracy(); renderRounds(); renderLateRecord(); renderLastClose(); blankAutoPanel("Cleared every coin — rebuilding as new rounds settle."); renderMoveStrip(); renderBestBar();
+    _ca.disabled = true; var _t = _ca.textContent; _ca.textContent = "Clearing…";
+    resetCoinServer("all").then(function () {   // ONE atomic server reset (avoids per-coin writes racing each other)
+      _autoHistLen = 0; _ca.disabled = false; _ca.textContent = _t;
+      setTimeout(function () { fetchAutoTracker(state.coin, true); fetchBest(true); }, 1500);
+    });
   });
   (function () { var b = $("moreRounds"); if (b) b.addEventListener("click", function () { $("history").classList.toggle("collapsed"); updateSeeMore("history", "moreRounds", state.rounds.length); }); })();
   (function () { var ms = $("moveStrip"); if (ms) ms.addEventListener("click", function (e) { if (e.target && e.target.id === "msMoreBtn") { state.moveOpen = !state.moveOpen; renderMoveStrip(); } }); })();
