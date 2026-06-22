@@ -606,7 +606,7 @@ async function kalshiResult(ticker) {
 // and stops after a few, so it's about one Kalshi call per coin per cron in the steady state.
 async function reconcileKalshi(rec) {
   const h = rec.history || [];
-  for (let i = 0, checked = 0; i < h.length && checked < 3; i++) {
+  for (let i = 0, checked = 0; i < h.length && checked < 1; i++) {   // at most one Kalshi call/coin/cron — keep API load tiny
     const e = h[i];
     if (e.src === "kalshi" || !e.ticker) continue;
     checked++;
@@ -768,14 +768,14 @@ async function runCoinPick(env, coin, st) {
       let settle = await cbCloseAt(product, p.closeMs);                        // the finalized boundary candle close — definitive, matches Robinhood's close / next-strike
       if (settle == null) settle = await cbAvg60(product, p.closeMs);           // fallback: ~60-sec average only if that candle hasn't posted yet
       if (settle == null && micro && typeof micro.price === "number") settle = micro.price;   // last resort if both are missing
-      // Prefer Kalshi's OWN settled result — literally what you bet on, so it can't disagree with
-      // Robinhood even on a razor-thin round. Until it resolves, grade provisionally on the candle
-      // close (above), and reconcileKalshi() upgrades it on a later cron once the market settles.
-      const kal = await kalshiResult(p.ticker);
-      const actual = kal || (typeof settle === "number" ? (settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT") : null);
+      // Grade immediately on the candle close — accurate, and ZERO extra Kalshi load on the critical
+      // path. reconcileKalshi() (at the end of this function, wrapped) upgrades it to Kalshi's
+      // definitive result on a later cron, so a slow/blocked Kalshi can never stall picks + grading
+      // or starve the crowd fetch the next pick depends on.
+      const actual = (typeof settle === "number" ? (settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT") : null);
       if (actual && actual !== "FLAT") {
         const correct = actual === p.side;
-        rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: typeof settle === "number" ? settle : null, ticker: p.ticker || null, src: kal ? "kalshi" : "candle" });
+        rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: typeof settle === "number" ? settle : null, ticker: p.ticker || null, src: "candle" });
         if (rec.history.length > 200) rec.history.pop();
         rec.graded++; if (correct) rec.correct++;
         // online update: the round's open-features -> did price finish OVER (1) or UNDER (0)?
@@ -786,7 +786,6 @@ async function runCoinPick(env, coin, st) {
     }
     rec.pending = null;
   }
-  await reconcileKalshi(rec);   // upgrade provisional candle-grades to Kalshi's definitive result
 
   // 2) make a fresh pick for the round that just opened (the current Kalshi market)
   if (crowd && typeof crowd.overPct === "number" && typeof crowd.strike === "number") {
@@ -813,6 +812,9 @@ async function runCoinPick(env, coin, st) {
   }
   rec.model = coinModel;
   rec.learned = modelInsights(coinModel, global, rec.history);      // plain-language read for the prompt + app
+  // Kalshi upgrade runs LAST and wrapped — off the critical path, so a Kalshi hiccup can't stall the
+  // grade/pick above or get us rate-limited into a failed crowd fetch next cron.
+  try { await reconcileKalshi(rec); } catch (_) {}
   rec.hitRatePct = rec.graded ? Math.round(rec.correct / rec.graded * 100) : null;
   rec.updated = Date.now();
   // No per-coin write here — the whole auto-tracker is persisted once per cron run by saveState().

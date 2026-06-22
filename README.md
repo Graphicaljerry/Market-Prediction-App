@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Hardened the 24/7 grader so it can't stall.** The Kalshi-result lookup had been on the critical path and the reconcile ran *before* the next pick — so a slow/blocked/rate-limited Kalshi could stop a coin from picking, which in turn stops grading. Now every round grades immediately on the candle close (no Kalshi call), and the Kalshi upgrade runs **last and wrapped** (≤1 call/coin/cron), so grading and picking keep flowing no matter what Kalshi does.
 - **Chart polish + three more indicators (all widths).** The **High-conviction** toggle is now **green** when on (was blue); the on-chart **"beat $X"** line is **bold and larger** so it stands out; and **RSI/MACD fold the live price** into the forming candle so they track each tick. Added **Stochastic** (14,3) as a sub-pane and **EMA 9/21** + **Bollinger Bands** (20,2) as price overlays — toggles sit in the Indicators row.
 - **Grading now reads Kalshi's *own* settled result — the definitive outcome.** Each round settles on Kalshi's resolved market (`result: yes` → OVER, `no` → UNDER) — exactly what you bet on, so the log can't disagree with Robinhood even on razor-thin rounds. Until Kalshi resolves (a beat after the close) the round is graded provisionally on the boundary candle close, then **reconciled** to Kalshi's verdict on a later cron (flipping the entry + hit-rate if it differed). Costs nothing — it reuses the Kalshi API the worker already calls.
 - **RSI + MACD indicator sub-panes on the chart.** A new **Indicators** row toggles **RSI** (14) and/or **MACD** (12,26,9); each renders as a stacked mini-pane right below the price chart, drawn from the *same* `chartPts` x-positions so it lines up exactly, with the scrub crosshair carried through. Best on a 1m+ timeframe (they need enough candles; the live tick view shows a "need more candles" hint).
@@ -322,10 +323,10 @@ A **scheduled** Worker (`crons = ["*/15 * * * *"]`) keeps an independent, always
 even when no tab is open — using **only free data and no LLM**, so it adds nothing to AI spend.
 Each run, per coin with a Kalshi series:
 
-1. Grades the previous round's pick — preferring **Kalshi's own settled result** (`result: yes/no`
-   → OVER/UNDER, literally what you bet on), then the **finalized boundary candle close**, then the
-   ~60-second average (`kalshiResult` → `cbCloseAt` → `cbAvg60`). A round graded provisionally on the
-   candle is reconciled to Kalshi's verdict on a later cron once the market settles (`reconcileKalshi`).
+1. Grades the previous round's pick on the **finalized boundary candle close** (`cbCloseAt` →
+   `cbAvg60`) — fast and Kalshi-free so grading can never stall — then **reconciles** it to Kalshi's
+   own settled result (`result: yes/no` → OVER/UNDER, literally what you bet on) on a later cron,
+   kept off the critical path (`reconcileKalshi`, ≤1 Kalshi call/coin/cron).
 2. Makes a fresh pick the simple way: the **Kalshi market price** nudged by **1-min momentum**
    and **order-book imbalance**, with **SKIP** near 50/50 (`freePick`).
 3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV`. The whole auto-tracker —
