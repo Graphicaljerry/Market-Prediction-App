@@ -708,12 +708,14 @@ async function kalshiResult(ticker) {
     return res === "yes" ? "OVER" : res === "no" ? "UNDER" : null;
   } catch (_) { return null; }
 }
-// Upgrade recent rounds graded provisionally on the candle close to Kalshi's definitive result once
-// the market settles (a razor-thin round can flip). Only re-checks still-provisional, recent entries
-// and stops after a few, so it's about one Kalshi call per coin per cron in the steady state.
+// Upgrade rounds graded provisionally on the Coinbase candle close to Kalshi's DEFINITIVE settled
+// result. This matters a lot: Kalshi settles on a 60-sec CF-Benchmarks index (many exchanges), so a
+// single Coinbase candle close can land on the OPPOSITE side on a thin round — only Kalshi's own
+// result is guaranteed to match Robinhood. We now reconcile several recent rounds per cron so the
+// arrows converge to Kalshi within one cycle instead of trickling one at a time.
 async function reconcileKalshi(rec) {
   const h = rec.history || [];
-  for (let i = 0, checked = 0; i < h.length && checked < 1; i++) {   // at most one Kalshi call/coin/cron — keep API load tiny
+  for (let i = 0, checked = 0; i < h.length && checked < 6; i++) {   // up to ~6 recent rounds/coin/cron — Kalshi reads are cheap; accuracy beats a tiny API budget
     const e = h[i];
     if (e.src === "kalshi" || !e.ticker) continue;
     checked++;

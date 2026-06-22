@@ -2925,35 +2925,32 @@
       lat.className = "autoLatest " + cls;
       lat.innerHTML = (p.side === "SKIP" ? "SKIP — no clear edge" : "Auto pick: " + p.side + " · " + p.prob + "%") + '<span class="sub">' + sub + '</span>';
     } else { lat.className = "autoLatest"; lat.textContent = ""; }
-    // Reconcile each row's OUTCOME to the MOST accurate source, and adjust the headline Correct /
-    // Hit-Rate by the SAME correction so the stats can NEVER disagree with the Recent Rounds shown
-    // (the bug where every row showed a loss but the hit-rate stayed 100%). Priority: a Kalshi-
-    // confirmed worker row (src="kalshi") is the definitive truth and is trusted as-is; an as-yet
-    // provisional worker row is corrected by the client's own grade (the same source the arrows use).
-    var cmap = {};
-    (state.rounds || []).forEach(function (r) {
-      if (r.coin === state.coin && r.endMs && (r.actual === "OVER" || r.actual === "UNDER")) cmap[Math.floor((r.endMs - 900000) / 900000)] = r.actual;
-    });
-    var flipDelta = 0;   // net change the reconciliation makes to the aggregate "correct" count
+    // ONE source of truth for outcomes: the same per-round `moveLog` the arrows use (built just above
+    // by renderMoveStrip), which prefers Kalshi's DEFINITIVE settled result over a provisional candle
+    // grade. So the Recent Rounds rows, the arrows, AND the headline Hit-Rate are all computed from the
+    // SAME outcome — they can't disagree, and they converge to exactly what Robinhood settled. Rounds
+    // not yet Kalshi-confirmed are flagged "settling" so a provisional grade is never mistaken for final.
+    var log = (state.moveLog && state.moveLog[state.coin]) || {};
+    var graded = 0, correctN = 0, confirmedN = 0;
     var rows = (d.history || []).map(function (h) {
-      var actual = h.actual, correct = h.correct;
-      var cb = h.ts ? cmap[Math.floor(h.ts / 900000)] : null;
-      if (h.src !== "kalshi" && (cb === "OVER" || cb === "UNDER") && cb !== actual) {   // never override Kalshi truth
-        actual = cb; var nc = (h.side === actual);
-        if (h.correct && !nc) flipDelta--; else if (!h.correct && nc) flipDelta++;
-        correct = nc;
-      }
+      var b = h.ts ? Math.floor(h.ts / 900000) : null;
+      var e = (b != null) ? log[b] : null;
+      var actual = e ? (e.d > 0 ? "OVER" : "UNDER") : h.actual;                       // moveLog (Kalshi-priority) wins
+      var isKalshi = (e && (e.lvl != null ? e.lvl : 1) >= 2) || h.src === "kalshi";    // confirmed against Kalshi's settled result
+      var correct = (h.side === actual);
+      if ((actual === "OVER" || actual === "UNDER") && (h.side === "OVER" || h.side === "UNDER")) { graded++; if (correct) correctN++; if (isKalshi) confirmedN++; }
       var w = correct ? "w" : "l", tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
       return '<div class="hrow ' + w + '"><span class="htime">' + tlabel + '</span>' +
         '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
-        '<span class="hres ' + w + '">' + (correct ? "✓ " : "✗ ") + actual + '</span></div>';
+        '<span class="hres ' + w + '">' + (correct ? "✓ " : "✗ ") + actual +
+        (isKalshi ? '' : ' <span style="color:var(--label-3);font-size:10px;font-weight:600">· settling</span>') + '</span></div>';
     }).join("");
     $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet.</div>';
-    var graded = d.graded || 0, correctN = Math.max(0, Math.min(graded, (d.correct || 0) + flipDelta));
     $("aGraded").textContent = graded;
     $("aCorrect").textContent = correctN;
     $("aHit").textContent = graded ? Math.round(correctN / graded * 100) + "%" : "—";
     $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");
+    $("aHit").title = confirmedN < graded ? (confirmedN + " of " + graded + " confirmed vs Kalshi; the rest still settling") : "all confirmed vs Kalshi";
     _autoHistLen = (d.history || []).length;
     updateSeeMore("autoHistory", "moreAuto", _autoHistLen);
     // what the per-coin online model has learned
