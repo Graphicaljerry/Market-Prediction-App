@@ -197,7 +197,7 @@
     .seg { display: none; }
     .coinSelectWrap { display: flex; }
     .m-chart .chartSec { display: none; }
-    .m-chart .miniChart { height: 220px; }   /* taller on phones — easier to read & scrub */
+    .m-chart .miniChart { height: 264px; }   /* taller on phones — easier to read & scrub */
     .layout .module { margin-top: 18px; }
     .layout .m-hero { margin-top: 0; }
   }
@@ -1591,6 +1591,9 @@
     state.chartType = ct === "candle" ? "candle" : "line";
     try { localStorage.setItem("chartType_v1", state.chartType); } catch (e) {}
     Array.prototype.forEach.call(document.querySelectorAll("#chartType button"), function (b) { b.classList.toggle("active", b.getAttribute("data-ct") === state.chartType); });
+    // The live track has no OHLC, so candles can't render on it — hop to a short candle timeframe so
+    // the toggle takes effect immediately instead of appearing to do nothing on the Live view.
+    if (state.chartType === "candle" && state.chartTF === "live") { setChartTF("1m"); return; }
     drawMiniChart();
   }
   // ~4 evenly-spaced price levels with right-edge labels — the "grid" behind line & candles.
@@ -1760,12 +1763,34 @@
     if (g >= 86400) return agg >= 7 ? ("Week of " + date) : (date + ", " + d.getFullYear());   // daily / weekly / monthly
     return date + " " + hma(d);                                                          // intraday: "Jun 21 2:45 PM"
   }
+  // Linear-interpolate the charted point at an arbitrary x (pts are sorted by x) so the crosshair
+  // glides smoothly between samples and the price/time read out continuously — no snapping.
+  function interpAt(pts, hx) {
+    var n = pts.length;
+    if (hx <= pts[0].x) return pts[0];
+    if (hx >= pts[n - 1].x) return pts[n - 1];
+    for (var i = 0; i < n - 1; i++) {
+      var a = pts[i], b = pts[i + 1];
+      if (hx >= a.x && hx <= b.x) {
+        var f = b.x > a.x ? (hx - a.x) / (b.x - a.x) : 0;
+        return { x: hx, y: a.y + (b.y - a.y) * f, p: a.p + (b.p - a.p) * f, t: a.t + (b.t - a.t) * f };
+      }
+    }
+    return pts[n - 1];
+  }
   function drawChartCrosshair(ctx, W, H) {
     var pts = state.chartPts, meta = state.chartMeta;
     if (!ctx || !pts || pts.length < 2 || state.hoverX == null) return;
-    var hx = Math.max(0, Math.min(W, state.hoverX)), best = pts[0], bd = Infinity, i, dx;
-    for (i = 0; i < pts.length; i++) { dx = Math.abs(pts[i].x - hx); if (dx < bd) { bd = dx; best = pts[i]; } }
-    var px = best.x, py = best.y, strike = meta ? meta.strike : null;
+    var hx = Math.max(0, Math.min(W, state.hoverX)), strike = meta ? meta.strike : null;
+    var isCandle = meta && meta.kind === "tf" && meta.candle;   // candles snap to a bar; a line glides between samples
+    var best, px, py, i;
+    if (isCandle) {
+      best = pts[0]; var bd = Infinity, dx;
+      for (i = 0; i < pts.length; i++) { dx = Math.abs(pts[i].x - hx); if (dx < bd) { bd = dx; best = pts[i]; } }
+      px = best.x; py = best.y;
+    } else {
+      best = interpAt(pts, hx); px = hx; py = best.y;   // smooth: the exact point under the cursor
+    }
     var col = strike != null ? (best.p >= strike ? "#30d158" : "#ff453a") : "#0a84ff";
     ctx.save();
     ctx.strokeStyle = "rgba(235,235,245,.32)"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);

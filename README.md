@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Smoother chart scrubbing, a taller mobile chart, and a Candles toggle that works instantly.** The crosshair now **interpolates** between samples, so the price and time glide continuously as you drag instead of snapping to a fixed point (candles still snap to a bar). The mobile chart is **~20% taller** (220→264px). And tapping **Candles** on the Live view now hops to 1m candles — the live track has no OHLC, so the toggle used to look inert there.
 - **Recent-15-min arrows now track the log (and reset with it); current vs. next round is unmistakable.** The arrows and the Recent Rounds log are graded from the **same source**, so they can't disagree on screen, and **Clear log** now blanks both together (a per-coin clear timestamp gates the arrows + server history to post-clear rounds). The Auto Pick card tags the live round **● LIVE** and the timer's next-round lean as a muted **PREVIEW** ("a heads-up on the round *after* this one") — so a "BUY OVER" now and a "leaning UNDER" next stop reading as a contradiction.
 - **"Prime entry" cue + late-entry tracking.** Late in a round, when the position model says the
   outcome is nearly locked (≥ 86% with time left to act), a pulsing **⚡ PRIME ENTRY — BUY
