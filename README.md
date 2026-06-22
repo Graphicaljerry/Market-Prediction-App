@@ -19,6 +19,13 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **"Prime entry" cue + late-entry tracking.** Late in a round, when the position model says the
+  outcome is nearly locked (≥ 86% with time left to act), a pulsing **⚡ PRIME ENTRY — BUY
+  OVER/UNDER** cue lights up under the timer — surfacing the single highest-probability moment to
+  bet *this* round (a decisive position with little time left). Every cue is logged and graded
+  against the same 60-sec settlement into a separate **Prime-entry record** (won/total · hit-rate),
+  so you can see with real data whether betting late actually beats betting at the open. On desktop
+  the side columns are now vertically centred against the chart.
 - **Accurate settlement + a Clear-log button.** The 24/7 grader now settles each round on the
   **~60-second average** of trades over the final minute — the way Kalshi/CF Benchmarks actually
   settle — instead of a single closing tick, so the log and the **Recent 15-min** arrows stop
