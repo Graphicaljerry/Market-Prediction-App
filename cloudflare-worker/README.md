@@ -86,6 +86,19 @@ tracker in **KV** as a single consolidated record (read back per-coin via `?pick
 - **After deploying,** confirm the schedule under the Worker → **Triggers** tab.
 - Uses the same **`CROWD_KV`** namespace already bound for the crowd cache — nothing extra to set up.
 
+## Phone alerts on a high-confidence pick (optional, free)
+Get a push **on your phone even when the app is closed** the moment a coin opens a
+**high-confidence, non-SKIP** pick (≥75% and ≥3 independent reads agreeing):
+1. Install the free **ntfy** app (iOS/Android) and pick a hard-to-guess **topic** name (e.g.
+   `crypto-tracker-9f3k2`). Subscribe to it in the app.
+2. In the Worker → **Settings → Variables and Secrets**, add a Text var **`NTFY_TOPIC`** = that
+   topic name (or a full `https://ntfy.sh/<topic>` URL if you self-host). Optional **`NTFY_MIN_PROB`**
+   (default `75`) to tune the bar.
+3. Save. On the next 15-min cron that produces a strong pick, you'll get a push like
+   *"ETH OVER 78% · SOL UNDER 80% — bet this 15-min round"*. One push per coin per round; SKIPs never
+   ping you. (`notifyHotPicks` in `worker.js`.) The app also has an in-app **🔔 alert toggle** in
+   *AI Co-Pilot setup* for when a tab is open.
+
 ## Connect the app
 Open the live app → **AI Co-Pilot** → paste the Worker URL → **Save & Get AI Read**.
 It saves on your device. The crowd refreshes for free; the paid AI read runs at most once per

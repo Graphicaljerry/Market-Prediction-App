@@ -146,6 +146,7 @@ export default {
       const st = await loadState(env);
       const coins = AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]);
       for (const c of coins) { try { await runCoinPick(env, c, st); } catch (_) {} }
+      try { await notifyHotPicks(env, st); } catch (_) {}   // background phone push on a high-confidence pick (ntfy)
       await saveState(env, st);
     })());
   },
@@ -721,15 +722,34 @@ async function reconcileKalshi(rec) {
     checked++;
     const kal = await kalshiResult(e.ticker);
     if (!kal) continue;                                   // not settled yet — retried next cron
-    e.src = "kalshi";
-    if (kal !== e.actual) {
-      const wasCorrect = !!e.correct;
-      e.actual = kal; e.correct = (kal === e.side);
-      if (wasCorrect && !e.correct) rec.correct = Math.max(0, (rec.correct || 0) - 1);
-      else if (!wasCorrect && e.correct) rec.correct = (rec.correct || 0) + 1;
-    }
+    e.src = "kalshi"; e.actual = kal;                     // row-level truth; the caller recomputes all aggregates from history
+    if (e.side === "OVER" || e.side === "UNDER") e.correct = (kal === e.side);
   }
   if (h[0]) rec.lastActual = h[0].actual;
+}
+// Background phone push (ntfy.sh) the moment a coin opens a HIGH-CONFIDENCE, non-SKIP pick — the rare
+// rounds the tracker is willing to bet AND several independent reads agree. To enable: set a Worker
+// var NTFY_TOPIC (a hard-to-guess topic name, or a full https URL), install the free ntfy app, and
+// subscribe to that topic. Optional NTFY_MIN_PROB (default 75). One push per round per coin.
+async function notifyHotPicks(env, st) {
+  if (!env.NTFY_TOPIC) return;
+  const minProb = Number(env.NTFY_MIN_PROB) || 75;
+  const hot = [];
+  for (const c of AUTO_COINS) {
+    const rec = st.coins && st.coins[c], p = rec && rec.pending;
+    if (!p || p.notified) continue;
+    if ((p.side === "OVER" || p.side === "UNDER") && (p.prob || 0) >= minProb && (p.agree || 0) >= 3) {
+      hot.push(`${c} ${p.side} ${p.prob}%`);
+      p.notified = true;   // one push per round (persisted by the saveState that follows)
+    }
+  }
+  if (!hot.length) return;
+  const url = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
+  await fetch(url, {
+    method: "POST",
+    headers: { Title: "High-confidence pick — not a skip", Priority: "high", Tags: "dart" },
+    body: hot.join("   ·   ") + "  — bet this 15-min round",
+  }).catch(() => {});
 }
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
 async function cbObi(product) {
@@ -942,31 +962,30 @@ async function runCoinPick(env, coin, st) {
   // Settle against the price AT THE CLOSE (the finalized 1-min candle ending at closeMs), NOT the
   // live price when this cron happens to run — a late cron or a post-close tick used to flip rounds.
   const p = rec.pending;
-  if (p && Date.now() >= (p.closeMs || 0)) {
-    if (typeof p.strike === "number" && (p.side === "OVER" || p.side === "UNDER")) {
-      let settle = await cbCloseAt(product, p.closeMs);                        // the finalized boundary candle close — definitive, matches Robinhood's close / next-strike
-      if (settle == null) settle = await cbAvg60(product, p.closeMs);           // fallback: ~60-sec average only if that candle hasn't posted yet
-      if (settle == null && micro && typeof micro.price === "number") settle = micro.price;   // last resort if both are missing
-      // Grade immediately on the candle close — accurate, and ZERO extra Kalshi load on the critical
-      // path. reconcileKalshi() (at the end of this function, wrapped) upgrades it to Kalshi's
-      // definitive result on a later cron, so a slow/blocked Kalshi can never stall picks + grading
-      // or starve the crowd fetch the next pick depends on.
-      const actual = (typeof settle === "number" ? (settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT") : null);
-      if (actual && actual !== "FLAT") {
-        const correct = actual === p.side;
-        // Settlement MARGIN: how far past the line it closed (signed: + = over, − = under), in $ and %.
-        // This is the "by how much" the model + AI now reason about — a near-miss vs a blowout differ.
-        const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
-        const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
-        rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, src: "candle" });
-        if (rec.history.length > 200) rec.history.pop();
-        rec.graded++; if (correct) rec.correct++;
-        rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
-        // online update: the round's open-features -> did price finish OVER (1) or UNDER (0)?
-        const closeOver = typeof settle === "number" ? (settle > (typeof p.openPrice === "number" ? p.openPrice : p.strike) ? 1 : 0) : (actual === "OVER" ? 1 : 0);
-        if (Array.isArray(p.feat)) { trainModel(coinModel, p.feat, closeOver); trainModel(global, p.feat, closeOver); }
-        rec.lastActual = actual;
-      }
+  if (p && Date.now() >= (p.closeMs || 0) && typeof p.strike === "number") {
+    let settle = await cbCloseAt(product, p.closeMs);                        // the finalized boundary candle close — definitive, matches Robinhood's close / next-strike
+    if (settle == null) settle = await cbAvg60(product, p.closeMs);           // fallback: ~60-sec average only if that candle hasn't posted yet
+    if (settle == null && micro && typeof micro.price === "number") settle = micro.price;   // last resort if both are missing
+    // Grade immediately on the candle close — accurate, and ZERO extra Kalshi load on the critical
+    // path. reconcileKalshi() (at the end of this function, wrapped) upgrades it to Kalshi's
+    // definitive result on a later cron. We now grade EVERY round, including the ones it SKIPped:
+    // a SKIP still records what it leaned + the real outcome (shadow-grading) so the app can show
+    // both the disciplined hit-rate (bets only) AND an honest "if it bet every round" hit-rate, and
+    // the coverage (how often it actually bets). The model learns from every round either way.
+    const actual = (typeof settle === "number" ? (settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT") : null);
+    if (actual && actual !== "FLAT") {
+      const bet = (p.side === "OVER" || p.side === "UNDER");
+      const lean = bet ? p.side : (p.pOver >= 50 ? "OVER" : "UNDER");          // the side it leaned, even on a SKIP
+      const correct = bet ? (actual === p.side) : null;
+      const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
+      const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
+      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, src: "candle" });
+      if (rec.history.length > 300) rec.history.pop();
+      rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
+      rec.lastActual = actual;
+      // online update — learn from EVERY round (bet or skip): open-features -> did price finish OVER (1) or UNDER (0)?
+      const closeOver = typeof settle === "number" ? (settle > (typeof p.openPrice === "number" ? p.openPrice : p.strike) ? 1 : 0) : (actual === "OVER" ? 1 : 0);
+      if (Array.isArray(p.feat)) { trainModel(coinModel, p.feat, closeOver); trainModel(global, p.feat, closeOver); }
     }
     rec.pending = null;
   }
@@ -996,11 +1015,25 @@ async function runCoinPick(env, coin, st) {
     }
   }
   rec.model = coinModel;
-  rec.learned = modelInsights(coinModel, global, rec.history);      // plain-language read for the prompt + app
   // Kalshi upgrade runs LAST and wrapped — off the critical path, so a Kalshi hiccup can't stall the
   // grade/pick above or get us rate-limited into a failed crowd fetch next cron.
   try { await reconcileKalshi(rec); } catch (_) {}
-  rec.hitRatePct = rec.graded ? Math.round(rec.correct / rec.graded * 100) : null;
+  // Recompute ALL scoreboard stats from history — one source of truth, no counter drift through
+  // reconcile or shadow-grading. bet = committed OVER/UNDER; shadow = EVERY round by the side it
+  // leaned (so we can show "if it bet every round" + how often it actually bets / coverage).
+  let g = 0, c = 0, sg = 0, sc = 0;
+  for (const e of rec.history) {
+    if (e.actual !== "OVER" && e.actual !== "UNDER") continue;
+    const ln = e.lean || e.side;
+    if (ln === "OVER" || ln === "UNDER") { sg++; if (ln === e.actual) sc++; }
+    if (e.side === "OVER" || e.side === "UNDER") { g++; if (e.side === e.actual) c++; }
+  }
+  rec.graded = g; rec.correct = c;
+  rec.shadowGraded = sg; rec.shadowCorrect = sc; rec.seen = sg;     // seen = every round it evaluated (bet or skip)
+  rec.hitRatePct = g ? Math.round(c / g * 100) : null;
+  rec.shadowHitPct = sg ? Math.round(sc / sg * 100) : null;        // if it had bet every round
+  rec.betRatePct = sg ? Math.round(g / sg * 100) : null;           // coverage — how often it actually commits
+  rec.learned = modelInsights(coinModel, global, rec.history);     // plain-language read for the prompt + app (post-reconcile)
   rec.updated = Date.now();
   // No per-coin write here — the whole auto-tracker is persisted once per cron run by saveState().
 }

@@ -535,6 +535,11 @@
   .hrow .htime { font-size: 13px; color: var(--label-2); }
   .hrow .hpred { font-weight: 600; }
   .hrow .hpred.over { color: var(--green); } .hrow .hpred.under { color: var(--red); }
+  .hrow .shadow { font-size: 11px; font-weight: 600; }
+  .autoCoverage { margin-top: 12px; font-size: 12px; font-weight: 600; color: var(--label-3); line-height: 1.5; text-align: center; }
+  .autoCoverage:empty { display: none; }
+  .autoCoverage b { color: var(--label); font-weight: 800; }
+  .autoCoverage .cov-skip { color: var(--orange); }
   .hrow .hres { font-weight: 600; text-align: right; }
   .hrow .hres.w { color: var(--green); } .hrow .hres.l { color: var(--red); }
   .hrow .hmeta { grid-column: 1 / -1; font-size: 12px; color: var(--label-3); }
@@ -774,6 +779,7 @@
           <option value="manual">AI spend · Manual only — never auto-call</option>
         </select>
         <div class="aiMuted" style="margin:-2px 0 10px">The crowd price refreshes free; the paid AI read runs at most once per round, only while this tab is open.</div>
+        <label class="hiConvToggle" style="margin:0 0 10px"><input type="checkbox" id="notifyToggle" /><span>🔔 Alert me on high-confidence picks (any coin, this device — fires while a tab is open)</span></label>
         <button id="aiRun" class="aiBtn">Save &amp; Get AI Read</button>
       </div>
     </details>
@@ -808,6 +814,7 @@
       <div class="stat"><div class="v mono" id="aHit">—</div><div class="k">Hit Rate</div></div>
       <div class="stat"><div class="v mono" id="aPick">—</div><div class="k">Now</div></div>
     </div>
+    <div id="autoCoverage" class="autoCoverage"></div>
     <div id="lateRecord" class="lateRecord"></div>
     <div id="autoLearned" class="autoLearned"></div>
     <div class="sec" style="margin-top:20px">Recent Rounds</div>
@@ -1492,8 +1499,9 @@
     if (!auto) { el.className = "consensus"; el.innerHTML = ""; return; }   // tracker not connected → nothing to reconcile
     var cls, txt;
     if (my !== "SKIP" && my === auto) { cls = my === "OVER" ? "over" : "under"; txt = "Co-Pilot and the 24/7 tracker <b>both say " + my + "</b> — higher conviction, this is your call."; }
-    else if (my === "SKIP" && auto === "SKIP") { cls = "skip"; txt = "Both are <b>sitting out</b> — no clear edge this round."; }
-    else if (my === "SKIP" || auto === "SKIP") { var live = my === "SKIP" ? auto : my; cls = "lean"; txt = "Lean <b>" + live + "</b>, lower conviction — " + (my === "SKIP" ? "the tracker leans it but the Co-Pilot sees no edge." : "the Co-Pilot likes it but the tracker is sitting out."); }
+    else if (my === "SKIP" && auto === "SKIP") { cls = "skip"; txt = "Both are <b>sitting out — SKIP this round</b>. No clear edge, so the tracker won't even score it."; }
+    else if (auto === "SKIP") { cls = "lean"; txt = "The <b>24/7 tracker is SKIPPING</b> this round (no clear edge — it won't count it). The Co-Pilot leans <b>" + my + "</b> but at low conviction, so treat it as optional / sit out."; }
+    else if (my === "SKIP") { var live = auto; cls = "lean"; txt = "Lean <b>" + live + "</b>, lower conviction — the tracker leans it but the Co-Pilot sees no edge."; }
     else { cls = "split"; txt = "<b>Split</b> — Co-Pilot says " + my + ", the tracker says " + auto + ". Coin-flip territory; sitting out is the safe play."; }
     el.className = "consensus " + cls;
     el.innerHTML = '<span class="consLbl">Which to follow</span>' + txt;
@@ -2657,6 +2665,19 @@
       renderPickCard();   // re-render the headline immediately under the new filter
     });
   })();
+  (function () {
+    var t = $("notifyToggle"); if (!t) return;
+    t.checked = notifyEnabled() && ("Notification" in window) && Notification.permission === "granted";
+    t.addEventListener("change", function () {
+      if (!t.checked) { try { localStorage.setItem("notify_v1", "0"); } catch (e) {} return; }
+      if (!("Notification" in window)) { alert("This browser doesn't support notifications. Use the Worker's ntfy push for phone alerts."); t.checked = false; return; }
+      if (Notification.permission === "granted") { try { localStorage.setItem("notify_v1", "1"); } catch (e) {} return; }
+      Notification.requestPermission().then(function (p) {
+        if (p === "granted") { try { localStorage.setItem("notify_v1", "1"); } catch (e) {} try { new Notification("Alerts on", { body: "You'll get a heads-up when any coin opens a high-confidence pick." }); } catch (e) {} }
+        else { t.checked = false; }
+      });
+    });
+  })();
   // ---------- Help sheet ----------
   var EXPLAIN = {
     autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine. The 'Which to follow' line right under the call reconciles it with the always-on 24/7 auto-tracker: agree → higher conviction (this is your call); split → coin-flip territory, sitting out is the safe play. Follow this Co-Pilot pick as the headline; use the tracker to gauge how much to trust it." },
@@ -2860,8 +2881,21 @@
     _lastBestAt = now;
     fetch(url, { cache: "no-store" })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
-      .then(function (d) { state.best = (d && Array.isArray(d.best)) ? d.best : []; renderBestBar(); })
+      .then(function (d) { state.best = (d && Array.isArray(d.best)) ? d.best : []; renderBestBar(); maybeNotifyHot(); })
       .catch(function () {});
+  }
+  // In-app alert (Notification API) when a coin opens a high-confidence, non-SKIP pick — fires while a
+  // tab is open. For phone alerts when the app is CLOSED, use the Worker's ntfy push (NTFY_TOPIC).
+  function notifyEnabled() { try { return localStorage.getItem("notify_v1") === "1"; } catch (e) { return false; } }
+  var _notifiedKey = {};
+  function maybeNotifyHot() {
+    if (!notifyEnabled() || !("Notification" in window) || Notification.permission !== "granted") return;
+    var bucket = currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0;   // one alert per coin per round
+    (state.best || []).forEach(function (x) {
+      if ((x.side !== "OVER" && x.side !== "UNDER") || x.prob < 75 || (x.agree || 0) < 3) return;
+      var key = x.coin + ":" + bucket; if (_notifiedKey[key]) return; _notifiedKey[key] = 1;
+      try { new Notification("🎯 High-confidence: " + x.coin + " " + x.side + " " + x.prob + "%", { body: (x.agree) + " independent reads agree — bet this 15-min round", tag: key }); } catch (e) {}
+    });
   }
   function renderBestBar() {
     var el = $("bestBar"); if (!el) return;
@@ -2936,14 +2970,23 @@
       var b = h.ts ? Math.floor(h.ts / 900000) : null;
       var e = (b != null) ? log[b] : null;
       var actual = e ? (e.d > 0 ? "OVER" : "UNDER") : h.actual;                       // moveLog (Kalshi-priority) wins
+      if (actual !== "OVER" && actual !== "UNDER") return "";                          // not graded yet
       var isKalshi = (e && (e.lvl != null ? e.lvl : 1) >= 2) || h.src === "kalshi";    // confirmed against Kalshi's settled result
+      var settling = isKalshi ? '' : ' <span style="color:var(--label-3);font-size:10px;font-weight:600">· settling</span>';
+      var tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
+      if (h.side === "SKIP" || h.skipped) {                                            // sat-out round — shown, but NOT scored; the lean is shadow-graded
+        var lean = (h.lean === "OVER" || h.lean === "UNDER") ? h.lean : null;
+        var leanOk = lean && lean === actual;
+        return '<div class="hrow s"><span class="htime">' + tlabel + '</span>' +
+          '<span class="hpred skip">SKIP</span>' +
+          '<span class="hres s">sat out · ' + actual + (lean ? ' <span class="shadow">(leaned ' + lean + ' ' + (leanOk ? '✓' : '✗') + ')</span>' : '') + settling + '</span></div>';
+      }
       var correct = (h.side === actual);
-      if ((actual === "OVER" || actual === "UNDER") && (h.side === "OVER" || h.side === "UNDER")) { graded++; if (correct) correctN++; if (isKalshi) confirmedN++; }
-      var w = correct ? "w" : "l", tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
+      graded++; if (correct) correctN++; if (isKalshi) confirmedN++;
+      var w = correct ? "w" : "l";
       return '<div class="hrow ' + w + '"><span class="htime">' + tlabel + '</span>' +
         '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
-        '<span class="hres ' + w + '">' + (correct ? "✓ " : "✗ ") + actual +
-        (isKalshi ? '' : ' <span style="color:var(--label-3);font-size:10px;font-weight:600">· settling</span>') + '</span></div>';
+        '<span class="hres ' + w + '">' + (correct ? "✓ " : "✗ ") + actual + settling + '</span></div>';
     }).join("");
     $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet.</div>';
     $("aGraded").textContent = graded;
@@ -2951,6 +2994,16 @@
     $("aHit").textContent = graded ? Math.round(correctN / graded * 100) + "%" : "—";
     $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");
     $("aHit").title = confirmedN < graded ? (confirmedN + " of " + graded + " confirmed vs Kalshi; the rest still settling") : "all confirmed vs Kalshi";
+    // Coverage + the honest "if it bet every round" hit-rate (shadow-graded server-side over all rounds).
+    var cov = $("autoCoverage");
+    if (cov) {
+      var seen = (typeof d.shadowGraded === "number") ? d.shadowGraded : (d.seen || 0);
+      if (seen && graded <= seen) {
+        var betRate = Math.round(graded / seen * 100);
+        cov.innerHTML = '<b>' + graded + '</b> bets · <b>' + (seen - graded) + '</b> skipped · <span class="cov-skip">' + betRate + '% bet rate</span>' +
+          (typeof d.shadowHitPct === "number" ? ' · if it bet every round: <b>' + d.shadowHitPct + '%</b>' : '');
+      } else cov.innerHTML = '';
+    }
     _autoHistLen = (d.history || []).length;
     updateSeeMore("autoHistory", "moreAuto", _autoHistLen);
     // what the per-coin online model has learned
