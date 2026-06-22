@@ -769,7 +769,7 @@
   };
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
-    lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null,
+    lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, committed: null, leanDir: null, leanFlips: 0, obi: null,
     chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false, stoch: false, ema: false, bb: false },
     chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
     hiConvOnly: (function () { try { return localStorage.getItem("hiConvOnly_v1") === "1"; } catch (e) { return false; } })() };
@@ -1214,6 +1214,20 @@
     return { dir: dir, pct: dir === "SKIP" ? 50 : pctFor(o.pOver, dir), conv: convictionFor(reco), atLabel: null };
   }
   function fallbackThisCall() { var rc = state.roundCall || state.lastRecoObj; return rc ? makeCall(rc) : null; }
+  // ---- Commit-on-edge: ONE sticky pick per round (this is what kills the flip-flop) ----
+  // Near a coin-flip we say "no clear side yet". We commit to OVER/UNDER only once the blended
+  // probability is decisive (>=58% / <=42%), then HOLD it while that side stays ahead (>=50%) — so a
+  // small wiggle across the line never flips the call; only a genuine loss of the edge un-commits.
+  function thisRoundCommitted() {
+    var reco = state.roundCall || state.lastRecoObj; if (!reco) return null;
+    var pOver = combinedOdds(reco).pOver, c = state.committed;
+    if (c === "OVER" && pOver < 0.50) c = null;            // committed side fell behind → back to neutral
+    else if (c === "UNDER" && pOver > 0.50) c = null;
+    if (c == null) { if (pOver >= 0.58) c = "OVER"; else if (pOver <= 0.42) c = "UNDER"; }   // (re)commit only when decisive
+    state.committed = c;
+    if (!c) return { dir: "SKIP", pct: 50, conv: convictionFor(reco), atLabel: null, waiting: true, pOver: pOver };
+    return { dir: c, pct: pctFor(pOver, c), conv: convictionFor(reco), atLabel: null };
+  }
 
   // The NEXT-round bet: locked ONCE in the final 2 min (after a brief settle on a fresh
   // AI read) and then held steady until the round turns over — no per-second flicker.
@@ -1273,7 +1287,7 @@
 
     var call = null, locking = false;
     if (nextMode) { ensureLockedNext(); call = state.lockedNext; locking = !call && state.lockingNext; }
-    else { call = state.thisRoundLock || fallbackThisCall(); }
+    else { call = thisRoundCommitted(); }   // commit-on-edge: sticky pick, neutral until decisive
 
     // colour the ambient glow to the live recommendation (over=green / under=red / skip=amber)
     setGlow(locking ? "SKIP" : call ? call.dir : "SKIP");
@@ -1307,10 +1321,18 @@
 
     if (call.dir === "SKIP") {
       el.className = "reco skip";
-      scopeEl.textContent = nextMode ? ("NEXT round " + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "")) : ("THIS round · closes " + nsH);
-      buyEl.className = "buyLine skip"; buyEl.textContent = "SKIP — no clear edge";
-      hintEl.textContent = nextMode ? "Too close to call — sitting out the next round is fine." : "No clear edge — sitting out is a position too.";
-      pctEl.textContent = "—"; lblEl.textContent = "no clear side";
+      if (call.waiting) {
+        var lp = Math.round((call.pOver >= 0.5 ? call.pOver : 1 - call.pOver) * 100);
+        scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
+        buyEl.className = "buyLine skip"; buyEl.textContent = "WAITING — no clear side yet";
+        hintEl.textContent = "Price is still near the line — too close to call. I'll commit to a side the moment it pulls clearly one way, then hold it.";
+        pctEl.textContent = lp + "%"; lblEl.textContent = (call.pOver >= 0.5 ? "leaning UP" : "leaning DOWN");
+      } else {
+        scopeEl.textContent = nextMode ? ("NEXT round " + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "")) : ("THIS round · closes " + nsH);
+        buyEl.className = "buyLine skip"; buyEl.textContent = "SKIP — no clear edge";
+        hintEl.textContent = nextMode ? "Too close to call — sitting out the next round is fine." : "No clear edge — sitting out is a position too.";
+        pctEl.textContent = "—"; lblEl.textContent = "no clear side";
+      }
       return;
     }
     var cls = call.dir === "OVER" ? "over" : "under";
@@ -1325,7 +1347,7 @@
       lblEl.textContent = "likely " + (call.dir === "OVER" ? "UP" : "DOWN");
     } else {
       scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
-      hintEl.textContent = "The round you're in right now — your locked pick, live status below.";
+      hintEl.textContent = "Committed for this round — I hold this unless the price clearly reverses, so it won't flip-flop on you.";
       lblEl.textContent = "chance " + (call.dir === "OVER" ? "UP" : "DOWN");
     }
     if (state.hiConvOnly && hiConv) scopeEl.innerHTML += " · " + (call.conv.level === "strong" ? "HIGH CONVICTION" : "EDGE vs CROWD");
@@ -2014,7 +2036,7 @@
     if (now >= currentRoundEnd) {
       closeRound();                                                // stash the just-ended round for accurate settle
       currentRoundEnd = nextBoundary(now);
-      state.leanFlips = 0; state.leanDir = null;                   // fresh stability tracking per round
+      state.leanFlips = 0; state.leanDir = null; state.committed = null;   // fresh stability + commit state per round
       openRound(false);
       state.betWindowFired = false;
       resetChart();                                                // fresh price track for the new round
@@ -2364,7 +2386,7 @@
     $("recoConf").textContent = "Loading live indicators"; $("reco").className = "reco skip";
     state.candles = null; state.wsLive = false; state.aiPrimed = false; state.roundCall = null; state.lastRecoObj = null;
     state.lastAI = null; state.lastCrowd = null; state.betWindowFired = false;
-    state.lockedNext = null; state.thisRoundLock = null; state.leanDir = null; state.leanFlips = 0; clearLocks();
+    state.lockedNext = null; state.thisRoundLock = null; state.committed = null; state.leanDir = null; state.leanFlips = 0; clearLocks();
     state.obi = null; state.micro = null;
     state.gradePending = null; state.lastSettled = null; state.lastAuto = null; _primeSig = ""; renderLastClose(); renderLateRecord();   // clear the prior coin's close readout + show this coin's prime record
     var _am = $("autoMod"); if (_am) _am.style.display = "none"; fetchAutoTracker(coin, true);   // 24/7 record for the new coin
