@@ -369,8 +369,8 @@ Recent (pick->result [signals]): ${recent}.`
   // What the per-coin online model has learned (faint tilts on a near-efficient market).
   const lr = ap && ap.learned;
   const sg = ap && ap.pending && ap.pending.signals;
-  const techBit = sg && (typeof sg.rsi === "number" || typeof sg.macdH === "number")
-    ? ` Technicals at this open: ${[typeof sg.rsi === "number" ? "RSI(14) " + sg.rsi + (sg.rsi >= 70 ? " (overbought)" : sg.rsi <= 30 ? " (oversold)" : "") : null, typeof sg.macdH === "number" ? "MACD-hist " + (sg.macdH > 0 ? "+" : "") + sg.macdH + (sg.macdH > 0 ? " (bullish momentum)" : sg.macdH < 0 ? " (bearish momentum)" : "") : null].filter(Boolean).join(", ")}.`
+  const techBit = sg && (typeof sg.rsi === "number" || typeof sg.macdH === "number" || typeof sg.stochK === "number")
+    ? ` Technicals at this open: ${[typeof sg.rsi === "number" ? "RSI(14) " + sg.rsi + (sg.rsi >= 70 ? " (overbought)" : sg.rsi <= 30 ? " (oversold)" : "") : null, typeof sg.macdH === "number" ? "MACD-hist " + (sg.macdH > 0 ? "+" : "") + sg.macdH + (sg.macdH > 0 ? " (bullish momentum)" : sg.macdH < 0 ? " (bearish momentum)" : "") : null, typeof sg.stochK === "number" ? "Stochastic %K " + sg.stochK + (sg.stochK >= 80 ? " (overbought)" : sg.stochK <= 20 ? " (oversold)" : "") : null].filter(Boolean).join(", ")}.`
     : "";
   const streakBit = lr && lr.streak ? ` Recent arrows: ${lr.streak.len} ${lr.streak.dir} rounds in a row (a run can mean a live trend OR a reversal is overdue — read it with the technicals, don't assume either).` : "";
   const marginBit = lr && typeof lr.avgMarginAbsPct === "number"
@@ -582,11 +582,27 @@ function macdHistOf(closes, fast, slow, signal) {
   if (lastSig == null) return null;
   return macd[macd.length - 1] - lastSig;   // histogram
 }
+// Stochastic oscillator (%K, %D): where the close sits in the last `kPeriod` high–low range
+// (0 = at the lows, 100 = at the highs); %D is a short SMA of %K. >80 overbought / <20 oversold.
+function stochOf(closes, highs, lows, kPeriod, dPeriod) {
+  kPeriod = kPeriod || 14; dPeriod = dPeriod || 3;
+  const n = closes.length;
+  if (!(n >= kPeriod + dPeriod)) return null;
+  const ks = [];
+  for (let i = kPeriod - 1; i < n; i++) {
+    let hi = -Infinity, lo = Infinity;
+    for (let j = i - kPeriod + 1; j <= i; j++) { if (highs[j] > hi) hi = highs[j]; if (lows[j] < lo) lo = lows[j]; }
+    ks.push(hi > lo ? (closes[i] - lo) / (hi - lo) * 100 : 50);
+  }
+  const k = ks[ks.length - 1], dArr = ks.slice(-dPeriod);
+  return { k: Math.round(k), d: Math.round(dArr.reduce((s, x) => s + x, 0) / dArr.length) };
+}
 // Last price + recent 1-min momentum + per-minute realized volatility from Coinbase 1-min candles.
 async function cbMicro(product) {
   const rows = await cbJson(`/products/${product}/candles?granularity=60`);   // [time,low,high,open,close,vol], newest first
   if (!Array.isArray(rows) || rows.length < 12) return null;
   const closes = rows.map((x) => x[4]).reverse();   // oldest → newest
+  const highs = rows.map((x) => x[2]).reverse(), lows = rows.map((x) => x[1]).reverse();
   const L = closes.length, look = Math.min(10, L - 1);
   const p0 = closes[L - 1 - look], pN = closes[L - 1];
   const mom = (p0 > 0 && look > 0) ? Math.log(pN / p0) / look : 0;   // avg log-return per minute
@@ -605,7 +621,10 @@ async function cbMicro(product) {
   }
   const rsi = rsiOf(closes, 14);              // momentum/exhaustion (0–100)
   const macdH = macdHistOf(closes, 12, 26, 9); // signed momentum-of-momentum in price units
-  return { price: pN, mom, sig, rngClose, rsi, macdH };   // sig = per-minute log-return stdev
+  const stoch = stochOf(closes, highs, lows, 14, 3); // close's position in the recent 14-min range
+  // Stochastic isn't a learned-model feature (it's strongly correlated with RSI + rangeClose, and a
+  // scarce-data model overfits on redundant inputs) — it's surfaced to the AI + panel as context.
+  return { price: pN, mom, sig, rngClose, rsi, macdH, stochK: stoch ? stoch.k : null, stochD: stoch ? stoch.d : null };   // sig = per-minute log-return stdev
 }
 // The price AT a round's close. We grade on the finalized boundary CANDLE close (cbCloseAt) — the
 // definitive price at closeMs, which matches the close / next-round strike Robinhood shows and is
@@ -886,7 +905,7 @@ async function runCoinPick(env, coin, st) {
         ts: nowTs,                                                   // client formats this to 12-hour local time
         label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",   // fallback for older clients
         feat,                                                        // remembered so the next run can learn from it
-        signals: { crowdOver: Math.round(crowd.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null, rsi: micro && typeof micro.rsi === "number" ? Math.round(micro.rsi) : null, macdH: micro && typeof micro.macdH === "number" ? round4(micro.macdH) : null },
+        signals: { crowdOver: Math.round(crowd.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null, rsi: micro && typeof micro.rsi === "number" ? Math.round(micro.rsi) : null, macdH: micro && typeof micro.macdH === "number" ? round4(micro.macdH) : null, stochK: micro && typeof micro.stochK === "number" ? micro.stochK : null, stochD: micro && typeof micro.stochD === "number" ? micro.stochD : null },
       };
     }
   }
