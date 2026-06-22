@@ -19,13 +19,14 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Settlement now grades on the boundary candle close, not the 60-sec average — fixing rounds logged on the wrong side.** A round that dipped then recovered right at the bell was settling on a starved/averaged price (the 60-sec window freezes when you flip to Robinhood to bet, biasing it to the dip), so it logged the wrong outcome and marked a wrong guess "correct." Both the 24/7 worker (`cbCloseAt` → `cbAvg60`) and the client now settle on the **finalized candle close** — the definitive boundary price, fetched fresh over REST, matching Robinhood's close and next-round strike. The 60-sec average is a fallback and shows as a "thin round" note when it leaned the other way. *(Already-graded rounds stay until they age out — use Clear log to rebuild clean.)*
 - **Smoother chart scrubbing, a taller mobile chart, and a Candles toggle that works instantly.** The crosshair now **interpolates** between samples, so the price and time glide continuously as you drag instead of snapping to a fixed point (candles still snap to a bar). The mobile chart is **~20% taller** (220→264px). And tapping **Candles** on the Live view now hops to 1m candles — the live track has no OHLC, so the toggle used to look inert there.
 - **Recent-15-min arrows now track the log (and reset with it); current vs. next round is unmistakable.** The arrows and the Recent Rounds log are graded from the **same source**, so they can't disagree on screen, and **Clear log** now blanks both together (a per-coin clear timestamp gates the arrows + server history to post-clear rounds). The Auto Pick card tags the live round **● LIVE** and the timer's next-round lean as a muted **PREVIEW** ("a heads-up on the round *after* this one") — so a "BUY OVER" now and a "leaning UNDER" next stop reading as a contradiction.
 - **"Prime entry" cue + late-entry tracking.** Late in a round, when the position model says the
   outcome is nearly locked (≥ 86% with time left to act), a pulsing **⚡ PRIME ENTRY — BUY
   OVER/UNDER** cue lights up under the timer — surfacing the single highest-probability moment to
   bet *this* round (a decisive position with little time left). Every cue is logged and graded
-  against the same 60-sec settlement into a separate **Prime-entry record** (won/total · hit-rate),
+  against the same settlement into a separate **Prime-entry record** (won/total · hit-rate),
   so you can see with real data whether betting late actually beats betting at the open. On desktop
   the side columns are now vertically centred against the chart.
 - **Accurate settlement + a Clear-log button.** The 24/7 grader now settles each round on the
@@ -318,9 +319,9 @@ A **scheduled** Worker (`crons = ["*/15 * * * *"]`) keeps an independent, always
 even when no tab is open — using **only free data and no LLM**, so it adds nothing to AI spend.
 Each run, per coin with a Kalshi series:
 
-1. Grades the previous round's pick — settling on a **~60-second average** of Coinbase trades over
-   the final minute (how Kalshi/CF Benchmarks actually settle), not a single tick, with the boundary
-   candle close as a fallback (`cbAvg60` → `cbCloseAt`).
+1. Grades the previous round's pick — settling on the **finalized boundary candle close** (the
+   definitive price at the bell, matching the close / next-round strike Robinhood shows), with the
+   ~60-second average kept only as a fallback (`cbCloseAt` → `cbAvg60`).
 2. Makes a fresh pick the simple way: the **Kalshi market price** nudged by **1-min momentum**
    and **order-book imbalance**, with **SKIP** near 50/50 (`freePick`).
 3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV`. The whole auto-tracker —

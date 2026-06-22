@@ -561,15 +561,12 @@ async function cbMicro(product) {
   }
   return { price: pN, mom, sig, rngClose };   // sig = per-minute log-return stdev
 }
-// The price AT a round's close: the finalized 1-min candle that ENDS exactly at closeMs (its
-// close ≈ the boundary price Coinbase shows and Kalshi settles near). Grading off the latest /
-// still-forming candle instead let a late cron or a post-close tick settle a round on the wrong
-// side of the line — the same mis-grade we fixed in the client.
-// Kalshi / CF Benchmarks settle a 15-min round on roughly the AVERAGE price over the final minute
-// (~60 readings), not a single tick — so a razor-thin round can settle on the opposite side from
-// the last candle. Approximate that from Coinbase trades in [closeMs-60s, closeMs] so the 24/7
-// grade matches how the market actually settled; return null (→ candle-close fallback) if we can't
-// get a clean window (e.g. a late cron whose recent trades are all past the close).
+// The price AT a round's close. We grade on the finalized boundary CANDLE close (cbCloseAt) — the
+// definitive price at closeMs, which matches the close / next-round strike Robinhood shows and is
+// immune to a frozen or thinly-sampled feed. cbAvg60 (the ~60-sec average) is kept only as a
+// fallback: it sounds like Kalshi's CF-Benchmarks averaging, but over a volatile final minute (a dip
+// that recovers right at the bell) the average lands on the OPPOSITE side from the actual close —
+// which is exactly what logged rounds on the wrong side. Both return null if the window is incomplete.
 async function cbAvg60(product, closeMs) {
   if (!(closeMs > 0)) return null;
   const rows = await cbJson(`/products/${product}/trades?limit=400`).catch(() => null);
@@ -733,8 +730,8 @@ async function runCoinPick(env, coin, st) {
   const p = rec.pending;
   if (p && Date.now() >= (p.closeMs || 0)) {
     if (typeof p.strike === "number" && (p.side === "OVER" || p.side === "UNDER")) {
-      let settle = await cbAvg60(product, p.closeMs);                          // ~60-sec average ≈ how Kalshi/CF settle
-      if (settle == null) settle = await cbCloseAt(product, p.closeMs);         // fallback: the finalized boundary candle
+      let settle = await cbCloseAt(product, p.closeMs);                        // the finalized boundary candle close — definitive, matches Robinhood's close / next-strike
+      if (settle == null) settle = await cbAvg60(product, p.closeMs);           // fallback: ~60-sec average only if that candle hasn't posted yet
       if (settle == null && micro && typeof micro.price === "number") settle = micro.price;   // last resort if both are missing
       if (typeof settle === "number") {
         const actual = settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT";

@@ -2008,10 +2008,12 @@
   }
   function finalizeGrade(pr, close, src) {
     var ref = pr.marketStrike != null ? pr.marketStrike : pr.openPrice;
-    // Settle the way Kalshi / CF Benchmarks actually do — on the ~60-sec average over the final
-    // minute (when we captured enough live ticks), NOT a single boundary tick. The candle close is
-    // still shown as "closed at $X"; the 60-sec average is what decides OVER/UNDER on thin rounds.
-    var settle = (pr.avg60 != null) ? pr.avg60 : close;
+    // Settle on the finalized 15-min candle CLOSE — the definitive boundary price, fetched fresh
+    // over REST so it survives the tab backgrounding when you flip to Robinhood to bet, and it
+    // matches the close / next-round strike you see there. A frozen WebSocket tick or a starved
+    // 60-sec average (a handful of late ticks, biased to a dip) is exactly what logged rounds on the
+    // wrong side. The 60-sec average is now only a fallback for the rare case the candle never posts.
+    var settle = (src === "candle" && close != null) ? close : (pr.avg60 != null ? pr.avg60 : close);
     var actual = (ref != null && settle != null) ? (settle > ref ? "OVER" : settle < ref ? "UNDER" : "FLAT") : null;
     var rec = {
       coin: pr.coin, time: pr.endLabel, pick: pr.pickDir, actual: actual,
@@ -2057,11 +2059,10 @@
     var dirTxt = r.actual === "OVER" ? "OVER ↑" : r.actual === "UNDER" ? "UNDER ↓" : "FLAT";
     var tail = graded ? (r.correct ? " · pick won ✓" : " · pick missed ✗") : (r.pick === "SKIP" ? " · sat out" : "");
     var sub = "";
-    if (r.avg60 != null) {
-      var closeSide = sideVs(r.close, r.ref), thin = closeSide && r.actual && closeSide !== r.actual;
-      sub = '<span class="lcSub' + (thin ? " warn" : "") + '">' +
-        "Settled on the Kalshi-style 60-sec avg " + fmtMoney(r.avg60) + " → " + r.actual +
-        (thin ? " · thin round — the last tick " + fmtMoney(r.close) + " was the other way" : "") + "</span>";
+    if (r.avg60 != null && r.ref != null) {
+      var avgSide = sideVs(r.avg60, r.ref);   // graded on the close; flag only when the 60-sec avg leaned the other way
+      if (avgSide && r.actual && avgSide !== r.actual)
+        sub = '<span class="lcSub warn">Thin round — graded on the close ' + fmtMoney(r.close) + "; the 60-sec avg " + fmtMoney(r.avg60) + " leaned " + avgSide + "</span>";
     }
     el.className = "lastClose " + cls;
     el.innerHTML = '<span class="lcLbl">Last round ' + disp12(r.time) + '</span>' +
@@ -2150,14 +2151,14 @@
       state.rounds.forEach(function (r) {
         var scored = r.correct !== undefined;             // false for sat-out rounds (listed, not scored)
         var moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
-        var split = r.avg60 != null && r.ref != null && sideVs(r.close, r.ref) && sideVs(r.close, r.ref) !== r.actual;   // thin: single tick disagreed with the 60-sec settle
+        var split = r.avg60 != null && r.ref != null && sideVs(r.avg60, r.ref) && sideVs(r.avg60, r.ref) !== r.actual;   // thin: the 60-sec avg leaned the other way from the close we graded on
         var rowCls = !scored ? "s" : (r.correct ? "w" : "l");
         var predCls = r.pick === "OVER" ? "over" : r.pick === "UNDER" ? "under" : "skip";
         var resTxt = !scored ? "—" : (r.correct ? "✓" : "✗");
         html += '<div class="hrow ' + rowCls + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
           '<span class="hpred ' + predCls + '">' + r.coin + " " + (scored ? r.pick : "sat out") + '</span>' +
           '<span class="hres ' + rowCls + '">' + resTxt + '</span>' +
-          '<span class="hmeta mono"' + (split ? ' title="Thin round — settled on the Kalshi-style 60-sec average; the single closing tick was the other way"' : '') + '>' + r.actual + (r.close != null ? " @ " + fmtMoney(r.close) : "") + (split ? " (!)" : "") + ' · ' + moveStr + '</span></div>';
+          '<span class="hmeta mono"' + (split ? ' title="Thin round — graded on the candle close; the 60-sec average leaned the other way"' : '') + '>' + r.actual + (r.close != null ? " @ " + fmtMoney(r.close) : "") + (split ? " (!)" : "") + ' · ' + moveStr + '</span></div>';
       });
       $("history").innerHTML = html;
     }
