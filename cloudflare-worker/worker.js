@@ -587,6 +587,41 @@ async function cbCloseAt(product, closeMs) {
   for (const r of rows) if (r[0] === bucket) return r[4];   // r = [time,low,high,open,close,vol]
   return null;
 }
+// The DEFINITIVE outcome straight from Kalshi: once a 15-min "above" market settles, its result is
+// "yes" (closed above the strike → OVER) or "no" (→ UNDER) — literally what you bet on, so grading
+// against it can't disagree with Robinhood, even on a razor-thin round. Returns null until it has
+// actually resolved (so callers fall back to the candle close in the meantime).
+async function kalshiResult(ticker) {
+  if (!ticker) return null;
+  try {
+    const r = await kalshiFetch(`${KALSHI_BASE}/markets/${encodeURIComponent(ticker)}`);
+    if (!r || !r.ok) return null;
+    const m = (await r.json()).market;
+    const res = m && typeof m.result === "string" ? m.result.toLowerCase() : "";
+    return res === "yes" ? "OVER" : res === "no" ? "UNDER" : null;
+  } catch (_) { return null; }
+}
+// Upgrade recent rounds graded provisionally on the candle close to Kalshi's definitive result once
+// the market settles (a razor-thin round can flip). Only re-checks still-provisional, recent entries
+// and stops after a few, so it's about one Kalshi call per coin per cron in the steady state.
+async function reconcileKalshi(rec) {
+  const h = rec.history || [];
+  for (let i = 0, checked = 0; i < h.length && checked < 3; i++) {
+    const e = h[i];
+    if (e.src === "kalshi" || !e.ticker) continue;
+    checked++;
+    const kal = await kalshiResult(e.ticker);
+    if (!kal) continue;                                   // not settled yet — retried next cron
+    e.src = "kalshi";
+    if (kal !== e.actual) {
+      const wasCorrect = !!e.correct;
+      e.actual = kal; e.correct = (kal === e.side);
+      if (wasCorrect && !e.correct) rec.correct = Math.max(0, (rec.correct || 0) - 1);
+      else if (!wasCorrect && e.correct) rec.correct = (rec.correct || 0) + 1;
+    }
+  }
+  if (h[0]) rec.lastActual = h[0].actual;
+}
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
 async function cbObi(product) {
   const j = await cbJson(`/products/${product}/book?level=2`);
@@ -733,22 +768,25 @@ async function runCoinPick(env, coin, st) {
       let settle = await cbCloseAt(product, p.closeMs);                        // the finalized boundary candle close — definitive, matches Robinhood's close / next-strike
       if (settle == null) settle = await cbAvg60(product, p.closeMs);           // fallback: ~60-sec average only if that candle hasn't posted yet
       if (settle == null && micro && typeof micro.price === "number") settle = micro.price;   // last resort if both are missing
-      if (typeof settle === "number") {
-        const actual = settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT";
-        if (actual !== "FLAT") {
-          const correct = actual === p.side;
-          rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: settle });
-          if (rec.history.length > 200) rec.history.pop();
-          rec.graded++; if (correct) rec.correct++;
-          // online update: the round's open-features -> did it finish OVER (1) or UNDER (0)?
-          const closeOver = settle > (typeof p.openPrice === "number" ? p.openPrice : p.strike) ? 1 : 0;
-          if (Array.isArray(p.feat)) { trainModel(coinModel, p.feat, closeOver); trainModel(global, p.feat, closeOver); }
-          rec.lastActual = actual;
-        }
+      // Prefer Kalshi's OWN settled result — literally what you bet on, so it can't disagree with
+      // Robinhood even on a razor-thin round. Until it resolves, grade provisionally on the candle
+      // close (above), and reconcileKalshi() upgrades it on a later cron once the market settles.
+      const kal = await kalshiResult(p.ticker);
+      const actual = kal || (typeof settle === "number" ? (settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT") : null);
+      if (actual && actual !== "FLAT") {
+        const correct = actual === p.side;
+        rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, actual, correct, prob: p.prob, strike: p.strike, close: typeof settle === "number" ? settle : null, ticker: p.ticker || null, src: kal ? "kalshi" : "candle" });
+        if (rec.history.length > 200) rec.history.pop();
+        rec.graded++; if (correct) rec.correct++;
+        // online update: the round's open-features -> did price finish OVER (1) or UNDER (0)?
+        const closeOver = typeof settle === "number" ? (settle > (typeof p.openPrice === "number" ? p.openPrice : p.strike) ? 1 : 0) : (actual === "OVER" ? 1 : 0);
+        if (Array.isArray(p.feat)) { trainModel(coinModel, p.feat, closeOver); trainModel(global, p.feat, closeOver); }
+        rec.lastActual = actual;
       }
     }
     rec.pending = null;
   }
+  await reconcileKalshi(rec);   // upgrade provisional candle-grades to Kalshi's definitive result
 
   // 2) make a fresh pick for the round that just opened (the current Kalshi market)
   if (crowd && typeof crowd.overPct === "number" && typeof crowd.strike === "number") {
@@ -761,7 +799,7 @@ async function runCoinPick(env, coin, st) {
     if (fp) {
       const d = new Date(nowTs);
       rec.pending = {
-        coin, strike: crowd.strike, openPrice: micro ? micro.price : crowd.strike, side: fp.side,
+        coin, ticker: crowd.ticker || null, strike: crowd.strike, openPrice: micro ? micro.price : crowd.strike, side: fp.side,
         pOver: Math.round(fp.pOver * 100),
         prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
         modelOver: Math.round(modelOver * 100),

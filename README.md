@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Grading now reads Kalshi's *own* settled result — the definitive outcome.** Each round settles on Kalshi's resolved market (`result: yes` → OVER, `no` → UNDER) — exactly what you bet on, so the log can't disagree with Robinhood even on razor-thin rounds. Until Kalshi resolves (a beat after the close) the round is graded provisionally on the boundary candle close, then **reconciled** to Kalshi's verdict on a later cron (flipping the entry + hit-rate if it differed). Costs nothing — it reuses the Kalshi API the worker already calls.
 - **RSI + MACD indicator sub-panes on the chart.** A new **Indicators** row toggles **RSI** (14) and/or **MACD** (12,26,9); each renders as a stacked mini-pane right below the price chart, drawn from the *same* `chartPts` x-positions so it lines up exactly, with the scrub crosshair carried through. Best on a 1m+ timeframe (they need enough candles; the live tick view shows a "need more candles" hint).
 - **Settlement now grades on the boundary candle close, not the 60-sec average — fixing rounds logged on the wrong side.** A round that dipped then recovered right at the bell was settling on a starved/averaged price (the 60-sec window freezes when you flip to Robinhood to bet, biasing it to the dip), so it logged the wrong outcome and marked a wrong guess "correct." Both the 24/7 worker (`cbCloseAt` → `cbAvg60`) and the client now settle on the **finalized candle close** — the definitive boundary price, fetched fresh over REST, matching Robinhood's close and next-round strike. The 60-sec average is a fallback and shows as a "thin round" note when it leaned the other way. *(Already-graded rounds stay until they age out — use Clear log to rebuild clean.)*
 - **Smoother chart scrubbing, a taller mobile chart, and a Candles toggle that works instantly.** The crosshair now **interpolates** between samples, so the price and time glide continuously as you drag instead of snapping to a fixed point (candles still snap to a bar). The mobile chart is **~20% taller** (220→264px). And tapping **Candles** on the Live view now hops to 1m candles — the live track has no OHLC, so the toggle used to look inert there.
@@ -320,9 +321,10 @@ A **scheduled** Worker (`crons = ["*/15 * * * *"]`) keeps an independent, always
 even when no tab is open — using **only free data and no LLM**, so it adds nothing to AI spend.
 Each run, per coin with a Kalshi series:
 
-1. Grades the previous round's pick — settling on the **finalized boundary candle close** (the
-   definitive price at the bell, matching the close / next-round strike Robinhood shows), with the
-   ~60-second average kept only as a fallback (`cbCloseAt` → `cbAvg60`).
+1. Grades the previous round's pick — preferring **Kalshi's own settled result** (`result: yes/no`
+   → OVER/UNDER, literally what you bet on), then the **finalized boundary candle close**, then the
+   ~60-second average (`kalshiResult` → `cbCloseAt` → `cbAvg60`). A round graded provisionally on the
+   candle is reconciled to Kalshi's verdict on a later cron once the market settles (`reconcileKalshi`).
 2. Makes a fresh pick the simple way: the **Kalshi market price** nudged by **1-min momentum**
    and **order-book imbalance**, with **SKIP** near 50/50 (`freePick`).
 3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV`. The whole auto-tracker —
