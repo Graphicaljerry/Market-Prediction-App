@@ -160,9 +160,9 @@
   .hiConvToggle input { appearance: none; -webkit-appearance: none; margin: 0; width: 26px; height: 15px; border-radius: 999px; background: var(--surface-3);
     position: relative; cursor: pointer; transition: background .18s ease; flex: 0 0 auto; }
   .hiConvToggle input::after { content: ""; position: absolute; top: 1.5px; left: 1.5px; width: 12px; height: 12px; border-radius: 50%; background: #fff; transition: transform .18s ease; }
-  .hiConvToggle input:checked { background: #0a84ff; }
+  .hiConvToggle input:checked { background: var(--green); }
   .hiConvToggle input:checked::after { transform: translateX(11px); }
-  .hiConvToggle:has(input:checked) { color: var(--label); border-color: rgba(10,132,255,.5); }
+  .hiConvToggle:has(input:checked) { color: var(--label); border-color: rgba(48,209,88,.5); }
 
   /* ---------- Card ---------- */
   .card {
@@ -661,7 +661,8 @@
     <canvas id="miniChart" class="miniChart"></canvas>
     <canvas id="rsiPane" class="subPane"></canvas>
     <canvas id="macdPane" class="subPane"></canvas>
-    <div class="indBar" id="indBar"><span class="indLbl">Indicators</span><button type="button" data-ind="rsi">RSI</button><button type="button" data-ind="macd">MACD</button></div>
+    <canvas id="stochPane" class="subPane"></canvas>
+    <div class="indBar" id="indBar"><span class="indLbl">Indicators</span><button type="button" data-ind="rsi">RSI</button><button type="button" data-ind="macd">MACD</button><button type="button" data-ind="stoch">Stoch</button><button type="button" data-ind="ema">EMA</button><button type="button" data-ind="bb">Boll</button></div>
     <div class="miniChartLbl" id="miniChartLbl">Live price vs the line you must beat</div>
   </div>
   </div>
@@ -769,7 +770,7 @@
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null,
-    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false },
+    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false, stoch: false, ema: false, bb: false },
     chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
     hiConvOnly: (function () { try { return localStorage.getItem("hiConvOnly_v1") === "1"; } catch (e) { return false; } })() };
 
@@ -1677,8 +1678,11 @@
       ctx.fillStyle = !hasStrike ? "#0a84ff" : lastAbove ? "#30d158" : "#ff453a";
       ctx.beginPath(); ctx.arc(X(n - 1), Y(last.p), 3.5, 0, Math.PI * 2); ctx.fill();
     }
+    var oCl = data.map(function (d) { return candle ? d.c : d.p; });
+    if (state.lastPrice != null && state.lastPrice > 0) oCl[oCl.length - 1] = state.lastPrice;   // live forming candle
+    drawOverlays(ctx, oCl, data.map(function (d, ix) { return candle ? (ix + 0.5) * (W / n) : X(ix); }), Y);
     if (hasStrike) {
-      ctx.fillStyle = "rgba(235,235,245,.6)"; ctx.font = "10px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(235,235,245,.92)"; ctx.font = "800 14px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "left";
       var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
       ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     }
@@ -1726,7 +1730,37 @@
     for (i = 0; i < closes.length; i++) hist.push((macd[i] != null && signal[i] != null) ? macd[i] - signal[i] : null);
     return { macd: macd, signal: signal, hist: hist };
   }
-  function loadInd() { try { var o = JSON.parse(localStorage.getItem("chartInd_v1") || "{}"); state.ind = { rsi: !!o.rsi, macd: !!o.macd }; } catch (e) { state.ind = { rsi: false, macd: false }; } }
+  function stochArr(closes, kP, dP) {
+    kP = kP || 14; dP = dP || 3;
+    var k = [], i, j;
+    for (i = 0; i < closes.length; i++) {
+      if (i < kP - 1) { k.push(null); continue; }
+      var lo = Infinity, hi = -Infinity;
+      for (j = i - kP + 1; j <= i; j++) { if (closes[j] < lo) lo = closes[j]; if (closes[j] > hi) hi = closes[j]; }
+      k.push(hi > lo ? (closes[i] - lo) / (hi - lo) * 100 : 50);
+    }
+    var d = [];
+    for (i = 0; i < k.length; i++) {
+      if (k[i] == null || i < kP - 1 + dP - 1) { d.push(null); continue; }
+      var s = 0, c = 0; for (j = i - dP + 1; j <= i; j++) { if (k[j] != null) { s += k[j]; c++; } }
+      d.push(c ? s / c : null);
+    }
+    return { k: k, d: d };
+  }
+  function bollinger(closes, period, mult) {
+    period = period || 20; mult = mult || 2;
+    var upper = [], lower = [], mid = [], i, j;
+    for (i = 0; i < closes.length; i++) {
+      if (i < period - 1) { upper.push(null); lower.push(null); mid.push(null); continue; }
+      var sum = 0; for (j = i - period + 1; j <= i; j++) sum += closes[j];
+      var m = sum / period, v = 0;
+      for (j = i - period + 1; j <= i; j++) { var dd = closes[j] - m; v += dd * dd; }
+      var sd = Math.sqrt(v / period);
+      mid.push(m); upper.push(m + mult * sd); lower.push(m - mult * sd);
+    }
+    return { upper: upper, lower: lower, mid: mid };
+  }
+  function loadInd() { try { var o = JSON.parse(localStorage.getItem("chartInd_v1") || "{}"); state.ind = { rsi: !!o.rsi, macd: !!o.macd, stoch: !!o.stoch, ema: !!o.ema, bb: !!o.bb }; } catch (e) { state.ind = { rsi: false, macd: false, stoch: false, ema: false, bb: false }; } }
   function saveInd() { try { localStorage.setItem("chartInd_v1", JSON.stringify(state.ind || {})); } catch (e) {} }
   function sizePane(cv) {
     var W = cv.clientWidth || cv.offsetWidth || 300, H = cv.clientHeight || 74, dpr = window.devicePixelRatio || 1;
@@ -1777,13 +1811,54 @@
     paneHoverLine(ctx, W, H);
     ctx.font = "9px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "left"; ctx.fillStyle = "rgba(235,235,245,.5)"; ctx.fillText("MACD 12,26,9", 4, 11);
   }
+  function drawStochPane(cv, closes, xs) {
+    var s = sizePane(cv), ctx = s.ctx, W = s.W, H = s.H;
+    if (!closes || closes.length < 17) { paneMsg(ctx, W, H, "Stochastic · need more candles — pick a 1m+ timeframe"); return; }
+    var st = stochArr(closes, 14, 3);
+    function Y(v) { return 5 + (1 - v / 100) * (H - 10); }
+    ctx.strokeStyle = "rgba(235,235,245,.07)"; ctx.lineWidth = 1;
+    [20, 50, 80].forEach(function (lv) { var y = Y(lv); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); });
+    function line(arr, col) { ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.lineJoin = "round"; ctx.beginPath(); var started = false, i; for (i = 0; i < arr.length; i++) { if (arr[i] == null) continue; if (!started) { ctx.moveTo(xs[i], Y(arr[i])); started = true; } else ctx.lineTo(xs[i], Y(arr[i])); } ctx.stroke(); }
+    line(st.k, "#0a84ff"); line(st.d, "#ff9f0a");
+    paneHoverLine(ctx, W, H);
+    var li = st.k.length - 1; while (li >= 0 && st.k[li] == null) li--;
+    ctx.font = "9px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "left"; ctx.fillStyle = "rgba(235,235,245,.5)"; ctx.fillText("Stoch 14,3" + (li >= 0 ? "  " + Math.round(st.k[li]) : ""), 4, 11);
+  }
+  function overlayLine(ctx, arr, xs, Y, col, w) {
+    ctx.strokeStyle = col; ctx.lineWidth = w || 1.3; ctx.lineJoin = "round"; ctx.beginPath();
+    var started = false, i;
+    for (i = 0; i < arr.length; i++) { if (arr[i] == null) continue; if (!started) { ctx.moveTo(xs[i], Y(arr[i])); started = true; } else ctx.lineTo(xs[i], Y(arr[i])); }
+    ctx.stroke();
+  }
+  // Price-overlay indicators drawn ON the price chart: Bollinger Bands(20,2) + EMA 9/21.
+  function drawOverlays(ctx, closes, xs, Y) {
+    if (!state.ind || !closes || !xs) return;
+    if (state.ind.bb) {
+      var bb = bollinger(closes, 20, 2);
+      overlayLine(ctx, bb.upper, xs, Y, "rgba(190,190,205,.40)");
+      overlayLine(ctx, bb.lower, xs, Y, "rgba(190,190,205,.40)");
+      overlayLine(ctx, bb.mid, xs, Y, "rgba(190,190,205,.22)");
+    }
+    if (state.ind.ema) {
+      overlayLine(ctx, emaArr(closes, 9), xs, Y, "rgba(10,132,255,.95)", 1.5);
+      overlayLine(ctx, emaArr(closes, 21), xs, Y, "rgba(255,159,10,.95)", 1.5);
+    }
+  }
+  // Closes for the indicators, with the live price folded into the last (forming) candle so the
+  // newest value tracks each tick (drawMiniChart already re-runs on every price update).
+  function indCloses(pts) {
+    if (!pts || !pts.length) return null;
+    var closes = pts.map(function (p) { return p.candle ? p.c : p.p; });
+    if (state.lastPrice != null && state.lastPrice > 0) closes[closes.length - 1] = state.lastPrice;
+    return closes;
+  }
   function drawSubPanes() {
-    if (!state.ind) state.ind = { rsi: false, macd: false };
-    var pts = state.chartPts, closes = null, xs = null;
-    if (pts && pts.length) { closes = pts.map(function (p) { return p.candle ? p.c : p.p; }); xs = pts.map(function (p) { return p.x; }); }
-    var rEl = $("rsiPane"), mEl = $("macdPane");
+    if (!state.ind) state.ind = { rsi: false, macd: false, stoch: false, ema: false, bb: false };
+    var pts = state.chartPts, closes = indCloses(pts), xs = pts && pts.length ? pts.map(function (p) { return p.x; }) : null;
+    var rEl = $("rsiPane"), mEl = $("macdPane"), sEl = $("stochPane");
     if (rEl) { if (state.ind.rsi) { rEl.style.display = "block"; drawRSIPane(rEl, closes, xs); } else rEl.style.display = "none"; }
     if (mEl) { if (state.ind.macd) { mEl.style.display = "block"; drawMACDPane(mEl, closes, xs); } else mEl.style.display = "none"; }
+    if (sEl) { if (state.ind.stoch) { sEl.style.display = "block"; drawStochPane(sEl, closes, xs); } else sEl.style.display = "none"; }
   }
   function drawMiniChart() {
     var cv = $("miniChart"); if (!cv || !cv.getContext) return;
@@ -1847,7 +1922,8 @@
     ctx.beginPath(); ctx.arc(X(last.t), Y(last.p), 3.5, 0, Math.PI * 2); ctx.fill();
     state.chartPts = hist.map(function (x) { return { x: X(x.t), y: Y(x.p), t: x.t, p: x.p }; });
     state.chartMeta = { kind: "live", W: W, H: H, strike: strike };
-    ctx.fillStyle = "rgba(235,235,245,.55)"; ctx.font = "10px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
+    drawOverlays(ctx, hist.map(function (h) { return h.p; }), hist.map(function (h) { return X(h.t); }), Y);
+    ctx.fillStyle = "rgba(235,235,245,.92)"; ctx.font = "800 14px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
     var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
     ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     if (lbl) lbl.textContent = (lastAbove ? "Above the line → OVER winning now" : "Below the line → UNDER winning now") +
