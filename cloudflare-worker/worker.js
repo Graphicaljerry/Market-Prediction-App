@@ -113,6 +113,7 @@ export default {
     try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
 
     const coin = String(body.coin || "ETH").toUpperCase();
+    const aiProvider = resolveProvider(env, body.model);   // the app's chosen model can pick the provider
 
     let crowd = null;
     const seriesTicker = env["KALSHI_SERIES_" + coin];
@@ -120,7 +121,7 @@ export default {
 
     // Cheap path: the client can refresh the (free) Kalshi crowd + strike without paying
     // for an LLM call. Used between decisions and when the tab isn't actively watched.
-    if (body.noAI) return json({ crowd, ai: null, provider });
+    if (body.noAI) return json({ crowd, ai: null, provider: aiProvider });
 
     // Give the AI the full picture: the 24/7 auto-tracker's own record (its market-anchored
     // guesses + how they actually settled) on top of the client's live history.
@@ -128,10 +129,10 @@ export default {
     try { const st = await loadState(env); autopicks = st.coins[coin] || null; } catch (_) {}
 
     let ai;
-    try { ai = await getAIRead(env, provider, body, crowd, autopicks); }
+    try { ai = await getAIRead(env, aiProvider, body, crowd, autopicks); }
     catch (e) { ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", probOver: 50, rationale: "AI error: " + e.message }; }
 
-    return json({ crowd, ai, provider });
+    return json({ crowd, ai, provider: aiProvider });
   },
 
   // Cron (every 15 min): compute a pick from FREE data only — no LLM call, so no AI spend —
@@ -161,6 +162,27 @@ function pickProvider(env) {
   if (env.GEMINI_API_KEY) return "gemini";
   if (env.GROQ_API_KEY) return "groq";
   return "none";
+}
+// Which provider does a model id belong to? (claude-* → Anthropic, gemini-* → Gemini, llama/etc → Groq)
+function providerOfModel(model) {
+  const m = (model || "").toLowerCase();
+  if (m.startsWith("gemini")) return "gemini";
+  if (m.startsWith("claude")) return "anthropic";
+  if (m.includes("llama") || m.includes("mixtral") || m.includes("gemma") || m.includes("qwen")) return "groq";
+  return null;
+}
+function providerHasKey(env, p) {
+  return p === "anthropic" ? !!env.ANTHROPIC_API_KEY : p === "gemini" ? !!env.GEMINI_API_KEY : p === "groq" ? !!env.GROQ_API_KEY : false;
+}
+// Resolve the provider for THIS read. Precedence: a dashboard AI_PROVIDER override always wins;
+// otherwise the provider implied by the model the APP picked (if that provider's key is set) — so the
+// in-app dropdown switches providers, not just model names; otherwise the key-order auto-pick.
+function resolveProvider(env, model) {
+  const forced = (env.AI_PROVIDER || "").toLowerCase();
+  if (forced) return forced;
+  const want = providerOfModel(model);
+  if (want && providerHasKey(env, want)) return want;
+  return pickProvider(env);
 }
 
 // --- Kalshi -------------------------------------------------------------

@@ -756,7 +756,7 @@
       <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span></summary>
       <div class="aiWhyBody"></div>
     </details>
-    <div class="aiMuted" id="aiIntro">Add the live <b>Kalshi crowd odds</b> + a <b>Claude</b> read to the blend above — connect your Cloudflare Worker below (optional).</div>
+    <div class="aiMuted" id="aiIntro">Add the live <b>Kalshi crowd odds</b> + an <b>AI</b> read to the blend above — connect your Cloudflare Worker below (optional).</div>
     <details id="aiSetup" class="aiSetup">
       <summary>AI Co-Pilot setup</summary>
       <div class="aiSetupBody">
@@ -813,7 +813,7 @@
     <div class="sec" style="margin-top:20px">Recent Rounds</div>
     <div id="autoHistory" class="history collapsed"><div class="empty">Warming up — grades a round every 15 minutes, even while you're away.</div></div>
     <button class="seeMore" id="moreAuto" style="display:none"></button>
-    <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. Claude reads this record too.</div>
+    <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. The AI reads this record too.</div>
   </div>
   </div>
   </main>
@@ -2825,9 +2825,12 @@
   function applyCrowd(d) {
     if (!d) return;
     if (d.crowd) state.lastCrowd = d.crowd;
+    if (d.provider) state.lastProvider = d.provider;   // which AI the Worker is set to (drives the label)
     if (d.crowd && typeof d.crowd.strike === "number") setRoundStrike(d.crowd.strike);
     renderPickCard(); updateRoundStatus(); drawMiniChart(); renderBlend();
   }
+  // The AI label reflects whichever provider actually answered (set by the app's model dropdown).
+  function providerNice(p) { return p === "gemini" ? "Gemini" : p === "groq" ? "Groq" : p === "anthropic" ? "Claude" : "AI"; }
 
   // ---------- 24/7 auto-tracker (server-side, free) ----------
   function workerGet(params) {
@@ -2984,6 +2987,7 @@
 
   function renderAI(d, scope) {
     state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null;   // feed the blend + combined odds
+    if (d.provider) state.lastProvider = d.provider;   // which AI actually answered, so the label reflects it
     if (d.crowd && typeof d.crowd.strike === "number") setRoundStrike(d.crowd.strike);   // real line to beat (active phase only)
     if (state.lockingNext && !state.lockedNext) commitLockedNext();   // settle the locked next-round pick on this fresh read
     state.aiScope = scope || null;
@@ -3005,7 +3009,7 @@
       : ai && ai.edge === "with-crowd" ? '<span class="aiEdge with">agrees w/ crowd</span>' : "";
     el.innerHTML =
       '<div class="aiRow"><span class="k">Crowd · Kalshi</span><span class="v">' + crowdVal + '</span></div>' +
-      '<div class="aiRow"><span class="k">AI · Claude</span><span class="v ' + aiCls + '">' + aiVal + '</span></div>' +
+      '<div class="aiRow"><span class="k">AI · ' + providerNice(state.lastProvider) + '</span><span class="v ' + aiCls + '">' + aiVal + '</span></div>' +
       (edge ? '<div class="aiRow"><span class="k">Edge</span>' + edge + '</div>' : '');
   }
   // The AI's reasoning + which round the read applies to.
@@ -3033,7 +3037,7 @@
     try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {}
     callWorker(true);
   });
-  $("aiModel").addEventListener("change", function () { try { localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {} });
+  $("aiModel").addEventListener("change", function () { try { localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {} if (getWorkerUrl()) refreshCrowd(true); });   // free refresh so the "AI · …" label flips to the picked provider right away
   (function () { var s = $("aiBudget"); if (s) s.addEventListener("change", function () { try { localStorage.setItem(AI_BUDGET_KEY, s.value); } catch (e) {} }); })();
   document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshCrowd(true); });   // returning to the tab: free market refresh
 

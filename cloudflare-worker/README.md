@@ -40,11 +40,17 @@ auto-detects which provider to use; or force it with a Text var `AI_PROVIDER`.
 | **Groq** (free, very fast) | `GROQ_API_KEY` | console.groq.com/keys | Free tier |
 | **Claude** (sharpest) | `ANTHROPIC_API_KEY` | console.anthropic.com | **Haiku default, ~0.05–0.1¢ / read** |
 
+- **Pick from the app:** the model you choose in **AI Co-Pilot setup** now also picks the
+  **provider** — select *Gemini 2.0 Flash* and it uses Gemini, a Claude model and it uses Claude
+  (as long as that provider's key is set in the Worker). So with multiple keys you can switch
+  brains right from the app, no dashboard trip. `AI_PROVIDER`, if set, is a **hard override** that
+  always wins; leave it unset to let the app's dropdown decide. (`resolveProvider` in `worker.js`.)
 - **Keep options open:** add more than one key and flip between them by setting
   `AI_PROVIDER` = `gemini` | `groq` | `anthropic`. No redeploy of code needed — just save the var.
 - Override the model with `AI_MODEL` if you want (defaults: `claude-haiku-4-5`,
-  `gemini-2.0-flash`, `llama-3.3-70b-versatile`). The app also sends its own model choice
-  (Haiku by default) and can pick Sonnet/Opus per call from the **AI Co-Pilot** settings.
+  `gemini-2.0-flash`, `llama-3.3-70b-versatile`). A model id that doesn't match the active provider
+  is ignored (so a stale dropdown choice can't 404 the read); the response's `provider` field tells
+  the app which brain answered, and the app labels the read **AI · Gemini / Claude / Groq** to match.
 - **Check it worked:** open the Worker URL in a browser (a GET) — it returns
   `{"ok":true,"provider":"…","model":"…"}` so you can confirm which brain is active.
 
