@@ -1667,14 +1667,16 @@
       ctx.fillText("Loading " + state.chartTF + "…", W / 2, H / 2); return;
     }
     var candle = state.chartType === "candle" && data[0].h != null;
-    var lows = [], highs = [];
-    data.forEach(function (x) { if (candle) { lows.push(x.l); highs.push(x.h); } else { lows.push(x.p); highs.push(x.p); } });
+    var n = data.length, vp = state.vp || { a: 0, b: 1 };                  // zoom/pan window over the candles
+    var i0 = vp.a * (n - 1), i1 = vp.b * (n - 1), vspan = (i1 - i0) || 1, vCount = Math.max(1, i1 - i0 + 1);
+    var vlo = Math.max(0, Math.floor(i0) - 1), vhi = Math.min(n - 1, Math.ceil(i1) + 1);   // scale Y to the VISIBLE candles
+    var lows = [], highs = [], kk;
+    for (kk = vlo; kk <= vhi; kk++) { var xx = data[kk]; if (candle) { lows.push(xx.l); highs.push(xx.h); } else { lows.push(xx.p); highs.push(xx.p); } }
     if (strike != null) { lows.push(strike); highs.push(strike); }
+    if (state.lastPrice != null && state.lastPrice > 0) { lows.push(state.lastPrice); highs.push(state.lastPrice); }   // keep the live price in frame
     var min = Math.min.apply(null, lows), max = Math.max.apply(null, highs);
     var padY = (max - min) * 0.12 || (max * 0.0004) || 1; min -= padY; max += padY;
-    var top = 8, bot = 8, n = data.length;
-    var vp = state.vp || { a: 0, b: 1 };                                   // zoom/pan window over the candles
-    var i0 = vp.a * (n - 1), i1 = vp.b * (n - 1), vspan = (i1 - i0) || 1, vCount = Math.max(1, i1 - i0 + 1);
+    var top = 8, bot = 8;
     function X(i) { return n < 2 ? 0 : ((i - i0) / vspan) * W; }           // line x (== i/(n-1)*W when not zoomed)
     function CX(i) { return ((i - i0 + 0.5) / vCount) * W; }               // candle-center x
     function Y(p) { return top + (1 - (p - min) / (max - min)) * (H - top - bot); }
@@ -2783,14 +2785,20 @@
     function zoomable() { return !!(state.chartTF && state.chartTF !== "live"); }   // zoom/pan only where there's a candle series
     function fx(clientX) { var r = cv.getBoundingClientRect(); return r.width ? Math.max(0, Math.min(1, (clientX - r.left) / r.width)) : 0; }
     function clampVp() {
-      var vp = state.vp = state.vp || { a: 0, b: 1 }, ms = 0.05;
-      if (vp.b - vp.a < ms) { var c = (vp.a + vp.b) / 2; vp.a = c - ms / 2; vp.b = c + ms / 2; }
-      if (vp.a < 0) { vp.b -= vp.a; vp.a = 0; } if (vp.b > 1) { vp.a -= (vp.b - 1); vp.b = 1; }
-      vp.a = Math.max(0, vp.a); vp.b = Math.min(1, vp.b);
+      var vp = state.vp = state.vp || { a: 0, b: 1 };
+      var span = Math.min(1, Math.max(0.05, vp.b - vp.a));
+      var maxB = 1 + span * 0.5;                          // allow right padding so the latest price can sit at the center
+      var a = vp.a, b = a + span;
+      if (b > maxB) { b = maxB; a = b - span; }            // don't overscroll past the right padding
+      if (a < 0) { a = 0; b = span; }                      // don't scroll before the first candle
+      vp.a = a; vp.b = b;
     }
     function zoomAt(f, factor) {
-      if (!zoomable()) return; clampVp(); var vp = state.vp, span = vp.b - vp.a, focus = vp.a + f * span;
-      var ns = Math.min(1, Math.max(0.05, span * factor)); vp.a = focus - f * ns; vp.b = vp.a + ns; clampVp(); drawMiniChart();
+      if (!zoomable()) return; var vp = state.vp, span = vp.b - vp.a, ns = Math.min(1, Math.max(0.05, span * factor));
+      if (ns >= 0.999) { vp.a = 0; vp.b = 1; }                               // fully zoomed out: all candles
+      else if (vp.b >= 0.98) { vp.a = 1 - ns * 0.5; vp.b = 1 + ns * 0.5; }    // viewing the latest → keep it CENTERED, room to the right
+      else { var focus = vp.a + f * span; vp.a = focus - f * ns; vp.b = focus + (1 - f) * ns; }   // panned into history → zoom at the cursor
+      clampVp(); drawMiniChart();
     }
     function panFrac(df) { if (!zoomable() || !df) return; clampVp(); var vp = state.vp, span = vp.b - vp.a, s = -df * span; vp.a += s; vp.b += s; clampVp(); drawMiniChart(); }
     function resetVp() { if (zoomable()) { state.vp = { a: 0, b: 1 }; drawMiniChart(); } }
