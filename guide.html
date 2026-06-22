@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>How to read the 15-Min Tracker — Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0a0a0b; --surface: #1c1c1e; --surface-2: #2c2c2e; --separator: rgba(84,84,88,0.55);
+    --label: #fff; --label-2: rgba(235,235,245,0.62); --label-3: rgba(235,235,245,0.32);
+    --green: #30d158; --red: #ff453a; --orange: #ff9f0a; --blue: #0a84ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html { background: var(--bg); scroll-behavior: smooth; }
+  body { color: var(--label); font-family: "Space Mono", ui-monospace, "SF Mono", monospace; -webkit-font-smoothing: antialiased;
+    max-width: 880px; margin: 0 auto; padding: 0 clamp(16px, 4vw, 36px) 80px; line-height: 1.55; }
+
+  /* sticky top bar */
+  .top { position: sticky; top: 0; z-index: 10; display: flex; align-items: center; gap: 12px;
+    padding: 14px 0 12px; margin-bottom: 8px; background: linear-gradient(180deg, var(--bg) 72%, transparent); }
+  .back { display: inline-flex; align-items: center; gap: 7px; font-size: 14px; font-weight: 700; color: var(--label);
+    text-decoration: none; background: var(--surface-2); border: 1px solid var(--separator); border-radius: 999px; padding: 8px 15px; }
+  .back:hover { border-color: rgba(48,209,88,.5); }
+  .top h1 { font-size: 15px; font-weight: 700; color: var(--label-2); letter-spacing: .01em; }
+
+  h2 { font-size: 22px; font-weight: 700; letter-spacing: -.01em; margin: 40px 0 4px; }
+  h2 .ico { margin-right: 8px; }
+  .lede { color: var(--label-2); font-size: 14px; margin-bottom: 16px; }
+  h3 { font-size: 15px; font-weight: 700; margin: 18px 0 6px; color: var(--label); }
+  p { color: var(--label-2); font-size: 14px; margin: 6px 0; }
+  b, strong { color: var(--label); font-weight: 700; }
+  .green { color: var(--green); } .red { color: var(--red); } .amber { color: var(--orange); }
+  a { color: var(--blue); }
+
+  /* cards + demo blocks */
+  .card { background: rgba(28,28,30,0.55); border: 1px solid rgba(255,255,255,0.08); border-radius: 18px;
+    padding: 18px clamp(16px,3vw,22px); margin: 14px 0; }
+  .demo { background: var(--surface); border: 1px solid var(--separator); border-radius: 14px; padding: 14px 16px; margin: 12px 0; }
+  .demo.glow-g { background: linear-gradient(180deg, rgba(48,209,88,.12), rgba(28,28,30,.4)); border-color: rgba(48,209,88,.3); }
+  .demo.glow-r { background: linear-gradient(180deg, rgba(255,69,58,.12), rgba(28,28,30,.4)); border-color: rgba(255,69,58,.3); }
+  .tag { display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--label-3); margin-bottom: 8px; }
+  .note { font-size: 13px; color: var(--label-2); margin-top: 9px; padding-left: 14px; border-left: 2px solid var(--separator); }
+  .note .k { color: var(--label); font-weight: 700; }
+
+  /* legend chips */
+  .legend { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700;
+    background: var(--surface-2); border: 1px solid var(--separator); border-radius: 999px; padding: 6px 12px; }
+  .dot { width: 22px; height: 22px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; }
+  .dot.up { background: rgba(48,209,88,.16); color: var(--green); border: 1px solid rgba(48,209,88,.4); }
+  .dot.down { background: rgba(255,69,58,.16); color: var(--red); border: 1px solid rgba(255,69,58,.4); }
+  .dot.est { background: transparent; border: 1px dashed var(--separator); color: var(--label-3); opacity: .6; }
+  .dot.skip { background: rgba(255,159,10,.16); color: var(--orange); border: 1px solid rgba(255,159,10,.4); }
+
+  /* example "stat grid" like the app */
+  .statgrid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; text-align: center; margin: 10px 0; }
+  .statgrid .s { background: var(--surface-2); border-radius: 10px; padding: 10px 4px; }
+  .statgrid .v { font-size: 20px; font-weight: 700; }
+  .statgrid .k { font-size: 10px; color: var(--label-3); text-transform: uppercase; letter-spacing: .04em; margin-top: 2px; }
+
+  /* two-col helper */
+  .two { display: flex; gap: 10px; align-items: stretch; }
+  .two > div { flex: 1; }
+  .divider { width: 1px; align-self: stretch; background: var(--separator); }
+
+  .big { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+  .mid { font-size: 18px; font-weight: 700; }
+  .small { font-size: 12px; color: var(--label-3); }
+  ul { margin: 6px 0 6px 2px; padding-left: 18px; } li { color: var(--label-2); font-size: 14px; margin: 4px 0; }
+  .toc { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin: 8px 0 4px; }
+  .toc a { font-size: 13.5px; text-decoration: none; color: var(--label-2); }
+  .toc a:hover { color: var(--green); }
+  @media (max-width: 560px) { .toc { grid-template-columns: 1fr; } .statgrid { grid-template-columns: repeat(2,1fr); } }
+  .foot { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--separator); font-size: 12px; color: var(--label-3); }
+</style>
+</head>
+<body>
+  <div class="top">
+    <a class="back" href="eth-tracker.html">← Back to tracker</a>
+    <h1>How to read the tracker</h1>
+  </div>
+
+  <p class="lede">Every panel and number, in plain English. The app predicts one thing: at the end of each
+  15-minute round, will the price be <b class="green">OVER</b> the line or <b class="red">UNDER</b> it — the same
+  bet Robinhood/Kalshi offer.</p>
+
+  <div class="card">
+    <div class="tag">The whole app in 10 seconds</div>
+    <div class="legend">
+      <span class="chip"><span class="dot up">↑</span> OVER — finished above the line</span>
+      <span class="chip"><span class="dot down">↓</span> UNDER — finished below the line</span>
+      <span class="chip"><span class="dot skip">·</span> SKIP — no clear edge, sit out</span>
+    </div>
+    <p><b>Green = up / OVER. Red = down / UNDER. Amber = skip.</b> That colour code is used everywhere — the
+    price line, the pick, the arrows, the glow behind the cards.</p>
+    <div class="toc">
+      <a href="#price">① Price card &amp; the line</a>
+      <a href="#arrows">② Recent-15-min arrows</a>
+      <a href="#dual">③ This round / Next round</a>
+      <a href="#autopick">④ Auto Pick card</a>
+      <a href="#timer">⑤ Timer &amp; next-round preview</a>
+      <a href="#copilot">⑥ AI Co-Pilot (the read)</a>
+      <a href="#track">⑦ Track Record (24/7 tracker)</a>
+      <a href="#best">⑧ Best bet &amp; all-coins ranking</a>
+      <a href="#chart">⑨ The chart &amp; indicators</a>
+      <a href="#ideas">⑩ Key ideas &amp; glossary</a>
+    </div>
+  </div>
+
+  <!-- ① PRICE CARD -->
+  <h2 id="price"><span class="ico">①</span>The price card &amp; the line</h2>
+  <p class="lede">The top card: live price, and the one line you have to beat.</p>
+  <div class="demo glow-g">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div><b>Ethereum</b> <span class="small">ETH · USD</span></div>
+      <span class="chip" style="color:var(--green)">↑ 1.06%</span>
+    </div>
+    <div class="big" style="margin:6px 0 2px">$1,747.90</div>
+    <div class="green" style="font-weight:700">Beat $1,745.63 · ▲ +$2.27 (+0.130%) · OVER</div>
+  </div>
+  <ul>
+    <li><b>Big number</b> = the live price (updates every tick).</li>
+    <li><b class="green">Beat $1,745.63</b> = the <b>line to beat</b> — the real Kalshi strike when connected, else the round's open price. This is the same "price to beat" Robinhood shows.</li>
+    <li>The <b>whole line lights up</b> <span class="green">green when price is OVER</span> the line / <span class="red">red when UNDER</span>. The <b>▲ +$2.27 (+0.130%)</b> is how far above/below the line you are right now, in dollars and %.</li>
+    <li>The pill top-right (<span class="green">↑ 1.06%</span>) is the coin's <b>24-hour</b> change — context only, not the round.</li>
+  </ul>
+
+  <!-- ② ARROWS -->
+  <h2 id="arrows"><span class="ico">②</span>Recent-15-min arrows</h2>
+  <p class="lede">A row of past rounds — did each one finish OVER or UNDER its line. This should match the little arrows on Robinhood.</p>
+  <div class="demo">
+    <div class="small" style="margin-bottom:8px">RECENT 15-MIN</div>
+    <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap">
+      <span class="dot down">↓</span><span class="dot up">↑</span><span class="dot down">↓</span>
+      <span class="dot up">↑</span><span class="dot up">↑</span><span class="dot down">↓</span>
+      <span class="dot up">↑</span><span class="dot est">↑</span>
+    </div>
+  </div>
+  <ul>
+    <li>Oldest on the left, newest on the right. <span class="green">↑ = OVER</span>, <span class="red">↓ = UNDER</span>.</li>
+    <li><b>Solid</b> arrows are <b>confirmed against Kalshi's own settled result</b> — guaranteed to match Robinhood.</li>
+    <li>A <b>dim, dashed</b> arrow (<span class="dot est" style="vertical-align:middle">↑</span>) is a rough <b>estimate</b> from a candle (used only to fill old gaps), not a graded outcome.</li>
+    <li>A round can briefly show <b>"settling"</b> in Recent Rounds — it's graded provisionally on Coinbase until Kalshi confirms it (a beat or two later). Once confirmed it never changes.</li>
+  </ul>
+  <p class="note"><span class="k">Why might it differ from Robinhood for a minute?</span> Kalshi settles on a 60-second average of a multi-exchange index; a single Coinbase price can land on the other side of a razor-thin round. The app fixes itself to Kalshi's real result within a cycle — so "settling" = "not final yet."</p>
+
+  <!-- ③ DUAL -->
+  <h2 id="dual"><span class="ico">③</span>This round / Next round</h2>
+  <p class="lede">Two bets, side by side — so "buy OVER now" and "get ready for UNDER next" never look like a contradiction.</p>
+  <div class="demo">
+    <div class="two">
+      <div style="text-align:center">
+        <div class="small">THIS ROUND</div>
+        <div class="big green">OVER</div>
+        <div class="small">55% likely</div>
+      </div>
+      <div class="divider"></div>
+      <div style="text-align:center">
+        <div class="small">NEXT ROUND</div>
+        <div class="mid" style="color:var(--label-3)">locks in 3:40</div>
+        <div class="small">appears in the final 2 min</div>
+      </div>
+    </div>
+  </div>
+  <ul>
+    <li><b>Left = the round you're in now.</b> The committed side it would bet, held all round (it won't flip every time the line is crossed).</li>
+    <li><b>Right = the round about to start.</b> It's dim and counts down until the <b>final 2 minutes</b>, when the next market opens and the pick locks in — then it shows a real side.</li>
+  </ul>
+
+  <!-- ④ AUTO PICK -->
+  <h2 id="autopick"><span class="ico">④</span>Auto Pick card</h2>
+  <p class="lede">Your single headline instruction.</p>
+  <div class="demo glow-g">
+    <div class="small">● LIVE · THIS ROUND · CLOSES 3:30 AM</div>
+    <div class="big green" style="margin:6px 0">BUY OVER ↑</div>
+    <div class="small">betting the price goes UP</div>
+    <div class="big green" style="margin:10px 0 0">54%<span class="small" style="margin-left:8px">CHANCE UP</span></div>
+    <div style="margin-top:6px">High Confidence</div>
+  </div>
+  <ul>
+    <li><b class="green">BUY OVER ↑</b> / <b class="red">BUY UNDER ↓</b> — the call. The big <b>%</b> is the <b>blended</b> chance it's right (market + position math + AI + indicators, calibrated to your history).</li>
+    <li><b>HOLDING …</b> shows up when the committed side is temporarily losing — it's deliberately sticking with its pick, not flip-flopping.</li>
+    <li><b>High Confidence / conviction</b> reflects how strongly the signals agree.</li>
+    <li>The <b>"Which to follow"</b> line underneath reconciles this Co-Pilot pick with the 24/7 tracker: <b>both agree → higher conviction</b>; <b>split → coin-flip, sit out</b>; <b>tracker SKIPPING → it won't even score this round</b>, treat the call as optional.</li>
+  </ul>
+
+  <!-- ⑤ TIMER -->
+  <h2 id="timer"><span class="ico">⑤</span>Timer &amp; next-round preview</h2>
+  <div class="demo">
+    <div class="small" style="text-align:center">Next round closes in</div>
+    <div class="big" style="text-align:center;font-size:34px">05:40</div>
+    <div style="height:4px;border-radius:3px;background:var(--surface-2);overflow:hidden;margin:10px 0">
+      <div style="height:100%;width:38%;background:linear-gradient(90deg,#0bbf4e,var(--green))"></div>
+    </div>
+    <div style="text-align:center;margin-top:8px"><span class="small">NEXT ROUND 3:45–4:00</span> &nbsp; <span class="green">Leaning OVER ↑ 77%</span></div>
+  </div>
+  <ul>
+    <li>Counts down to the round close. In the final <b>30s</b> it pulses faster, and the last <b>10s</b> the digits throb — your cue it's about to settle.</li>
+    <li><b>"Leaning OVER ↑ 77%"</b> is a <b>preview of the round after this one</b> — a heads-up, not the bet you're in. It firms up and locks in the final 2 minutes.</li>
+  </ul>
+
+  <!-- ⑥ CO-PILOT -->
+  <h2 id="copilot"><span class="ico">⑥</span>AI Co-Pilot (the read)</h2>
+  <p class="lede">The inputs that get blended into the Auto Pick. Each row is one <b>independent</b> opinion.</p>
+  <div class="demo">
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--separator)"><span class="small">Crowd · Kalshi</span><b>66% OVER</b></div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--separator)"><span class="small">AI · Gemini</span><b class="green">OVER · Medium</b></div>
+    <div style="display:flex;justify-content:space-between;padding:6px 0"><span class="small">Edge</span><span class="chip" style="color:var(--orange);padding:2px 8px">agrees w/ crowd</span></div>
+  </div>
+  <ul>
+    <li><b>Crowd · Kalshi</b> — the live prediction-market price (real money). The single best prior; hard to beat.</li>
+    <li><b>AI · Gemini/Claude</b> — the AI's own read + how sure it is. (The label shows whichever model you've connected; free Gemini by default.)</li>
+    <li><b>Edge</b> — <span class="amber">agrees w/ crowd</span> (rarely a real edge) or <b class="green">EDGE vs crowd</b> (the AI disagrees with the market — the rare, interesting case).</li>
+    <li>Lower down, <b>Model-only lean: 47% OVER</b> is just <b>one input</b> — the tiny learned model's standalone read. It is <b>not</b> the headline pick (the Auto Pick blends it with everything else), so don't be alarmed if it differs.</li>
+  </ul>
+
+  <!-- ⑦ TRACK RECORD -->
+  <h2 id="track"><span class="ico">⑦</span>Track Record — the 24/7 tracker</h2>
+  <p class="lede">A second, simpler picker that runs on the server <b>every 15 min, even when the app is closed</b>. It uses only free data (no AI) and grades itself — a reality check on the market.</p>
+
+  <div class="demo">
+    <div class="amber" style="font-weight:700;margin-bottom:8px">SKIP — no clear edge <span class="small">market 84% over · book −0.16</span></div>
+    <div class="statgrid">
+      <div class="s"><div class="v">10</div><div class="k">Bets</div></div>
+      <div class="s"><div class="v green">10</div><div class="k">Correct</div></div>
+      <div class="s"><div class="v green">100%</div><div class="k">Hit Rate</div></div>
+      <div class="s"><div class="v amber">SKIP</div><div class="k">Now</div></div>
+    </div>
+    <div style="text-align:center;font-size:12px;color:var(--label-3);margin-top:8px">Bet <span class="amber">21%</span> of <b style="color:#fff">47</b> rounds · <b style="color:#fff">53%</b> if it bet them all</div>
+  </div>
+
+  <h3>The 4 stats</h3>
+  <ul>
+    <li><b>Bets</b> = rounds it actually <b>committed</b> to (OVER/UNDER). <b>Correct</b> + <b>Hit Rate</b> are over those bets only.</li>
+    <li><b>Now</b> = its pick for the current round — or <b class="amber">SKIP</b> when it sees no clear edge.</li>
+  </ul>
+
+  <h3 class="amber">⚠️ Why 100% isn't magic — read this</h3>
+  <p>The tracker <b>SKIPs</b> every coin-flip round and only bets the easy, lopsided ones. A <b>SKIP counts for nothing</b> — it isn't graded or scored. So "10 of 10" means <b>10 for 10 on the bets it chose</b>, not 10 of every round. That's why the <b>coverage line</b> matters:</p>
+  <p class="note"><span class="k">Bet 21% of 47 rounds</span> = it only bet 1 in 5 rounds (very selective). <span class="k">53% if it bet them all</span> = its honest hit-rate if it had bet <i>every</i> round — that's the number that shows whether the skipping actually adds an edge. A poker player who folds every weak hand also "wins 100%."</p>
+
+  <h3>Recent Rounds</h3>
+  <div class="demo">
+    <div style="display:grid;grid-template-columns:auto 1fr auto;gap:6px 10px;align-items:center;font-size:13px">
+      <span class="small">6:30 AM</span><b class="green">OVER</b><span class="green">✓ OVER</span>
+      <span class="small">6:15 AM</span><b class="red">UNDER</b><span class="red">✗ OVER</span>
+      <span class="small">6:00 AM</span><span style="color:var(--label-3);font-weight:700">SKIP</span><span style="color:var(--label-3)">sat out · UNDER <span class="small">(leaned OVER ✗)</span></span>
+    </div>
+  </div>
+  <ul>
+    <li><b class="green">OVER ✓ OVER</b> = it bet OVER and the round finished OVER — a win.</li>
+    <li><b class="red">UNDER ✗ OVER</b> = it bet UNDER but the round went OVER — a miss.</li>
+    <li><b style="color:var(--label-3)">SKIP · sat out</b> = it didn't bet. The grey <b>"(leaned OVER ✗)"</b> is the <b>shadow result</b> — which way it leaned and whether that would've won. Shadows don't count toward your hit-rate; they only build the honest "if it bet every round" number.</li>
+    <li>A round may show <b>"· settling"</b> until Kalshi confirms it.</li>
+  </ul>
+  <p class="note"><span class="k">Prime-entry record</span> tracks a separate experiment: betting <i>late</i> in a round when the outcome is nearly locked. It's there to test whether late entries beat betting at the open.</p>
+
+  <!-- ⑧ BEST -->
+  <h2 id="best"><span class="ico">⑧</span>Best bet &amp; all-coins ranking</h2>
+  <p class="lede">The sticky footer ranks <b>every coin</b> and surfaces the single strongest pick right now.</p>
+  <div class="demo">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span style="font-size:18px">🏆</span>
+      <div style="flex:1">
+        <div><b>Best now: SOL</b> <span class="green">OVER ↑</span> · 72%</div>
+        <div class="small">58% hit · strongest of 6 coins this round</div>
+      </div>
+      <span class="small">then BTC↑ DOGE↓ ⌄</span>
+    </div>
+  </div>
+  <ul>
+    <li>It ranks coins by a <b>confidence score</b> = how lopsided the pick is × how many independent reads agree × the coin's <b>shrunk</b> track record (a hot streak on 3 rounds won't outrank a real 50-round record). SKIPs are excluded.</li>
+    <li><b>Tap the bar</b> to expand the full ranking — each coin shows <b>"58% hit · bets 21%"</b> (its hit-rate when it bets, and how often it bets). <b>Tap a coin</b> to jump to it.</li>
+  </ul>
+
+  <!-- ⑨ CHART -->
+  <h2 id="chart"><span class="ico">⑨</span>The chart &amp; indicators</h2>
+  <ul>
+    <li><b>Live / 1m / 5m … 1M</b> — zoom out in time. <b>Line / Candles</b> — switch view.</li>
+    <li>The dashed <b>"beat $X (Kalshi)"</b> line is the level to clear. <b>Green fill above</b> = OVER winning right now; <b>red below</b> = UNDER winning.</li>
+    <li><b>H / L</b> labels mark the round's high and low. </li>
+    <li><b>Indicators</b> row (RSI / MACD / Stoch / EMA / Boll) adds mini-panes or overlays — momentum &amp; trend tools the model and AI also read.</li>
+    <li><b>Pinch / scroll to zoom, drag to pan, double-tap to reset.</b> Hover (or long-press on mobile) for a crosshair with exact price + time.</li>
+  </ul>
+
+  <!-- ⑩ IDEAS -->
+  <h2 id="ideas"><span class="ico">⑩</span>Key ideas &amp; glossary</h2>
+  <div class="card">
+    <h3>SKIP</h3>
+    <p>No clear edge — sit this round out. The 24/7 tracker SKIPs most rounds on purpose; a skip is <b>never scored</b>.</p>
+    <h3>Confluence</h3>
+    <p>When several <b>independent</b> reads (crowd, momentum, order book, the learned model) point the <b>same way</b>. The tracker only commits when they agree — that's the only real edge on a near-random market.</p>
+    <h3>Favorite-longshot bias</h3>
+    <p>A well-documented market quirk: heavy <b>favorites are slightly under-priced</b> (they win a touch more than their price implies) and cheap longshots are over-priced. The app leans gently into clear favorites.</p>
+    <h3>Panic-fade</h3>
+    <p>Moderate moves tend to continue, but a <b>violent, extreme spike</b> usually snaps back. So the app rides normal drift but <b>fades the over-reaction</b>.</p>
+    <h3>Confirmed vs settling</h3>
+    <p><b>Confirmed</b> = graded against Kalshi's own settled result (matches Robinhood, never changes). <b>Settling</b> = a provisional Coinbase grade, waiting on Kalshi.</p>
+    <h3>Coverage &amp; shadow hit-rate</h3>
+    <p><b>Coverage / bet-rate</b> = how often it actually bets vs skips. <b>"If it bet every round"</b> = its hit-rate including the rounds it sat out (shadow-graded) — the honest test of whether skipping helps.</p>
+    <h3>The learned model</h3>
+    <p>A tiny model that learns, per coin, how the round-open signals map to OVER/UNDER. 15-minute direction is near-random, so it's a <b>faint, calibrated tilt</b>, never a crystal ball.</p>
+    <h3>Alerts 🔔</h3>
+    <p>Turn on alerts (AI Co-Pilot setup, or the Worker's ntfy push) to get pinged <b>only on high-confidence, non-SKIP picks</b> — a coin it's willing to bet and several reads agree.</p>
+  </div>
+
+  <div class="foot">
+    Predicting 15-minute crypto direction is close to a coin-flip — these tools are faint, honest tilts and disciplined skipping, not a money printer. For tracking only · not financial advice.
+    <br><br><a class="back" href="eth-tracker.html" style="margin-top:6px">← Back to tracker</a>
+  </div>
+</body>
+</html>

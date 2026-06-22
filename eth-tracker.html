@@ -143,6 +143,9 @@
 
   /* ---------- Header ---------- */
   .topbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 2px 18px; }
+  .topbar .brandText { flex: 1 1 auto; min-width: 0; }
+  .guideBtn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--label); text-decoration: none; background: var(--surface-2); border: 1px solid var(--separator); border-radius: 999px; padding: 7px 13px; margin-right: 10px; white-space: nowrap; flex: 0 0 auto; transition: border-color .18s, color .18s; }
+  .guideBtn:hover { border-color: rgba(48,209,88,.5); color: var(--green); }
   .appname { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
   .live { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--label-2); }
   .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: livepulse 2s infinite; }
@@ -619,6 +622,7 @@
       <div class="appname" id="title">15-Min Tracker</div>
       <div class="brandSub" id="brandSub">Live terminal · ETH selected</div>
     </div>
+    <a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat">📖 Guide</a>
     <div class="live navLive"><span class="dot"></span> Live</div>
   </div>
 
@@ -2962,17 +2966,24 @@
     // SAME outcome — they can't disagree, and they converge to exactly what Robinhood settled. Rounds
     // not yet Kalshi-confirmed are flagged "settling" so a provisional grade is never mistaken for final.
     var log = (state.moveLog && state.moveLog[state.coin]) || {};
-    var graded = 0, correctN = 0, confirmedN = 0;
+    // GATE everything by this coin's last Clear timestamp — so a clear STICKS even if the worker
+    // record lags / restores (KV is eventually-consistent, and a cron can re-save before the reset
+    // propagates). Rounds before the clear are hidden here exactly as the arrows already hide them,
+    // and the stats + coverage are recomputed from the gated rows. Nothing pre-clear can come back.
+    var clrB = state.clearTs && state.clearTs[state.coin] ? Math.floor(state.clearTs[state.coin] / 900000) : 0;
+    var graded = 0, correctN = 0, confirmedN = 0, seenN = 0, shadowCorrectN = 0;
     var rows = (d.history || []).map(function (h) {
       var b = h.ts ? Math.floor(h.ts / 900000) : null;
+      if (clrB && b != null && b < clrB) return "";                                   // hide rounds from before the last Clear
       var e = (b != null) ? log[b] : null;
       var actual = e ? (e.d > 0 ? "OVER" : "UNDER") : h.actual;                       // moveLog (Kalshi-priority) wins
       if (actual !== "OVER" && actual !== "UNDER") return "";                          // not graded yet
       var isKalshi = (e && (e.lvl != null ? e.lvl : 1) >= 2) || h.src === "kalshi";    // confirmed against Kalshi's settled result
       var settling = isKalshi ? '' : ' <span style="color:var(--label-3);font-size:10px;font-weight:600">· settling</span>';
       var tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
-      if (h.side === "SKIP" || h.skipped) {                                            // sat-out round — shown, but NOT scored; the lean is shadow-graded
-        var lean = (h.lean === "OVER" || h.lean === "UNDER") ? h.lean : null;
+      var lean = (h.lean === "OVER" || h.lean === "UNDER") ? h.lean : ((h.side === "OVER" || h.side === "UNDER") ? h.side : null);
+      if (lean) { seenN++; if (lean === actual) shadowCorrectN++; }                    // shadow tally: every round by the side it leaned
+      if (h.side === "SKIP" || h.skipped) {                                            // sat-out round — shown, but NOT scored
         var leanOk = lean && lean === actual;
         return '<div class="hrow s"><span class="htime">' + tlabel + '</span>' +
           '<span class="hpred skip">SKIP</span>' +
@@ -2985,20 +2996,18 @@
         '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
         '<span class="hres ' + w + '">' + (correct ? "✓ " : "✗ ") + actual + settling + '</span></div>';
     }).join("");
-    $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet.</div>';
+    $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet — rebuilding as new rounds settle.</div>';
     $("aGraded").textContent = graded;
     $("aCorrect").textContent = correctN;
     $("aHit").textContent = graded ? Math.round(correctN / graded * 100) + "%" : "—";
     $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");
     $("aHit").title = confirmedN < graded ? (confirmedN + " of " + graded + " confirmed vs Kalshi; the rest still settling") : "all confirmed vs Kalshi";
-    // Coverage + the honest "if it bet every round" hit-rate (shadow-graded server-side over all rounds).
+    // Coverage + "if it bet every round" — computed from the SAME gated rows, so it respects Clear too.
     var cov = $("autoCoverage");
     if (cov) {
-      var seen = (typeof d.shadowGraded === "number") ? d.shadowGraded : (d.seen || 0);
-      if (seen && graded <= seen) {
-        var betRate = Math.round(graded / seen * 100);
-        cov.innerHTML = 'Bet <span class="cov-skip">' + betRate + '%</span> of <b>' + seen + '</b> rounds' +
-          (typeof d.shadowHitPct === "number" ? ' · <b>' + d.shadowHitPct + '%</b> if it bet them all' : '');
+      if (seenN && graded <= seenN) {
+        var betRate = Math.round(graded / seenN * 100), shadowHit = Math.round(shadowCorrectN / seenN * 100);
+        cov.innerHTML = 'Bet <span class="cov-skip">' + betRate + '%</span> of <b>' + seenN + '</b> rounds · <b>' + shadowHit + '%</b> if it bet them all';
       } else cov.innerHTML = '';
     }
     _autoHistLen = (d.history || []).length;
