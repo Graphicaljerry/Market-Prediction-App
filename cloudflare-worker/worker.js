@@ -77,6 +77,11 @@ export default {
         if (coin) return json(st.coins[coin] || { coin, empty: true });
         return json(st.coins || {});
       }
+      // Best bet across all coins right now — a compact ranked leaderboard for the app's footer ticker.
+      if (u.searchParams.has("best")) {
+        const st = await loadState(env);
+        return json({ best: rankBest(st), ts: Date.now() });
+      }
       // One-time cleanup: ?reset=ETH zeroes the auto-tracker's record for a coin (hit-rate
       // counters + history + pending) so it rebuilds on correctly-graded rounds only. The learned
       // model is kept by default (it self-heals); add &model=1 to wipe that too. Honors
@@ -724,6 +729,32 @@ function freePick(crowdOverPct, mom, obi, modelOver) {
   const band = 0.08 + 0.10 * (1 - conf);
   const side = pOver >= 0.5 + band ? "OVER" : pOver <= 0.5 - band ? "UNDER" : "SKIP";
   return { pOver, side, conf: Math.round(conf * 100) / 100, agree: agreeN };
+}
+// Rank all coins by how confident their CURRENT-round pick is, for the app's "best bet now" ticker.
+// Confidence = how lopsided the pick is (edge) × how much INDEPENDENT confluence backs it (conf) ×
+// the coin's shrunk historical reliability (a real track record is trusted more, but only once it
+// has the samples to mean something). SKIP picks are excluded — there's no confident bet there.
+function rankBest(st) {
+  const out = [];
+  for (const coin of AUTO_COINS) {
+    const rec = st.coins && st.coins[coin];
+    const p = rec && rec.pending;
+    if (!p || (p.side !== "OVER" && p.side !== "UNDER") || typeof p.prob !== "number") continue;
+    const edge = Math.max(0, (p.prob - 50) / 50);                       // 0 … ~0.9 — how lopsided
+    const conf = typeof p.conf === "number" ? p.conf : 0.5;            // confluence share, 0 … 1
+    const n = rec.graded || 0, shr = Math.min(1, n / 30);              // trust the record only with samples
+    const reliab = typeof rec.hitRatePct === "number" ? (0.5 + (rec.hitRatePct / 100 - 0.5) * shr) : 0.5;
+    const score = edge * (0.6 + 0.4 * conf) * (0.6 + 0.8 * reliab);
+    out.push({
+      coin, side: p.side, prob: p.prob,
+      conf: typeof p.conf === "number" ? Math.round(p.conf * 100) / 100 : null,
+      agree: typeof p.agree === "number" ? p.agree : null,
+      hitRatePct: typeof rec.hitRatePct === "number" ? rec.hitRatePct : null,
+      graded: n, closeMs: p.closeMs || null, score: Math.round(score * 1000) / 1000,
+    });
+  }
+  out.sort((a, b) => b.score - a.score);
+  return out;
 }
 async function kvGetRaw(env, key) {
   try { if (!env.CROWD_KV) return null; const s = await env.CROWD_KV.get(key); return s ? JSON.parse(s) : null; } catch (_) { return null; }
