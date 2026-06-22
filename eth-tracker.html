@@ -390,6 +390,11 @@
   /* ---------- Mini live chart ---------- */
   .miniChart { width: 100%; height: 120px; display: block; margin-top: 12px; border-radius: 10px; background: rgba(44,44,46,0.50); touch-action: pan-y; cursor: crosshair; -webkit-tap-highlight-color: transparent; }
   .miniChartLbl { font-size: 11.5px; color: var(--label-3); text-align: center; margin-top: 7px; font-weight: 500; }
+  .subPane { width: 100%; height: 74px; display: none; margin-top: 6px; border-radius: 8px; background: rgba(44,44,46,0.5); touch-action: pan-y; }
+  .indBar { display: flex; align-items: center; gap: 7px; margin-top: 11px; flex-wrap: wrap; }
+  .indBar .indLbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--label-3); }
+  .indBar button { font: inherit; font-size: 12px; font-weight: 700; padding: 5px 13px; border-radius: 8px; border: 1px solid var(--separator); background: var(--surface-2); color: var(--label-2); cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .indBar button.active { background: rgba(10,132,255,.16); border-color: rgba(10,132,255,.5); color: #4da3ff; }
   /* timeframe zoom selector above the chart */
   .tfBar { display: flex; gap: 4px; margin-top: 16px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; touch-action: pan-x; }
   .tfBar::-webkit-scrollbar { display: none; }
@@ -654,6 +659,9 @@
     </div>
     </div>
     <canvas id="miniChart" class="miniChart"></canvas>
+    <canvas id="rsiPane" class="subPane"></canvas>
+    <canvas id="macdPane" class="subPane"></canvas>
+    <div class="indBar" id="indBar"><span class="indLbl">Indicators</span><button type="button" data-ind="rsi">RSI</button><button type="button" data-ind="macd">MACD</button></div>
     <div class="miniChartLbl" id="miniChartLbl">Live price vs the line you must beat</div>
   </div>
   </div>
@@ -761,7 +769,7 @@
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, leanDir: null, leanFlips: 0, obi: null,
-    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null,
+    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false },
     chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
     hiConvOnly: (function () { try { return localStorage.getItem("hiConvOnly_v1") === "1"; } catch (e) { return false; } })() };
 
@@ -1685,6 +1693,98 @@
         : (state.chartTF + " · " + def.span + " — now " + (dd >= 0 ? "+" : "−") + fmtMoney(Math.abs(dd)) + " " + (dd >= 0 ? "above" : "below") + " the line");
     }
   }
+  // ---------- RSI / MACD sub-panes (drawn from the same chartPts as the price chart, so they line up) ----------
+  function emaArr(vals, period) {
+    var k = 2 / (period + 1), out = [], prev = null, i;
+    for (i = 0; i < vals.length; i++) {
+      if (vals[i] == null) { out.push(null); continue; }
+      prev = (prev == null) ? vals[i] : (vals[i] * k + prev * (1 - k));
+      out.push(prev);
+    }
+    return out;
+  }
+  function rsiArr(closes, period) {
+    period = period || 14;
+    var out = [], z; for (z = 0; z < closes.length; z++) out.push(null);
+    if (closes.length < period + 1) return out;
+    var gain = 0, loss = 0, i, ch;
+    for (i = 1; i <= period; i++) { ch = closes[i] - closes[i - 1]; if (ch >= 0) gain += ch; else loss -= ch; }
+    var ag = gain / period, al = loss / period;
+    out[period] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+    for (i = period + 1; i < closes.length; i++) {
+      ch = closes[i] - closes[i - 1];
+      ag = (ag * (period - 1) + (ch > 0 ? ch : 0)) / period;
+      al = (al * (period - 1) + (ch < 0 ? -ch : 0)) / period;
+      out[i] = al === 0 ? 100 : 100 - 100 / (1 + ag / al);
+    }
+    return out;
+  }
+  function macdArr(closes, fast, slow, sig) {
+    var ef = emaArr(closes, fast || 12), es = emaArr(closes, slow || 26), macd = [], i;
+    for (i = 0; i < closes.length; i++) macd.push((ef[i] != null && es[i] != null) ? ef[i] - es[i] : null);
+    var signal = emaArr(macd, sig || 9), hist = [];
+    for (i = 0; i < closes.length; i++) hist.push((macd[i] != null && signal[i] != null) ? macd[i] - signal[i] : null);
+    return { macd: macd, signal: signal, hist: hist };
+  }
+  function loadInd() { try { var o = JSON.parse(localStorage.getItem("chartInd_v1") || "{}"); state.ind = { rsi: !!o.rsi, macd: !!o.macd }; } catch (e) { state.ind = { rsi: false, macd: false }; } }
+  function saveInd() { try { localStorage.setItem("chartInd_v1", JSON.stringify(state.ind || {})); } catch (e) {} }
+  function sizePane(cv) {
+    var W = cv.clientWidth || cv.offsetWidth || 300, H = cv.clientHeight || 74, dpr = window.devicePixelRatio || 1;
+    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    var ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
+    return { ctx: ctx, W: W, H: H };
+  }
+  function paneHoverLine(ctx, W, H) {
+    if (state.hoverX == null) return;
+    var x = Math.max(0, Math.min(W, state.hoverX));
+    ctx.save(); ctx.strokeStyle = "rgba(235,235,245,.28)"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); ctx.restore();
+  }
+  function paneMsg(ctx, W, H, msg) {
+    ctx.fillStyle = "rgba(235,235,245,.3)"; ctx.font = "11px -apple-system, system-ui, sans-serif";
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(msg, W / 2, H / 2); ctx.textBaseline = "alphabetic";
+  }
+  function drawRSIPane(cv, closes, xs) {
+    var s = sizePane(cv), ctx = s.ctx, W = s.W, H = s.H;
+    if (!closes || closes.length < 16) { paneMsg(ctx, W, H, "RSI · need more candles — pick a 1m+ timeframe"); return; }
+    var rsi = rsiArr(closes, 14);
+    function Y(v) { return 5 + (1 - v / 100) * (H - 10); }
+    ctx.strokeStyle = "rgba(235,235,245,.07)"; ctx.lineWidth = 1;
+    [30, 50, 70].forEach(function (lv) { var y = Y(lv); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); });
+    ctx.strokeStyle = "#0a84ff"; ctx.lineWidth = 1.5; ctx.lineJoin = "round"; ctx.beginPath();
+    var started = false, i;
+    for (i = 0; i < rsi.length; i++) { if (rsi[i] == null) continue; if (!started) { ctx.moveTo(xs[i], Y(rsi[i])); started = true; } else ctx.lineTo(xs[i], Y(rsi[i])); }
+    ctx.stroke();
+    paneHoverLine(ctx, W, H);
+    var li = rsi.length - 1; while (li >= 0 && rsi[li] == null) li--;
+    ctx.font = "9px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "left"; ctx.textBaseline = "alphabetic";
+    ctx.fillStyle = "rgba(235,235,245,.5)"; ctx.fillText("RSI 14" + (li >= 0 ? "  " + Math.round(rsi[li]) : ""), 4, 11);
+    ctx.textAlign = "right"; ctx.fillStyle = "rgba(235,235,245,.3)"; ctx.fillText("70", W - 3, Y(70) + 9); ctx.fillText("30", W - 3, Y(30) - 2);
+    if (li >= 0) { var lv = rsi[li], col = lv >= 70 ? "#ff453a" : lv <= 30 ? "#30d158" : "#0a84ff"; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(xs[li], Y(lv), 2.5, 0, Math.PI * 2); ctx.fill(); }
+  }
+  function drawMACDPane(cv, closes, xs) {
+    var s = sizePane(cv), ctx = s.ctx, W = s.W, H = s.H;
+    if (!closes || closes.length < 35) { paneMsg(ctx, W, H, "MACD · need more candles — pick a 1m+ timeframe"); return; }
+    var m = macdArr(closes, 12, 26, 9), vals = [], i;
+    for (i = 0; i < closes.length; i++) { if (m.macd[i] != null) vals.push(Math.abs(m.macd[i])); if (m.signal[i] != null) vals.push(Math.abs(m.signal[i])); if (m.hist[i] != null) vals.push(Math.abs(m.hist[i])); }
+    var mx = vals.length ? Math.max.apply(null, vals) : 1; if (!(mx > 0)) mx = 1;
+    function Y(v) { return H / 2 - (v / mx) * (H / 2 - 6); }
+    ctx.strokeStyle = "rgba(235,235,245,.10)"; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, Y(0)); ctx.lineTo(W, Y(0)); ctx.stroke();
+    var bw = Math.max(1, W / closes.length * 0.66);
+    for (i = 0; i < closes.length; i++) { if (m.hist[i] == null) continue; var y0 = Y(0), y = Y(m.hist[i]); ctx.fillStyle = m.hist[i] >= 0 ? "rgba(48,209,88,.5)" : "rgba(255,69,58,.5)"; ctx.fillRect(xs[i] - bw / 2, Math.min(y0, y), bw, Math.max(1, Math.abs(y - y0))); }
+    function line(arr, col) { ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.lineJoin = "round"; ctx.beginPath(); var st = false, j; for (j = 0; j < arr.length; j++) { if (arr[j] == null) continue; if (!st) { ctx.moveTo(xs[j], Y(arr[j])); st = true; } else ctx.lineTo(xs[j], Y(arr[j])); } ctx.stroke(); }
+    line(m.macd, "#0a84ff"); line(m.signal, "#ff9f0a");
+    paneHoverLine(ctx, W, H);
+    ctx.font = "9px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "left"; ctx.fillStyle = "rgba(235,235,245,.5)"; ctx.fillText("MACD 12,26,9", 4, 11);
+  }
+  function drawSubPanes() {
+    if (!state.ind) state.ind = { rsi: false, macd: false };
+    var pts = state.chartPts, closes = null, xs = null;
+    if (pts && pts.length) { closes = pts.map(function (p) { return p.candle ? p.c : p.p; }); xs = pts.map(function (p) { return p.x; }); }
+    var rEl = $("rsiPane"), mEl = $("macdPane");
+    if (rEl) { if (state.ind.rsi) { rEl.style.display = "block"; drawRSIPane(rEl, closes, xs); } else rEl.style.display = "none"; }
+    if (mEl) { if (state.ind.macd) { mEl.style.display = "block"; drawMACDPane(mEl, closes, xs); } else mEl.style.display = "none"; }
+  }
   function drawMiniChart() {
     var cv = $("miniChart"); if (!cv || !cv.getContext) return;
     var W = cv.clientWidth || cv.offsetWidth || 300, H = cv.clientHeight || 120, dpr = window.devicePixelRatio || 1;
@@ -1692,10 +1792,11 @@
     state.chartPts = null;   // rebuilt by the draw fn below — the hit map the crosshair scrubs against
     if (state.chartTF && state.chartTF !== "live") {
       var ctx2 = cv.getContext("2d"); ctx2.setTransform(dpr, 0, 0, dpr, 0, 0); ctx2.clearRect(0, 0, W, H);
-      drawTFChart(cv, ctx2, W, H, dpr); drawChartCrosshair(ctx2, W, H); return;
+      drawTFChart(cv, ctx2, W, H, dpr); drawChartCrosshair(ctx2, W, H); drawSubPanes(); return;
     }
     drawLiveChart(cv, W, H, dpr);
     drawChartCrosshair(cv.getContext("2d"), W, H);
+    drawSubPanes();
   }
   function drawLiveChart(cv, W, H, dpr) {
     if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
@@ -2209,6 +2310,11 @@
   });
   Array.prototype.forEach.call(document.querySelectorAll("#chartType button"), function (b) {
     b.addEventListener("click", function () { setChartType(b.getAttribute("data-ct")); });
+  });
+  loadInd();
+  Array.prototype.forEach.call(document.querySelectorAll("#indBar button"), function (b) {
+    var k = b.getAttribute("data-ind"); b.classList.toggle("active", !!(state.ind && state.ind[k]));
+    b.addEventListener("click", function () { state.ind = state.ind || {}; state.ind[k] = !state.ind[k]; saveInd(); b.classList.toggle("active", state.ind[k]); drawMiniChart(); });
   });
   setChartType(state.chartType);   // reflect the saved Line/Candles preference on load
   (function () {
