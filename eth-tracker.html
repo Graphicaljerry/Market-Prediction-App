@@ -2654,11 +2654,21 @@
       lat.className = "autoLatest " + cls;
       lat.innerHTML = (p.side === "SKIP" ? "SKIP — no clear edge" : "Auto pick: " + p.side + " · " + p.prob + "%") + '<span class="sub">' + sub + '</span>';
     } else { lat.className = "autoLatest"; lat.textContent = ""; }
+    // Correct each row's OUTCOME with the client's own grading (the same accurate source the arrows
+    // use), so the Recent Rounds list can't disagree with the arrows. Falls back to the worker's
+    // verdict for rounds the client never saw (app closed). Matched by the round's 15-min bucket.
+    var cmap = {};
+    (state.rounds || []).forEach(function (r) {
+      if (r.coin === state.coin && r.endMs && (r.actual === "OVER" || r.actual === "UNDER")) cmap[Math.floor((r.endMs - 900000) / 900000)] = r.actual;
+    });
     var rows = (d.history || []).map(function (h) {
-      var w = h.correct ? "w" : "l", tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
+      var actual = h.actual, correct = h.correct;
+      var cb = h.ts ? cmap[Math.floor(h.ts / 900000)] : null;
+      if ((cb === "OVER" || cb === "UNDER") && cb !== actual) { actual = cb; correct = (h.side === actual); }   // trust the client's accurate verdict
+      var w = correct ? "w" : "l", tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
       return '<div class="hrow ' + w + '"><span class="htime">' + tlabel + '</span>' +
         '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
-        '<span class="hres ' + w + '">' + (h.correct ? "✓ " : "✗ ") + h.actual + '</span></div>';
+        '<span class="hres ' + w + '">' + (correct ? "✓ " : "✗ ") + actual + '</span></div>';
     }).join("");
     $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet.</div>';
     _autoHistLen = (d.history || []).length;
