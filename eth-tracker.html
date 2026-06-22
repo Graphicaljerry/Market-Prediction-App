@@ -2898,11 +2898,7 @@
     renderMoveStrip();                                // refresh the "Recent 15-min" arrows from the freshly graded history
     var has = d && !d.empty && (d.pending || (d.history && d.history.length));
     if (!has) return;   // stay visible with the warming-up placeholder — the tracker is the primary scoreboard now
-    var graded = d.graded || 0, correct = d.correct || 0, p = d.pending;
-    $("aGraded").textContent = graded;
-    $("aCorrect").textContent = correct;
-    $("aHit").textContent = graded ? Math.round(correct / graded * 100) + "%" : "—";
-    $("aHit").className = "v mono " + (graded ? (correct / graded >= 0.5 ? "pos" : "neg") : "");
+    var p = d.pending;
     $("aPick").textContent = p ? p.side : "—";
     $("aPick").className = "v mono " + (p && p.side === "OVER" ? "pos" : p && p.side === "UNDER" ? "neg" : "");
     var lat = $("autoLatest");
@@ -2912,23 +2908,35 @@
       lat.className = "autoLatest " + cls;
       lat.innerHTML = (p.side === "SKIP" ? "SKIP — no clear edge" : "Auto pick: " + p.side + " · " + p.prob + "%") + '<span class="sub">' + sub + '</span>';
     } else { lat.className = "autoLatest"; lat.textContent = ""; }
-    // Correct each row's OUTCOME with the client's own grading (the same accurate source the arrows
-    // use), so the Recent Rounds list can't disagree with the arrows. Falls back to the worker's
-    // verdict for rounds the client never saw (app closed). Matched by the round's 15-min bucket.
+    // Reconcile each row's OUTCOME to the MOST accurate source, and adjust the headline Correct /
+    // Hit-Rate by the SAME correction so the stats can NEVER disagree with the Recent Rounds shown
+    // (the bug where every row showed a loss but the hit-rate stayed 100%). Priority: a Kalshi-
+    // confirmed worker row (src="kalshi") is the definitive truth and is trusted as-is; an as-yet
+    // provisional worker row is corrected by the client's own grade (the same source the arrows use).
     var cmap = {};
     (state.rounds || []).forEach(function (r) {
       if (r.coin === state.coin && r.endMs && (r.actual === "OVER" || r.actual === "UNDER")) cmap[Math.floor((r.endMs - 900000) / 900000)] = r.actual;
     });
+    var flipDelta = 0;   // net change the reconciliation makes to the aggregate "correct" count
     var rows = (d.history || []).map(function (h) {
       var actual = h.actual, correct = h.correct;
       var cb = h.ts ? cmap[Math.floor(h.ts / 900000)] : null;
-      if ((cb === "OVER" || cb === "UNDER") && cb !== actual) { actual = cb; correct = (h.side === actual); }   // trust the client's accurate verdict
+      if (h.src !== "kalshi" && (cb === "OVER" || cb === "UNDER") && cb !== actual) {   // never override Kalshi truth
+        actual = cb; var nc = (h.side === actual);
+        if (h.correct && !nc) flipDelta--; else if (!h.correct && nc) flipDelta++;
+        correct = nc;
+      }
       var w = correct ? "w" : "l", tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
       return '<div class="hrow ' + w + '"><span class="htime">' + tlabel + '</span>' +
         '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
         '<span class="hres ' + w + '">' + (correct ? "✓ " : "✗ ") + actual + '</span></div>';
     }).join("");
     $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet.</div>';
+    var graded = d.graded || 0, correctN = Math.max(0, Math.min(graded, (d.correct || 0) + flipDelta));
+    $("aGraded").textContent = graded;
+    $("aCorrect").textContent = correctN;
+    $("aHit").textContent = graded ? Math.round(correctN / graded * 100) + "%" : "—";
+    $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");
     _autoHistLen = (d.history || []).length;
     updateSeeMore("autoHistory", "moreAuto", _autoHistLen);
     // what the per-coin online model has learned
@@ -2939,7 +2947,7 @@
       var modelNow = (p && typeof p.modelOver === "number") ? p.modelOver : null;
       if (lr && (items.length || modelNow != null)) {
         le.innerHTML = '<div class="lh">What the model has learned · ' + (lr.confidence || "warming up") + ' · ' + (lr.n || 0) + ' rounds</div>' +
-          (modelNow != null ? '<div>Current read: <span class="pnow">' + modelNow + '% OVER</span></div>' : '') +
+          (modelNow != null ? '<div>Model-only lean: <span class="pnow">' + modelNow + '% OVER</span> <span style="color:var(--label-3)">— just one input; the Auto pick above blends it with the market &amp; flow</span></div>' : '') +
           (items.length ? '<ul>' + items.map(function (t) { return '<li>' + t + '</li>'; }).join("") + '</ul>' : '') +
           '<div style="color:var(--label-3);margin-top:6px">15-min direction is near-random — these are faint tilts, not certainties.</div>';
       } else { le.innerHTML = ""; }
