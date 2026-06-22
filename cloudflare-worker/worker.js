@@ -452,9 +452,21 @@ function extractJson(text) {
 }
 
 // --- Providers ----------------------------------------------------------
+// The app sends a model id, but it may belong to a DIFFERENT provider than the Worker is set to
+// (e.g. the dropdown is on a Claude model while AI_PROVIDER=gemini). Only honor the app's model when
+// it matches the active provider; otherwise fall back to AI_MODEL or the provider default — so
+// switching providers in the dashboard "just works" without also changing the app's dropdown.
+function modelForProvider(provider, model, env) {
+  const m = (model || "").toLowerCase();
+  const matches = provider === "anthropic" ? m.startsWith("claude")
+    : provider === "gemini" ? m.startsWith("gemini")
+    : provider === "groq" ? (m.includes("llama") || m.includes("mixtral") || m.includes("gemma") || m.includes("qwen") || m.includes("groq"))
+    : false;
+  return (matches && model) ? String(model).trim() : (env.AI_MODEL || DEFAULT_MODELS[provider]);
+}
 async function getAIRead(env, provider, body, crowd, autopicks) {
   const prompt = buildPrompt(body, crowd, autopicks);
-  const model = (body.model && String(body.model).trim()) || env.AI_MODEL || DEFAULT_MODELS[provider];
+  const model = modelForProvider(provider, body.model, env);
   if (provider === "anthropic") return readAnthropic(env.ANTHROPIC_API_KEY, model, prompt);
   if (provider === "gemini") return readGemini(env.GEMINI_API_KEY, model, prompt);
   if (provider === "groq") return readGroq(env.GROQ_API_KEY, model, prompt);
