@@ -685,7 +685,7 @@
 
   <!-- TRACK RECORD — 24/7 auto-tracker (server-side, free; grades a round every 15 min even when the app is closed) -->
   <div class="module m-autotracker" id="autoMod">
-  <div class="sec">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button></div>
+  <div class="sec">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start the log fresh">Clear log</button></div>
   <div class="card flat">
     <div id="autoLatest" class="autoLatest"></div>
     <div class="scoreGrid">
@@ -1899,12 +1899,16 @@
   }
   function finalizeGrade(pr, close, src) {
     var ref = pr.marketStrike != null ? pr.marketStrike : pr.openPrice;
-    var actual = (ref != null && close != null) ? (close > ref ? "OVER" : close < ref ? "UNDER" : "FLAT") : null;
+    // Settle the way Kalshi / CF Benchmarks actually do — on the ~60-sec average over the final
+    // minute (when we captured enough live ticks), NOT a single boundary tick. The candle close is
+    // still shown as "closed at $X"; the 60-sec average is what decides OVER/UNDER on thin rounds.
+    var settle = (pr.avg60 != null) ? pr.avg60 : close;
+    var actual = (ref != null && settle != null) ? (settle > ref ? "OVER" : settle < ref ? "UNDER" : "FLAT") : null;
     var rec = {
       coin: pr.coin, time: pr.endLabel, pick: pr.pickDir, actual: actual,
-      close: close, ref: ref, openPrice: pr.openPrice, src: src, avg60: pr.avg60 != null ? pr.avg60 : null,
+      close: close, ref: ref, openPrice: pr.openPrice, src: src, avg60: pr.avg60 != null ? pr.avg60 : null, settle: settle,
       endMs: pr.openTime + 900000,        // round close time — lets the arrow strip place it without waiting for the worker
-      pct: ref ? (close - ref) / ref * 100 : 0, feat: pr.feat || null
+      pct: ref ? (settle - ref) / ref * 100 : 0, feat: pr.feat || null   // move shown matches the side it settled
     };
     state.lastSettled = rec;                   // drives the real-time "last close" readout
     // Log EVERY round that resolved, so you can SEE the rounds happening — but only SCORE the ones
@@ -1937,10 +1941,10 @@
     var tail = graded ? (r.correct ? " · pick won ✓" : " · pick missed ✗") : (r.pick === "SKIP" ? " · sat out" : "");
     var sub = "";
     if (r.avg60 != null) {
-      var avgSide = sideVs(r.avg60, r.ref), diff = avgSide && r.actual && avgSide !== r.actual;
-      sub = '<span class="lcSub' + (diff ? " warn" : "") + '">' +
-        "Kalshi-style 60-sec avg " + fmtMoney(r.avg60) + " → " + (avgSide || "—") +
-        (diff ? " — official settle may differ" : " · same side") + "</span>";
+      var closeSide = sideVs(r.close, r.ref), thin = closeSide && r.actual && closeSide !== r.actual;
+      sub = '<span class="lcSub' + (thin ? " warn" : "") + '">' +
+        "Settled on the Kalshi-style 60-sec avg " + fmtMoney(r.avg60) + " → " + r.actual +
+        (thin ? " · thin round — the last tick " + fmtMoney(r.close) + " was the other way" : "") + "</span>";
     }
     el.className = "lastClose " + cls;
     el.innerHTML = '<span class="lcLbl">Last round ' + disp12(r.time) + '</span>' +
@@ -2020,14 +2024,14 @@
       state.rounds.forEach(function (r) {
         var scored = r.correct !== undefined;             // false for sat-out rounds (listed, not scored)
         var moveStr = (r.pct >= 0 ? "+" : "") + r.pct.toFixed(2) + "%";
-        var split = r.avg60 != null && r.ref != null && sideVs(r.avg60, r.ref) && sideVs(r.avg60, r.ref) !== r.actual;
+        var split = r.avg60 != null && r.ref != null && sideVs(r.close, r.ref) && sideVs(r.close, r.ref) !== r.actual;   // thin: single tick disagreed with the 60-sec settle
         var rowCls = !scored ? "s" : (r.correct ? "w" : "l");
         var predCls = r.pick === "OVER" ? "over" : r.pick === "UNDER" ? "under" : "skip";
         var resTxt = !scored ? "—" : (r.correct ? "✓" : "✗");
         html += '<div class="hrow ' + rowCls + '"><span class="htime mono">' + disp12(r.time) + '</span>' +
           '<span class="hpred ' + predCls + '">' + r.coin + " " + (scored ? r.pick : "sat out") + '</span>' +
           '<span class="hres ' + rowCls + '">' + resTxt + '</span>' +
-          '<span class="hmeta mono"' + (split ? ' title="Coinbase close and the 60-sec average landed on opposite sides — Kalshi may settle differently"' : '') + '>' + r.actual + (r.close != null ? " @ " + fmtMoney(r.close) : "") + (split ? " (!)" : "") + ' · ' + moveStr + '</span></div>';
+          '<span class="hmeta mono"' + (split ? ' title="Thin round — settled on the Kalshi-style 60-sec average; the single closing tick was the other way"' : '') + '>' + r.actual + (r.close != null ? " @ " + fmtMoney(r.close) : "") + (split ? " (!)" : "") + ' · ' + moveStr + '</span></div>';
       });
       $("history").innerHTML = html;
     }
@@ -2397,7 +2401,27 @@
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { var im = b.querySelector(".cico"); if (im) im.src = COIN_ICONS[b.getAttribute("data-coin")] || ""; });
   $("coinBadge").innerHTML = COIN_ICONS[state.coin] ? '<img alt="" src="' + COIN_ICONS[state.coin] + '">' : "";
   (function () { var s = $("coinSelect"); if (s) s.value = state.coin; var si = $("coinSelIcon"); if (si) si.src = COIN_ICONS[state.coin] || ""; })();
-  var _cl = $("clearLog"); if (_cl) _cl.addEventListener("click", function () { if (confirm("Clear all graded rounds and accuracy stats?")) { state.rounds = []; saveRounds(); renderAccuracy(); renderRounds(); } });
+  var _cl = $("clearLog"); if (_cl) _cl.addEventListener("click", function () {
+    var coin = state.coin;
+    if (!confirm("Start the " + coin + " log fresh?\n\nThis wipes the recorded rounds, the Recent-15-min arrows and the hit-rate — here AND on the 24/7 tracker — so they rebuild on newly-settled rounds only. The learned model is kept.")) return;
+    // 1) local log + arrows for this coin
+    state.rounds = state.rounds.filter(function (r) { return r.coin !== coin; });
+    saveRounds(); state.lastSettled = null; renderAccuracy(); renderRounds(); renderLastClose();
+    // 2) blank the 24/7 panel immediately (renderAutoTracker leaves stats untouched when empty)
+    state.lastAuto = null;
+    var z = { aGraded: "0", aCorrect: "0", aHit: "—", aPick: "—" };
+    Object.keys(z).forEach(function (id) { var e = $(id); if (e) { e.textContent = z[id]; e.className = "v mono"; } });
+    var al = $("autoLatest"); if (al) { al.className = "autoLatest"; al.textContent = ""; }
+    var alr = $("autoLearned"); if (alr) alr.innerHTML = "";
+    var ahy = $("autoHistory"); if (ahy) ahy.innerHTML = '<div class="empty">Cleared — rebuilding as new rounds settle.</div>';
+    renderMoveStrip();
+    // 3) zero the server record for this coin, then re-pull the fresh (empty) one
+    var rurl = workerGet({ reset: coin });
+    if (rurl) fetch(rurl, { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (res) {
+      if (res && res.ok) { _autoHistLen = 0; setTimeout(function () { fetchAutoTracker(coin, true); }, 1500); }
+      else if (ahy) ahy.innerHTML = '<div class="empty">Local log cleared. The 24/7 record couldn’t be reset from here' + (res && res.error ? " (" + res.error + ")" : "") + '.</div>';
+    }).catch(function () { if (ahy) ahy.innerHTML = '<div class="empty">Local log cleared — couldn’t reach the 24/7 tracker to reset it.</div>'; });
+  });
   (function () { var b = $("moreRounds"); if (b) b.addEventListener("click", function () { $("history").classList.toggle("collapsed"); updateSeeMore("history", "moreRounds", state.rounds.length); }); })();
   (function () { var b = $("moreAuto"); if (b) b.addEventListener("click", function () { $("autoHistory").classList.toggle("collapsed"); updateSeeMore("autoHistory", "moreAuto", _autoHistLen); }); })();
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);

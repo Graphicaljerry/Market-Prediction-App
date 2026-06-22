@@ -19,6 +19,13 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Accurate settlement + a Clear-log button.** The 24/7 grader now settles each round on the
+  **~60-second average** of trades over the final minute — the way Kalshi/CF Benchmarks actually
+  settle — instead of a single closing tick, so the log and the **Recent 15-min** arrows stop
+  disagreeing with Coinbase on razor-thin rounds (the client grades the same way, off its live
+  60-sec average; the candle close stays as the displayed "closed at $X"). A new **Clear log**
+  button in the Track Record header wipes the current coin's rounds, arrows and hit-rate — locally
+  **and** on the 24/7 tracker — for a clean restart after an engine change (the learned model is kept).
 - **Stays inside Cloudflare's free tier + a layer of motion polish.** The 24/7 Worker now saves the
   entire auto-tracker (every coin + the pooled learning model) as **one** KV record per cron run
   instead of ~7, and the 15-min cron no longer re-writes the crowd-odds cache (the app keeps that
@@ -302,7 +309,9 @@ A **scheduled** Worker (`crons = ["*/15 * * * *"]`) keeps an independent, always
 even when no tab is open — using **only free data and no LLM**, so it adds nothing to AI spend.
 Each run, per coin with a Kalshi series:
 
-1. Grades the previous round's pick (latest price vs the stored strike).
+1. Grades the previous round's pick — settling on a **~60-second average** of Coinbase trades over
+   the final minute (how Kalshi/CF Benchmarks actually settle), not a single tick, with the boundary
+   candle close as a fallback (`cbAvg60` → `cbCloseAt`).
 2. Makes a fresh pick the simple way: the **Kalshi market price** nudged by **1-min momentum**
    and **order-book imbalance**, with **SKIP** near 50/50 (`freePick`).
 3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV`. The whole auto-tracker —
