@@ -232,7 +232,7 @@
     body { max-width: 1480px; }
     .price { font-size: 50px; }
     .brandSub, .navExch { display: flex; }
-    .layout { display: grid; grid-template-columns: 320px minmax(0,1fr) 340px; gap: 20px; align-items: center;
+    .layout { display: grid; grid-template-columns: 320px minmax(0,1fr) 340px; gap: 20px; align-items: start;
       grid-template-areas:
         "hero   chart  timer"
         "signal chart  read"
@@ -241,6 +241,9 @@
         "ind    ind    ind"; }
     /* fixed, stable chart height on desktop — no longer stretches to match the side columns */
     .m-chart { align-self: start; }
+    /* drop the breadcrumb on desktop too (already hidden on phone/tablet) so the chart card's top
+       lines up with the price card's top — the timeframe buttons already convey the pair/interval */
+    .m-chart .chartSec { display: none; }
     .m-chart .miniChart { height: 600px; }
   }
 
