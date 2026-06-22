@@ -361,15 +361,23 @@ Recent (pick->result [signals]): ${recent}.`
   // momentum + order book, no AI) that has been guessing + getting graded every round, 24/7.
   const ap = autopicks || null;
   const apHist = ap && Array.isArray(ap.history) ? ap.history : [];
-  const apRecent = apHist.slice(0, 14).map((x) => `${x.time} ${x.side}->${x.actual} ${x.correct ? "OK" : "X"}`).join(", ");
+  const apRecent = apHist.slice(0, 14).map((x) => `${x.time} ${x.side}->${x.actual} ${x.correct ? "OK" : "X"}${typeof x.overPct === "number" ? " by " + (x.overPct > 0 ? "+" : "") + x.overPct + "%" : ""}`).join(", ");
   const autoLine = (ap && (ap.graded || apHist.length))
     ? `24/7 AUTO-TRACKER (an independent, market-anchored system — Kalshi price + momentum + order book, NO AI — that picks and is graded every round even while the user is away): ${ap.hitRatePct ?? "n/a"}% over ${ap.graded || apHist.length} rounds.${ap.pending ? ` Its current pick: ${ap.pending.side}${ap.pending.side !== "SKIP" ? " " + ap.pending.prob + "%" : ""} (crowd ${ap.pending.signals && ap.pending.signals.crowdOver}% over).` : ""} Recent guesses->results: ${apRecent}. Treat it as a reality check on the market: where this dumb-but-honest system keeps winning, the market is efficient — agree with it; where it has been wrong lately, look for the edge it's missing.`
     : (ap && ap.pending ? `24/7 auto-tracker current pick: ${ap.pending.side}${ap.pending.side !== "SKIP" ? " " + ap.pending.prob + "%" : ""} (not enough graded rounds yet).` : "");
 
   // What the per-coin online model has learned (faint tilts on a near-efficient market).
   const lr = ap && ap.learned;
+  const sg = ap && ap.pending && ap.pending.signals;
+  const techBit = sg && (typeof sg.rsi === "number" || typeof sg.macdH === "number")
+    ? ` Technicals at this open: ${[typeof sg.rsi === "number" ? "RSI(14) " + sg.rsi + (sg.rsi >= 70 ? " (overbought)" : sg.rsi <= 30 ? " (oversold)" : "") : null, typeof sg.macdH === "number" ? "MACD-hist " + (sg.macdH > 0 ? "+" : "") + sg.macdH + (sg.macdH > 0 ? " (bullish momentum)" : sg.macdH < 0 ? " (bearish momentum)" : "") : null].filter(Boolean).join(", ")}.`
+    : "";
+  const streakBit = lr && lr.streak ? ` Recent arrows: ${lr.streak.len} ${lr.streak.dir} rounds in a row (a run can mean a live trend OR a reversal is overdue — read it with the technicals, don't assume either).` : "";
+  const marginBit = lr && typeof lr.avgMarginAbsPct === "number"
+    ? ` Recent rounds settled ${lr.avgMarginAbsPct < 0.05 ? "razor-thin" : "by ±" + lr.avgMarginAbsPct + "%"} past the line${typeof lr.thinSharePct === "number" && lr.thinSharePct >= 25 ? ` (${lr.thinSharePct}% within a hair of it — fragile, so lower conviction)` : ""}.`
+    : "";
   const learnedLine = lr
-    ? `LEARNED MODEL for ${body.coin} (online logistic regression, ${lr.n} graded rounds, pooled across coins): current read P(OVER) ≈ ${ap.pending && typeof ap.pending.modelOver === "number" ? ap.pending.modelOver + "%" : "n/a"}.${lr.tendencies && lr.tendencies.length ? " Learned tendencies: " + lr.tendencies.join("; ") + "." : ""}${lr.afterUpOverPct != null ? ` Round-to-round: after an UP round it finishes OVER ${lr.afterUpOverPct}% of the time; after a DOWN round ${lr.afterDownOverPct}%.` : ""} (15-min direction is near-random, so weight this as a faint tilt, not gospel.)`
+    ? `LEARNED MODEL for ${body.coin} (online logistic regression, ${lr.n} graded rounds, pooled across coins): current read P(OVER) ≈ ${ap.pending && typeof ap.pending.modelOver === "number" ? ap.pending.modelOver + "%" : "n/a"}.${lr.tendencies && lr.tendencies.length ? " Learned tendencies: " + lr.tendencies.join("; ") + "." : ""}${lr.afterUpOverPct != null ? ` Round-to-round: after an UP round it finishes OVER ${lr.afterUpOverPct}% of the time; after a DOWN round ${lr.afterDownOverPct}%.` : ""}${streakBit}${marginBit}${techBit} (15-min direction is near-random, so weight this as a faint tilt, not gospel.)`
     : "";
 
   const scopeLine = nextRound
@@ -777,6 +785,8 @@ function modelInsights(coin, global, history) {
   if (Math.abs(w[4]) > 0.12) tend.push(w[4] > 0 ? "tends to repeat last round's direction" : "tends to reverse last round's direction");
   if (Math.abs(w[2]) > 0.12) tend.push(w[2] > 0 ? "more likely OVER when volatility is rising" : "more likely UNDER when volatility is rising");
   if (w.length > 7 && Math.abs(w[7]) > 0.12) tend.push(w[7] > 0 ? "tends to keep going when the prior round closed near an extreme (momentum)" : "tends to reverse when the prior round closed near an extreme (mean-reversion)");
+  if (w.length > 8 && Math.abs(w[8]) > 0.12) tend.push(w[8] > 0 ? "a high RSI (overbought) has tended to keep pushing OVER (momentum)" : "a high RSI has tended to fade back UNDER (overbought = exhaustion)");
+  if (w.length > 9 && Math.abs(w[9]) > 0.12) tend.push(w[9] > 0 ? "a rising MACD histogram has led to OVER" : "a rising MACD histogram has led to UNDER");
   // round-to-round transition rates from graded history (interpretable regime read)
   let uu = 0, un = 0, du = 0, dn = 0;
   for (let i = 0; i + 1 < history.length; i++) {
@@ -785,9 +795,19 @@ function modelInsights(coin, global, history) {
   }
   const afterUp = uu + un >= 5 ? Math.round(uu / (uu + un) * 100) : null;
   const afterDown = du + dn >= 5 ? Math.round(du / (du + dn) * 100) : null;
+  // Recent OVER/UNDER streak (the "arrows" pattern) + how decisively rounds have been settling.
+  let streak = 0; const sDir = history[0] && history[0].actual;
+  if (sDir === "OVER" || sDir === "UNDER") { for (let i = 0; i < history.length && history[i].actual === sDir; i++) streak++; }
+  const margins = history.slice(0, 12).map((x) => x.overPct).filter((x) => typeof x === "number");
+  let avgMarginAbsPct = null, thinSharePct = null;
+  if (margins.length >= 4) {
+    avgMarginAbsPct = Math.round(margins.reduce((s, x) => s + Math.abs(x), 0) / margins.length * 1e3) / 1e3;
+    thinSharePct = Math.round(margins.filter((x) => Math.abs(x) < 0.05).length / margins.length * 100);   // within ~0.05% of the line
+  }
   // Honest confidence by sample size: a true 53% edge needs ~2,500 graded rounds to confirm.
   const confidence = coin.n >= 2500 ? "established" : coin.n >= 600 ? "building" : "warming up";
-  return { n: coin.n, confidence, tendencies: tend, afterUpOverPct: afterUp, afterDownOverPct: afterDown };
+  return { n: coin.n, confidence, tendencies: tend, afterUpOverPct: afterUp, afterDownOverPct: afterDown,
+    streak: streak >= 2 ? { dir: sDir, len: streak } : null, avgMarginAbsPct, thinSharePct };
 }
 
 async function runCoinPick(env, coin, st) {
@@ -854,7 +874,7 @@ async function runCoinPick(env, coin, st) {
         ts: nowTs,                                                   // client formats this to 12-hour local time
         label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",   // fallback for older clients
         feat,                                                        // remembered so the next run can learn from it
-        signals: { crowdOver: Math.round(crowd.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null },
+        signals: { crowdOver: Math.round(crowd.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null, rsi: micro && typeof micro.rsi === "number" ? Math.round(micro.rsi) : null, macdH: micro && typeof micro.macdH === "number" ? round4(micro.macdH) : null },
       };
     }
   }
