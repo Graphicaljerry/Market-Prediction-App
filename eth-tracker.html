@@ -1214,19 +1214,20 @@
     return { dir: dir, pct: dir === "SKIP" ? 50 : pctFor(o.pOver, dir), conv: convictionFor(reco), atLabel: null };
   }
   function fallbackThisCall() { var rc = state.roundCall || state.lastRecoObj; return rc ? makeCall(rc) : null; }
-  // ---- Commit-on-edge: ONE sticky pick per round (this is what kills the flip-flop) ----
-  // Near a coin-flip we say "no clear side yet". We commit to OVER/UNDER only once the blended
-  // probability is decisive (>=58% / <=42%), then HOLD it while that side stays ahead (>=50%) — so a
-  // small wiggle across the line never flips the call; only a genuine loss of the edge un-commits.
+  // ---- Commit-and-hold: pick a side at the START of the round and STICK with it ----
+  // Commit immediately to the side it would bet (the locked next-round pick, or the open lean) — a
+  // definite OVER/UNDER. Then HOLD it the whole round even if price crosses the line; only flip when
+  // it's NEAR-CERTAIN the other way (>=80% / <=20%). No more changing every time the sides switch.
   function thisRoundCommitted() {
     var reco = state.roundCall || state.lastRecoObj; if (!reco) return null;
     var pOver = combinedOdds(reco).pOver, c = state.committed;
-    if (c === "OVER" && pOver < 0.50) c = null;            // committed side fell behind → back to neutral
-    else if (c === "UNDER" && pOver > 0.50) c = null;
-    if (c == null) { if (pOver >= 0.58) c = "OVER"; else if (pOver <= 0.42) c = "UNDER"; }   // (re)commit only when decisive
+    if (c == null) {                                        // commit at the start to a definite side
+      var L = state.thisRoundLock;
+      c = (L && (L.dir === "OVER" || L.dir === "UNDER")) ? L.dir : (pOver >= 0.5 ? "OVER" : "UNDER");
+    } else if (c === "UNDER" && pOver >= 0.80) c = "OVER";  // flip ONLY when near-certain the other way
+    else if (c === "OVER" && pOver <= 0.20) c = "UNDER";
     state.committed = c;
-    if (!c) return { dir: "SKIP", pct: 50, conv: convictionFor(reco), atLabel: null, waiting: true, pOver: pOver };
-    return { dir: c, pct: pctFor(pOver, c), conv: convictionFor(reco), atLabel: null };
+    return { dir: c, pct: pctFor(pOver, c), conv: convictionFor(reco), atLabel: null, pOver: pOver };
   }
 
   // The NEXT-round bet: locked ONCE in the final 2 min (after a brief settle on a fresh
@@ -1335,11 +1336,12 @@
       }
       return;
     }
+    var behind = !nextMode && call.pct < 50;   // committed side is currently losing — we're deliberately holding it
     var cls = call.dir === "OVER" ? "over" : "under";
     el.className = "reco " + cls;
     buyEl.className = "buyLine " + cls;
-    buyEl.innerHTML = "BUY " + (call.dir === "OVER" ? "OVER ↑" : "UNDER ↓") +
-      '<span class="buySub">' + (call.dir === "OVER" ? "betting the price goes UP" : "betting the price goes DOWN") + "</span>";
+    buyEl.innerHTML = (behind ? "HOLDING " : "BUY ") + (call.dir === "OVER" ? "OVER ↑" : "UNDER ↓") +
+      '<span class="buySub">' + (behind ? "staying on your side — the line crossed over, but not decisively" : (call.dir === "OVER" ? "betting the price goes UP" : "betting the price goes DOWN")) + "</span>";
     pctEl.textContent = call.pct + "%";
     if (nextMode) {
       scopeEl.innerHTML = '<span class="liveTag next">◷ NEXT</span>round ' + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "");
@@ -1347,8 +1349,13 @@
       lblEl.textContent = "likely " + (call.dir === "OVER" ? "UP" : "DOWN");
     } else {
       scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
-      hintEl.textContent = "Committed for this round — I hold this unless the price clearly reverses, so it won't flip-flop on you.";
-      lblEl.textContent = "chance " + (call.dir === "OVER" ? "UP" : "DOWN");
+      if (behind) {
+        hintEl.textContent = "It's leaning the other way right now, but I'm staying with " + call.dir + " for this round — I only switch if it becomes near-certain.";
+        lblEl.textContent = "holding " + call.dir;
+      } else {
+        hintEl.textContent = "Committed " + call.dir + " for this round — held unless it becomes near-certain the other way, so it won't flip every time the line is crossed.";
+        lblEl.textContent = "chance " + (call.dir === "OVER" ? "UP" : "DOWN");
+      }
     }
     if (state.hiConvOnly && hiConv) scopeEl.innerHTML += " · " + (call.conv.level === "strong" ? "HIGH CONVICTION" : "EDGE vs CROWD");
   }
