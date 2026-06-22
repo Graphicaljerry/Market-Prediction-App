@@ -411,7 +411,10 @@ SKIP. Reason in this order, then output only JSON:
 1. Anchor on the market price. It is hard to beat; do not re-derive it. Your job is to spot the rare moments it's wrong or slow.
 2. THIS round: the position model P(OVER) is usually the best estimate. If price is already well above/below the line with little time left, the round is nearly settled — take that side and trust it; the single most reliable bet is a decisive position late in the round.
 3. CONFLUENCE is the edge. Only call a side when several INDEPENDENT reads point the SAME way: the market (crowd), the position model, short-term momentum, order-book pressure (who is buying vs selling right now), the recent-round pattern, and the track record. If they disagree, or it is a fresh ≈50/50 next round with no standout signal, SKIP.
-4. Ride aligned favorites; don't fade them. A lopsided crowd (≈70%+ one side) that agrees with where price sits and which way flow is leaning is a high-probability bet. Betting AGAINST a confident, aligned market needs a specific, nameable reason (clear momentum/flow it hasn't priced) — otherwise it's a coin-flip, so SKIP.
+4. PROVEN EDGES (back-tested on Kalshi 15-min crypto + prediction-market research) — apply these:
+   (a) Favorite-longshot bias: favorites are systematically UNDER-priced, longshots over-priced. So a lopsided crowd (≈65%+ one side) that agrees with where price sits and which way flow leans is a high-probability bet — lean INTO it, and NEVER buy the cheap longshot hoping for an upset.
+   (b) Drift continuation, not reversion: once the market is decisively one way (≈60%+) with time left, it tends to KEEP drifting that way. Fading a confident, aligned market is a losing template on these short brackets — bet against it only for a specific, nameable reason.
+   (c) Panic-fade EXCEPTION — the ONE time to fade is a genuinely EXTREME, sudden spike or dump (a violent over-reaction far beyond the normal wiggle): those tend to snap back, so lean AGAINST the extreme move. Ride moderate momentum; fade only the over-reaction.
 5. Calibrate to the record: if a confidence band historically won LESS than it claimed, pull your number toward 50. Lean into setups that have actually paid off here; avoid ones that haven't.
 6. Output probOver = your probability OVER wins (0–100). Turn it into a side only past a real margin: probOver ≥ 60 → OVER, ≤ 40 → UNDER, else SKIP. Expect to SKIP the majority of rounds — that is exactly what protects the hit rate.
 
@@ -705,16 +708,32 @@ async function cbObi(product) {
   const tot = bv + av;
   return tot ? (bv - av) / tot : null;
 }
-// Market-anchored free pick: crowd price nudged by momentum + book + the learned model;
-// SKIP near 50/50. modelOver shrinks to 0.5 while the model is cold, so it only sways the
-// pick once it has actually learned something. CONFLUENCE-GATED: on a near-efficient market the
-// only real edge is several INDEPENDENT reads pointing the same way, so we demand more edge to
-// commit when the reads conflict (wider SKIP band) and less when they align — and report how many
-// agree (`agree`) and the share of signal-weight in agreement (`conf`) so the pick can be sized.
-function freePick(crowdOverPct, mom, obi, modelOver) {
+// Favorite-longshot bias (the most replicated prediction-market finding; on Kalshi, across 300k+
+// contracts, favorites earn a small positive return while cheap longshots bleed — CEPR/Whelan 2025):
+// favorites are UNDER-priced, so nudge the market's implied probability a touch further toward the
+// favorite. Gentle, capped, and only for a clear favorite.
+function favLongshotAdj(p) {
+  if (typeof p !== "number") return p;
+  const d = p - 0.5;
+  if (Math.abs(d) < 0.06) return p;
+  return Math.max(0.02, Math.min(0.98, p + Math.max(-0.05, Math.min(0.05, d * 0.12))));
+}
+// Market-anchored free pick: crowd price (favorite-longshot-adjusted) nudged by momentum + book +
+// the learned model; SKIP near 50/50. modelOver shrinks to 0.5 while the model is cold, so it only
+// sways the pick once it has actually learned something. CONFLUENCE-GATED: on a near-efficient
+// market the only real edge is several INDEPENDENT reads pointing the same way, so we demand more
+// edge to commit when the reads conflict (wider SKIP band) and less when they align — and report how
+// many agree (`agree`) and the share of signal-weight in agreement (`conf`) so the pick can be sized.
+function freePick(crowdOverPct, mom, obi, modelOver, sig) {
   const parts = [];
-  if (typeof crowdOverPct === "number") parts.push({ p: Math.max(0.02, Math.min(0.98, crowdOverPct / 100)), w: 0.55 });
-  if (typeof mom === "number") parts.push({ p: Math.max(0.4, Math.min(0.6, 0.5 + 0.5 * Math.tanh(mom * 120))), w: 0.15 });
+  if (typeof crowdOverPct === "number") parts.push({ p: favLongshotAdj(Math.max(0.02, Math.min(0.98, crowdOverPct / 100))), w: 0.55 });
+  if (typeof mom === "number") {
+    // Panic-fade: a genuinely EXTREME move (≈2σ over the lookback) is an over-reaction that snaps
+    // back (Turbine Kalshi-15m backtest; Wen/Bouri 2022) — fade it; moderate drift continues, ride it.
+    const z = (typeof sig === "number" && sig > 0) ? mom * 3.16 / sig : 0;
+    if (Math.abs(z) >= 2.0) { const s = Math.min(1, (Math.abs(z) - 2.0) / 2.0); parts.push({ p: Math.max(0.38, Math.min(0.62, 0.5 - (z > 0 ? 1 : -1) * (0.05 + 0.09 * s))), w: 0.18 }); }
+    else parts.push({ p: Math.max(0.4, Math.min(0.6, 0.5 + 0.5 * Math.tanh(mom * 120))), w: 0.15 });
+  }
   if (typeof obi === "number") parts.push({ p: Math.max(0.3, Math.min(0.7, 0.5 + 0.5 * Math.tanh(2 * obi))), w: 0.15 });
   if (typeof modelOver === "number") parts.push({ p: Math.max(0.05, Math.min(0.95, modelOver)), w: 0.2 });
   if (!parts.length) return null;
@@ -923,7 +942,7 @@ async function runCoinPick(env, coin, st) {
     const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
     if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;
     const modelOver = predictBlend(coinModel, global, feat);        // learned P(OVER) for this round
-    const fp = freePick(crowd.overPct, micro && micro.mom, obi, modelOver);
+    const fp = freePick(crowd.overPct, micro && micro.mom, obi, modelOver, micro && micro.sig);
     if (fp) {
       const d = new Date(nowTs);
       rec.pending = {

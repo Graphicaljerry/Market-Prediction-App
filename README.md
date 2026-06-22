@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Two research-backed edges baked into the model: the favorite-longshot bias and panic-fade.** After surveying what actually works on 15-min crypto prediction markets (the Kalshi favorite-longshot studies — CEPR/Whelan on 300k+ contracts; Turbine's 1,000-strategy Kalshi-BTC-15m backtest; Wen/Bouri/Xu/Zhao on intraday crypto momentum-vs-reversal), two robust, simple edges are now wired into both the live blend and the 24/7 worker: **(1) Favorite-longshot bias** — favorites (>50%) are systematically *under*-priced, so `favLongshotAdj` nudges the market's implied probability a touch further toward the favorite (gentle, capped at 5 pts, only for a clear favorite). **(2) Panic-fade** — moderate drift *continues* (ride it), but a genuinely **extreme** spike/dump (≈2σ over the lookback) is an over-reaction that snaps back, so `panicFadeOver` leans *against* the violent move (and replaces plain momentum in the blend when it fires). The AI prompt now states all three findings explicitly — *bet under-priced favorites, ride the drift don't fade it, fade only the violent over-reaction.* Kept deliberately simple (the same backtests found complexity doesn't pay).
 - **"Best bet now" ticker across all coins — an expandable sticky footer that ranks every coin.** The 24/7 worker ranks all coins' current-round picks by a **confidence score = how lopsided the pick is (edge) × how much independent confluence backs it (`conf`) × the coin's *shrunk* historical reliability** (a real track record is trusted more, but only once it has the samples to mean something; SKIP picks are excluded). A compact `?best` endpoint (`rankBest`) serves the leaderboard; the app shows the winner in a **sticky footer ticker** — "Best now: SOL OVER ↑ · 72% · 3 reads agree · then BTC↑ DOGE↓" — colored to the side. **Tap it to expand the full ranking** (every coin with its side, odds, reads-agreeing, confluence and hit-rate) and **tap any row to jump to that coin**. Refreshes each round.
 - **Recent-15-min arrows are now stable, *Kalshi-accurate*, and always ~8 in a row.** The flip-flop is fixed: arrows were swapping a candle *estimate* (green/red candle) for the real vs-line grade a beat later. Now there's a **persistent, authority-ranked per-coin ledger** (`moveLog`, saved to localStorage): each round freezes to its grade, and the *only* thing that can ever change an arrow is **Kalshi's own confirmed result** — the definitive outcome Robinhood settles on — overriding a provisional candle grade; two provisional reads can never flicker against each other. So as the 24/7 tracker reconciles each round to Kalshi, the arrows **converge to exactly what Robinhood shows** (hover shows "confirmed vs Kalshi" vs "graded vs the line"). A dim *dashed* candle estimate fills only the **oldest empty slots** (never recent rounds), so the row always shows **8 in one line** (▾ for more). The ledger accumulates across reloads — the local history the app keeps learning from — and **Clear log** wipes it too.
 - **"This round | Next round" at-a-glance header on the Auto Pick card.** A clean two-column block: **left = THIS ROUND** with your committed side (live), a vertical divider, **right = NEXT ROUND** which **wakes up in the final 2 minutes** (when the next market opens and the pick locks) and shows a calm "locks in m:ss" until then. Each side is color-coded (green OVER / red UNDER) with a one-line confidence read, so the old "this says OVER but that says UNDER" confusion reads correctly: *bet OVER on the round you're in, get ready for UNDER on the one about to start.*
@@ -255,15 +256,25 @@ The headline likelihood is one number — `combinedOdds()` → `P(OVER)` — bui
    it bows out in the final 2 min (the next round opens at the line, so there's no distance
    edge yet).
 2. **The market** (`crowdOver` of the scope-correct Kalshi market, ~0.42) — the efficient
-   prior; uses the **next** round's market during the bet window.
+   prior; uses the **next** round's market during the bet window. Passed through `favLongshotAdj`
+   first: the **favorite-longshot bias** (favorites are systematically under-priced on Kalshi)
+   means we nudge the implied probability a touch further toward a clear favorite (capped at 5 pts).
 3. **AI** (`aiOver`, ~0.30) — Claude's own **numeric** probability (`probOver`).
 4. **Indicators** (`indOver`, ~0.22) — the bull/bear tally (correlated, so demoted).
-5. **Order-book imbalance** (`obiOver`, ~0.07) and **short-term momentum** (`momOver`, ~0.08)
-   — gentle, short-horizon tilts.
+5. **Order-book imbalance** (`obiOver`, ~0.07) and **short-term drift** — *moderate* momentum
+   continues (`momOver`, ~0.08), but a genuinely **extreme** spike/dump (≈2σ) is an over-reaction
+   that snaps back, so `panicFadeOver` (~0.12) **replaces** plain momentum and leans *against* it.
 
 `calibrate()` then nudges the raw blend toward your realized results: among past rounds whose
 model-confidence sat in the same band, how often did that side actually win? (Laplace-smoothed,
 weighted by sample size, gated until ≥8 samples.) `normCdf` is an Abramowitz-Stegun approximation.
+
+These two edges are the most robust findings from a survey of what works on 15-min crypto
+prediction markets — the favorite-longshot bias (CEPR/Whelan, *Makers and Takers: The Economics of
+the Kalshi Prediction Market*, on 300k+ contracts), and momentum-continuation-with-extreme-reversal
+(Turbine's 1,000-strategy Kalshi-BTC-15m backtest, where "panic-fade" was profitable on all 150
+variants; Wen/Bouri/Xu/Zhao 2022 on intraday crypto momentum vs reversal). The same backtests found
+**complexity doesn't pay**, so both are kept small and simple, and the AI prompt states them outright.
 
 ---
 

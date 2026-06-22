@@ -1082,8 +1082,20 @@
     var base = ai.confidence === "High" ? 0.80 : ai.confidence === "Medium" ? 0.68 : 0.58;
     return ai.verdict === "OVER" ? base : 1 - base;
   }
+  // Favorite-longshot bias — the most replicated finding in prediction markets: favorites (>50%) are
+  // systematically UNDER-priced (they win more often than their price implies) while cheap longshots
+  // are over-priced. On Kalshi specifically, across 300k+ contracts, high-price contracts earn a small
+  // positive return and low-price ones bleed (CEPR/Whelan 2025). So nudge the market's implied
+  // probability a touch FURTHER toward the favorite — gentle, capped, and only for a clear favorite.
+  function favLongshotAdj(p) {
+    if (typeof p !== "number") return p;
+    var d = p - 0.5;
+    if (Math.abs(d) < 0.06) return p;                       // ~coin-flip → no favorite to lean into
+    var nudge = Math.max(-0.05, Math.min(0.05, d * 0.12));  // push ~12% further from 50, never > 5 pts
+    return Math.max(0.02, Math.min(0.98, p + nudge));
+  }
   function crowdOver(crowd) {
-    return crowd && typeof crowd.overPct === "number" ? Math.max(0.02, Math.min(0.98, crowd.overPct / 100)) : null;
+    return crowd && typeof crowd.overPct === "number" ? favLongshotAdj(Math.max(0.02, Math.min(0.98, crowd.overPct / 100))) : null;
   }
   function nextModeNow() { var r = state.remaining; return r != null && r <= BET_WINDOW; }
   // In the final 2 min we're betting the NEXT round, so anchor on the next market, not this
@@ -1109,6 +1121,19 @@
     var mo = state.micro && typeof state.micro.mom === "number" ? state.micro.mom : null;
     if (mo == null) return null;
     return Math.max(0.35, Math.min(0.65, 0.5 + 0.5 * Math.tanh(mo * 120)));
+  }
+  // Panic-fade — intraday crypto shows BOTH momentum and reversal: moderate drift continues (ride it),
+  // but a genuinely EXTREME spike/dump is an over-reaction that tends to snap back (Wen/Bouri/Xu/Zhao
+  // 2022). Turbine's 1,000-strategy Kalshi BTC-15m backtest found "panic_fade" — leaning AGAINST the
+  // extreme move — profitable on all 150 variants (+9.95%). Triggers only when the recent move dwarfs
+  // typical volatility (a ~2σ cumulative move); then it leans the OPPOSITE way. Null otherwise.
+  function panicFadeOver() {
+    var m = state.micro;
+    if (!m || typeof m.mom !== "number" || typeof m.sigPerMin !== "number" || m.sigPerMin <= 0) return null;
+    var z = m.mom * 3.16 / m.sigPerMin;                     // standardized recent cumulative move (~√10 over the lookback)
+    if (Math.abs(z) < 2.0) return null;                     // not extreme — let momentum ride the drift
+    var strength = Math.min(1, (Math.abs(z) - 2.0) / 2.0);
+    return Math.max(0.36, Math.min(0.64, 0.5 - (z > 0 ? 1 : -1) * (0.05 + 0.09 * strength)));
   }
   // The intra-round price path's high & low (the "graph" for THIS round) and where price sits
   // between them. Built from the live price trace, anchored at the round open. Null until
@@ -1188,7 +1213,9 @@
     var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: 0.30 });        // AI reasoning
     parts.push({ p: indOver(reco), w: 0.22 });                                         // TA indicators (correlated → modest)
     var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.07 });                // order-book nudge
-    var mo = momOver(); if (mo != null) parts.push({ p: mo, w: 0.08 });                // short-term momentum
+    var pf = panicFadeOver();                                                          // EXTREME move → fade the over-reaction
+    if (pf != null) parts.push({ p: pf, w: 0.12 });                                    // (replaces plain momentum, slightly higher weight — robust edge)
+    else { var mo = momOver(); if (mo != null) parts.push({ p: mo, w: 0.08 }); }       // moderate drift → ride it
     var rg = rangeOver(); if (rg != null) parts.push({ p: rg, w: 0.07 });              // where price sits in its round high–low range
     var am = autoModelOver(); if (am != null) parts.push({ p: am, w: 0.10 });          // the 24/7 auto-tracker's learned read (the two systems talk)
     var wsum = 0, acc = 0;
