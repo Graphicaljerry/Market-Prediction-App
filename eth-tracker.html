@@ -770,7 +770,7 @@
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, committed: null, leanDir: null, leanFlips: 0, obi: null,
-    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false, stoch: false, ema: false, bb: false },
+    chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false, stoch: false, ema: false, bb: false }, vp: { a: 0, b: 1 },
     chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
     hiConvOnly: (function () { try { return localStorage.getItem("hiConvOnly_v1") === "1"; } catch (e) { return false; } })() };
 
@@ -1613,7 +1613,7 @@
     });
   }
   function setChartTF(k) {
-    state.chartTF = k;
+    state.chartTF = k; state.vp = { a: 0, b: 1 };   // fresh zoom window per timeframe
     Array.prototype.forEach.call(document.querySelectorAll("#tfBar .tfBtn"), function (b) { b.classList.toggle("active", b.getAttribute("data-tf") === k); });
     if (k === "live") { state.tfData = null; drawMiniChart(); return; }
     loadCurrentTF(true);
@@ -1666,14 +1666,17 @@
     var min = Math.min.apply(null, lows), max = Math.max.apply(null, highs);
     var padY = (max - min) * 0.12 || (max * 0.0004) || 1; min -= padY; max += padY;
     var top = 8, bot = 8, n = data.length;
-    function X(i) { return n < 2 ? 0 : (i / (n - 1)) * W; }
+    var vp = state.vp || { a: 0, b: 1 };                                   // zoom/pan window over the candles
+    var i0 = vp.a * (n - 1), i1 = vp.b * (n - 1), vspan = (i1 - i0) || 1, vCount = Math.max(1, i1 - i0 + 1);
+    function X(i) { return n < 2 ? 0 : ((i - i0) / vspan) * W; }           // line x (== i/(n-1)*W when not zoomed)
+    function CX(i) { return ((i - i0 + 0.5) / vCount) * W; }               // candle-center x
     function Y(p) { return top + (1 - (p - min) / (max - min)) * (H - top - bot); }
     drawPriceGrid(ctx, W, H, min, max, Y, true);
     var hasStrike = strike != null, yS = hasStrike ? Y(strike) : null, i, above, last = data[n - 1];
     if (candle) {
-      var slot = W / n, bw = Math.max(1.5, Math.min(slot * 0.62, 18));
+      var slot = W / vCount, bw = Math.max(1.5, Math.min(slot * 0.62, 18));
       for (i = 0; i < n; i++) {
-        var d = data[i], cx = (i + 0.5) * slot, up = d.c >= d.o, col = up ? "#30d158" : "#ff453a";
+        var d = data[i], cx = CX(i), up = d.c >= d.o, col = up ? "#30d158" : "#ff453a";
         ctx.strokeStyle = col; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(cx, Y(d.h)); ctx.lineTo(cx, Y(d.l)); ctx.stroke();
         var yO = Y(d.o), yC = Y(d.c), bt = Math.min(yO, yC), bh = Math.max(1, Math.abs(yC - yO));
@@ -1702,15 +1705,18 @@
     }
     var oCl = data.map(function (d) { return candle ? d.c : d.p; });
     if (state.lastPrice != null && state.lastPrice > 0) oCl[oCl.length - 1] = state.lastPrice;   // live forming candle
-    drawOverlays(ctx, oCl, data.map(function (d, ix) { return candle ? (ix + 0.5) * (W / n) : X(ix); }), Y);
+    drawOverlays(ctx, oCl, data.map(function (d, ix) { return candle ? CX(ix) : X(ix); }), Y);
     if (hasStrike) {
       ctx.fillStyle = "rgba(235,235,245,.92)"; ctx.font = "800 14px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "left";
       var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
       ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     }
-    var slotW = W / n;
+    if (vp.a > 0.001 || vp.b < 0.999) {   // zoom affordance
+      ctx.fillStyle = "rgba(235,235,245,.45)"; ctx.font = "9px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "right"; ctx.textBaseline = "alphabetic";
+      ctx.fillText("zoomed · double-tap to reset", W - 4, H - 5);
+    }
     state.chartPts = data.map(function (d, ix) {
-      return { x: candle ? (ix + 0.5) * slotW : X(ix), y: Y(candle ? d.c : d.p), t: d.t, p: candle ? d.c : d.p, o: d.o, h: d.h, l: d.l, c: d.c, candle: candle };
+      return { x: candle ? CX(ix) : X(ix), y: Y(candle ? d.c : d.p), t: d.t, p: candle ? d.c : d.p, o: d.o, h: d.h, l: d.l, c: d.c, candle: candle };
     });
     state.chartMeta = { kind: "tf", W: W, H: H, strike: hasStrike ? strike : null, def: def, tf: state.chartTF, candle: candle };
     if (lbl) {
@@ -2390,7 +2396,7 @@
     state.obi = null; state.micro = null;
     state.gradePending = null; state.lastSettled = null; state.lastAuto = null; _primeSig = ""; renderLastClose(); renderLateRecord();   // clear the prior coin's close readout + show this coin's prime record
     var _am = $("autoMod"); if (_am) _am.style.display = "none"; fetchAutoTracker(coin, true);   // 24/7 record for the new coin
-    state.tfData = null; if (state.chartTF !== "live") loadCurrentTF(true);   // reload zoom for the new coin
+    state.tfData = null; state.vp = { a: 0, b: 1 }; if (state.chartTF !== "live") loadCurrentTF(true);   // reload zoom for the new coin
     state.priceHist = []; drawMiniChart();
     $("liveLean").textContent = "—"; $("liveLean").className = "lean mono";
     $("roundStatus").textContent = "Waiting for round open…";
@@ -2760,28 +2766,76 @@
   setInterval(tickTimer, 1000); setInterval(refresh, 30000);
   window.addEventListener("resize", drawMiniChart);
 
-  // Scrub the chart to read the exact price at any point in time — touch-drag on mobile, hover on desktop.
+  // Scrub + Coinbase-style zoom/pan. Mouse: hover = crosshair, drag = pan (timeframe chart), wheel =
+  // zoom. Touch: 1-finger drag = pan (TF) / scrub (live), pinch = zoom, 2-finger drag = pan, long-press
+  // = crosshair, vertical drag still scrolls the page. Double-click / double-tap resets the zoom.
   (function () {
     var cv = $("miniChart"); if (!cv) return;
     function setHover(clientX) { var r = cv.getBoundingClientRect(); state.hoverX = clientX - r.left; drawMiniChart(); }
     function clearHover() { if (state.hoverX != null) { state.hoverX = null; drawMiniChart(); } }
+    function zoomable() { return !!(state.chartTF && state.chartTF !== "live"); }   // zoom/pan only where there's a candle series
+    function fx(clientX) { var r = cv.getBoundingClientRect(); return r.width ? Math.max(0, Math.min(1, (clientX - r.left) / r.width)) : 0; }
+    function clampVp() {
+      var vp = state.vp = state.vp || { a: 0, b: 1 }, ms = 0.05;
+      if (vp.b - vp.a < ms) { var c = (vp.a + vp.b) / 2; vp.a = c - ms / 2; vp.b = c + ms / 2; }
+      if (vp.a < 0) { vp.b -= vp.a; vp.a = 0; } if (vp.b > 1) { vp.a -= (vp.b - 1); vp.b = 1; }
+      vp.a = Math.max(0, vp.a); vp.b = Math.min(1, vp.b);
+    }
+    function zoomAt(f, factor) {
+      if (!zoomable()) return; clampVp(); var vp = state.vp, span = vp.b - vp.a, focus = vp.a + f * span;
+      var ns = Math.min(1, Math.max(0.05, span * factor)); vp.a = focus - f * ns; vp.b = vp.a + ns; clampVp(); drawMiniChart();
+    }
+    function panFrac(df) { if (!zoomable() || !df) return; clampVp(); var vp = state.vp, span = vp.b - vp.a, s = -df * span; vp.a += s; vp.b += s; clampVp(); drawMiniChart(); }
+    function resetVp() { if (zoomable()) { state.vp = { a: 0, b: 1 }; drawMiniChart(); } }
+    cv.addEventListener("wheel", function (e) { if (!zoomable()) return; e.preventDefault(); zoomAt(fx(e.clientX), e.deltaY > 0 ? 1.15 : 0.87); }, { passive: false });
+    cv.addEventListener("dblclick", function (e) { e.preventDefault(); resetVp(); });
+    var mDown = false, mLastX = 0;
     if (window.PointerEvent) {
-      cv.addEventListener("pointerdown", function (e) { setHover(e.clientX); if (e.pointerType !== "mouse") { try { cv.setPointerCapture(e.pointerId); } catch (x) {} } });
+      cv.addEventListener("pointerdown", function (e) { if (e.pointerType !== "mouse") return; mDown = true; mLastX = e.clientX; });
       cv.addEventListener("pointermove", function (e) {
-        if (e.pointerType === "mouse") { setHover(e.clientX); return; }                                  // desktop: hover to read
-        if (e.buttons || (cv.hasPointerCapture && cv.hasPointerCapture(e.pointerId))) { e.preventDefault(); setHover(e.clientX); }   // touch: only while pressed
+        if (e.pointerType !== "mouse") return;
+        if (mDown && zoomable()) { var r = cv.getBoundingClientRect(); panFrac((e.clientX - mLastX) / (r.width || 1)); mLastX = e.clientX; clearHover(); }
+        else setHover(e.clientX);
       });
-      cv.addEventListener("pointerup", clearHover);
-      cv.addEventListener("pointercancel", clearHover);
-      cv.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse") clearHover(); });
+      window.addEventListener("pointerup", function (e) { if (e.pointerType === "mouse") mDown = false; });
+      cv.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse" && !mDown) clearHover(); });
     } else {
       cv.addEventListener("mousemove", function (e) { setHover(e.clientX); });
       cv.addEventListener("mouseleave", clearHover);
-      cv.addEventListener("touchstart", function (e) { if (e.touches[0]) setHover(e.touches[0].clientX); }, { passive: true });
-      cv.addEventListener("touchmove", function (e) { if (e.touches[0]) { e.preventDefault(); setHover(e.touches[0].clientX); } }, { passive: false });
-      cv.addEventListener("touchend", clearHover);
-      cv.addEventListener("touchcancel", clearHover);
     }
+    var twoF = false, pinchD = 0, pinchMid = 0, mode = null, sx = 0, sy = 0, lx = 0, lp = null, lastTap = 0;
+    function clearLP() { if (lp) { clearTimeout(lp); lp = null; } }
+    function dist(t) { var dx = t[0].clientX - t[1].clientX, dy = t[0].clientY - t[1].clientY; return Math.sqrt(dx * dx + dy * dy); }
+    cv.addEventListener("touchstart", function (e) {
+      if (e.touches.length === 2) { clearLP(); twoF = true; mode = null; pinchD = dist(e.touches); pinchMid = (e.touches[0].clientX + e.touches[1].clientX) / 2; clearHover(); return; }
+      if (e.touches.length === 1) {
+        twoF = false; var now = Date.now();
+        if (zoomable() && now - lastTap < 300) { resetVp(); lastTap = 0; clearLP(); mode = "done"; return; }
+        lastTap = now; var t = e.touches[0]; sx = lx = t.clientX; sy = t.clientY; mode = "pending"; clearLP();
+        lp = setTimeout(function () { if (mode === "pending") { mode = "cross"; setHover(sx); } }, 380);
+      }
+    }, { passive: true });
+    cv.addEventListener("touchmove", function (e) {
+      if (twoF && e.touches.length === 2) {
+        e.preventDefault(); var d = dist(e.touches), mid = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        if (pinchD > 0) zoomAt(fx(mid), pinchD / d);
+        var r = cv.getBoundingClientRect(); panFrac((mid - pinchMid) / (r.width || 1)); pinchD = d; pinchMid = mid; return;
+      }
+      if (e.touches.length !== 1) return;
+      var x = e.touches[0].clientX, y = e.touches[0].clientY;
+      if (mode === "pending") {
+        var adx = Math.abs(x - sx), ady = Math.abs(y - sy);
+        if (adx <= 8 && ady <= 8) return;
+        clearLP();
+        if (ady > adx) { mode = "scroll"; return; }            // vertical → let the page scroll
+        mode = zoomable() ? "pan" : "cross";
+      }
+      if (mode === "scroll" || mode === "done") return;
+      if (mode === "pan") { e.preventDefault(); var r2 = cv.getBoundingClientRect(); panFrac((x - lx) / (r2.width || 1)); lx = x; }
+      else if (mode === "cross") { e.preventDefault(); setHover(x); }
+    }, { passive: false });
+    cv.addEventListener("touchend", function (e) { if (e.touches.length === 0) { clearLP(); twoF = false; mode = null; clearHover(); } });
+    cv.addEventListener("touchcancel", function () { clearLP(); twoF = false; mode = null; clearHover(); });
   })();
   // Pause the ambient glow drift while the page is actively scrolling, then resume shortly
   // after it stops — keeps mobile scrolling smooth without losing the idle motion.
