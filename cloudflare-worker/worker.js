@@ -727,7 +727,7 @@ async function kalshiResult(ticker) {
 // arrows converge to Kalshi within one cycle instead of trickling one at a time.
 async function reconcileKalshi(rec) {
   const h = rec.history || [];
-  for (let i = 0, checked = 0; i < h.length && checked < 6; i++) {   // up to ~6 recent rounds/coin/cron — Kalshi reads are cheap; accuracy beats a tiny API budget
+  for (let i = 0, checked = 0; i < h.length && checked < 12; i++) {  // up to ~12 unconfirmed rounds/coin/cron — clears any backlog so EVERY round converges to Kalshi's settled result
     const e = h[i];
     if (e.src === "kalshi" || !e.ticker) continue;
     checked++;
@@ -785,13 +785,62 @@ function favLongshotAdj(p) {
   if (Math.abs(d) < 0.06) return p;
   return Math.max(0.02, Math.min(0.98, p + Math.max(-0.05, Math.min(0.05, d * 0.12))));
 }
+// --- Calibration (make the probability trustworthy) + scoring (measure it) -----------------------
+// Platt scaling maps the model's RAW blended P(OVER) through a learned logistic so a stated "70%"
+// actually lands ~70% of the time. The fit is regularized toward identity (a=1, b=0) and gated by
+// sample size, so it's a gentle no-op while the log is small and only corrects once it has earned it.
+function calibApply(pRaw, calib) {
+  if (!calib || typeof calib.a !== "number") return pRaw;
+  const pc = Math.min(0.999, Math.max(0.001, pRaw));
+  const z = calib.a * Math.log(pc / (1 - pc)) + (calib.b || 0);
+  return Math.min(0.98, Math.max(0.02, 1 / (1 + Math.exp(-z))));
+}
+// Fit Platt {a,b} on (raw P(OVER) → did it finish OVER). We fit on the RAW probability — never the
+// already-calibrated one — so calibration can't feed back on itself. Identity until ~80 graded rounds.
+function fitCalib(history) {
+  const xs = [], ys = [];
+  for (const e of history || []) {
+    if (e.actual !== "OVER" && e.actual !== "UNDER") continue;
+    const pr = typeof e.pRaw === "number" ? e.pRaw / 100 : (typeof e.pOver === "number" ? e.pOver / 100 : null);
+    if (pr == null) continue;
+    const pc = Math.min(0.999, Math.max(0.001, pr));
+    xs.push(Math.log(pc / (1 - pc))); ys.push(e.actual === "OVER" ? 1 : 0);
+  }
+  const n = xs.length;
+  if (n < 80) return { a: 1, b: 0, n };                          // not enough to calibrate honestly yet
+  let a = 1, b = 0; const lr = 0.05, lam = 0.02 / Math.sqrt(n);  // L2 pull toward identity, looser as data grows
+  for (let it = 0; it < 400; it++) {
+    let ga = 0, gb = 0;
+    for (let i = 0; i < n; i++) { const p = 1 / (1 + Math.exp(-(a * xs[i] + b))); const d = p - ys[i]; ga += d * xs[i]; gb += d; }
+    ga = ga / n + lam * (a - 1); gb = gb / n + lam * b;
+    a -= lr * ga; b -= lr * gb;
+  }
+  return { a: Math.max(0.2, Math.min(3, a)), b: Math.max(-2, Math.min(2, b)), n };
+}
+// Scoring on the probabilities we ACTUALLY acted on (the calibrated P(OVER)): Brier + log-loss (lower
+// is better; Brier 0.25 = always guessing 50%) and a 5-bucket reliability curve (stated % vs realized).
+function scoreCalib(history) {
+  let n = 0, brier = 0, ll = 0; const B = 5, bn = [0, 0, 0, 0, 0], by = [0, 0, 0, 0, 0], bp = [0, 0, 0, 0, 0];
+  for (const e of history || []) {
+    if (e.actual !== "OVER" && e.actual !== "UNDER") continue;
+    const pov = typeof e.pOver === "number" ? e.pOver / 100 : null;
+    if (pov == null) continue;
+    const p = Math.min(0.999, Math.max(0.001, pov)), y = e.actual === "OVER" ? 1 : 0;
+    brier += (p - y) * (p - y); ll += -(y * Math.log(p) + (1 - y) * Math.log(1 - p)); n++;
+    const bi = Math.min(B - 1, Math.floor(p * B)); bn[bi]++; by[bi] += y; bp[bi] += p;
+  }
+  if (!n) return null;
+  const bins = [];
+  for (let i = 0; i < B; i++) if (bn[i]) bins.push({ p: Math.round(bp[i] / bn[i] * 100), real: Math.round(by[i] / bn[i] * 100), n: bn[i] });
+  return { n, brier: Math.round(brier / n * 1000) / 1000, logloss: Math.round(ll / n * 1000) / 1000, bins };
+}
 // Market-anchored free pick: crowd price (favorite-longshot-adjusted) nudged by momentum + book +
 // the learned model; SKIP near 50/50. modelOver shrinks to 0.5 while the model is cold, so it only
 // sways the pick once it has actually learned something. CONFLUENCE-GATED: on a near-efficient
 // market the only real edge is several INDEPENDENT reads pointing the same way, so we demand more
 // edge to commit when the reads conflict (wider SKIP band) and less when they align — and report how
 // many agree (`agree`) and the share of signal-weight in agreement (`conf`) so the pick can be sized.
-function freePick(crowdOverPct, mom, obi, modelOver, sig) {
+function freePick(crowdOverPct, mom, obi, modelOver, sig, calib) {
   const parts = [];
   if (typeof crowdOverPct === "number") parts.push({ p: favLongshotAdj(Math.max(0.02, Math.min(0.98, crowdOverPct / 100))), w: 0.55 });
   if (typeof mom === "number") {
@@ -805,7 +854,9 @@ function freePick(crowdOverPct, mom, obi, modelOver, sig) {
   if (typeof modelOver === "number") parts.push({ p: Math.max(0.05, Math.min(0.95, modelOver)), w: 0.2 });
   if (!parts.length) return null;
   let ws = 0, ac = 0; for (const x of parts) { ws += x.w; ac += x.p * x.w; }
-  const pOver = ac / ws, dir = pOver >= 0.5 ? 1 : -1;
+  const pRaw = ac / ws;
+  const pOver = calibApply(pRaw, calib);               // trustworthy probability (identity until the log is big enough)
+  const dir = pOver >= 0.5 ? 1 : -1;
   // Confluence: weighted share of reads leaning the SAME way as the blend (and a plain count).
   let agreeW = 0, agreeN = 0, totW = 0;
   for (const x of parts) { totW += x.w; if ((x.p - 0.5) * dir > 0.005) { agreeW += x.w; agreeN++; } }
@@ -814,7 +865,7 @@ function freePick(crowdOverPct, mom, obi, modelOver, sig) {
   // when they're at odds — so a conflicted, barely-lopsided blend now SKIPs instead of guessing.
   const band = 0.08 + 0.10 * (1 - conf);
   const side = pOver >= 0.5 + band ? "OVER" : pOver <= 0.5 - band ? "UNDER" : "SKIP";
-  return { pOver, side, conf: Math.round(conf * 100) / 100, agree: agreeN };
+  return { pOver, pRaw, side, conf: Math.round(conf * 100) / 100, agree: agreeN };
 }
 // Rank all coins by how confident their CURRENT-round pick is, for the app's "best bet now" ticker.
 // Confidence = how lopsided the pick is (edge) × how much INDEPENDENT confluence backs it (conf) ×
@@ -1014,7 +1065,7 @@ async function runCoinPick(env, coin, st) {
       const correct = bet ? (actual === p.side) : null;
       const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
       const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
-      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, src: "candle" });
+      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, src: "candle" });
       if (rec.history.length > 300) rec.history.pop();
       rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
       rec.lastActual = actual;
@@ -1053,12 +1104,13 @@ async function runCoinPick(env, coin, st) {
       const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
       if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;
       const modelOver = predictBlend(coinModel, global, feat);      // learned P(OVER) for this round
-      const fp = freePick(mkt.overPct, micro && micro.mom, obi, modelOver, micro && micro.sig);
+      const fp = freePick(mkt.overPct, micro && micro.mom, obi, modelOver, micro && micro.sig, rec.calib);
       if (fp) {
         const d = new Date(nowTs);
         rec.pending = {
           coin, ticker: mkt.ticker || null, strike: mkt.strike, openPrice: micro ? micro.price : mkt.strike, side: fp.side,
           pOver: Math.round(fp.pOver * 100),
+          pRaw: Math.round(fp.pRaw * 100),                          // pre-calibration blend — fit the calibrator on this, never on itself
           prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
           conf: fp.conf, agree: fp.agree,                            // confluence: share of reads (0–1) + count agreeing
           modelOver: Math.round(modelOver * 100),
@@ -1090,6 +1142,15 @@ async function runCoinPick(env, coin, st) {
   rec.hitRatePct = g ? Math.round(c / g * 100) : null;
   rec.shadowHitPct = sg ? Math.round(sc / sg * 100) : null;        // if it had bet every round
   rec.betRatePct = sg ? Math.round(g / sg * 100) : null;           // coverage — how often it actually commits
+  // The DEFINITIVE hit-rate: only rounds Kalshi has actually settled (src==="kalshi"). reconcileKalshi
+  // upgrades every round to this within a cron or two, so it converges to exactly what Robinhood paid.
+  let cg = 0, cc = 0;
+  for (const e of rec.history) {
+    if (e.src === "kalshi" && (e.actual === "OVER" || e.actual === "UNDER") && (e.side === "OVER" || e.side === "UNDER")) { cg++; if (e.side === e.actual) cc++; }
+  }
+  rec.confirmedGraded = cg; rec.confirmedCorrect = cc; rec.confirmedHitPct = cg ? Math.round(cc / cg * 100) : null;
+  rec.calib = fitCalib(rec.history);     // Platt {a,b} — applied to the NEXT round's pick (read back in step 2)
+  rec.score = scoreCalib(rec.history);   // Brier / log-loss / reliability curve — surfaced in the app
   rec.learned = modelInsights(coinModel, global, rec.history);     // plain-language read for the prompt + app (post-reconcile)
   rec.updated = Date.now();
   // No per-coin write here — the whole auto-tracker is persisted once per cron run by saveState().

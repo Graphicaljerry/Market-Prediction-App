@@ -828,6 +828,7 @@
     <div id="autoCoverage" class="autoCoverage"></div>
     <div id="lateRecord" class="lateRecord"></div>
     <div id="autoLearned" class="autoLearned"></div>
+    <div id="autoCalib" class="autoLearned"></div>
     <div class="sec" style="margin-top:20px">Recent Rounds</div>
     <div id="autoHistory" class="history collapsed"><div class="empty">Warming up — grades a round every 15 minutes, even while you're away.</div></div>
     <button class="seeMore" id="moreAuto" style="display:none"></button>
@@ -3064,6 +3065,25 @@
           (items.length ? '<ul>' + items.map(function (t) { return '<li>' + t + '</li>'; }).join("") + '</ul>' : '') +
           '<div style="color:var(--label-3);margin-top:6px">15-min direction is near-random — these are faint tilts, not certainties.</div>';
       } else { le.innerHTML = ""; }
+    }
+    // Calibration & accuracy — is the stated % trustworthy, and how good are the probabilities (Brier)?
+    var scr = d.score, calEl = $("autoCalib");
+    if (calEl) {
+      if (scr && scr.n >= 20) {
+        var qual = scr.brier <= 0.20 ? "sharp" : scr.brier <= 0.243 ? "beating a coin-flip" : "about a coin-flip";
+        var rel = "";
+        if (scr.bins && scr.bins.length) {
+          var top = scr.bins.slice().sort(function (a, b) { return b.n - a.n; })[0];
+          rel = 'When it says ~<b>' + top.p + '%</b> OVER, it actually goes over <b>' + top.real + '%</b> <span style="color:var(--label-3)">(' + top.n + ' rounds)</span>';
+        }
+        var confLine = (typeof d.confirmedHitPct === "number")
+          ? '<div style="color:var(--label-3);margin-top:4px">Settled vs Kalshi · <b>' + d.confirmedHitPct + '%</b> over ' + d.confirmedGraded + ' confirmed bets — the definitive number</div>' : '';
+        calEl.innerHTML = '<div class="lh">Calibration &amp; accuracy · ' + scr.n + ' scored</div>' +
+          '<div>Brier <b>' + scr.brier.toFixed(3) + '</b> <span style="color:var(--label-3)">— ' + qual + ' · 0.25 = a coin-flip, lower is better</span></div>' +
+          (rel ? '<div style="margin-top:2px">' + rel + '</div>' : '') + confLine;
+      } else {
+        calEl.innerHTML = '<div class="lh">Calibration &amp; accuracy</div><div style="color:var(--label-3)">warming up — needs ~20+ graded rounds to score, ~80 to calibrate the %</div>';
+      }
     }
   }
 
