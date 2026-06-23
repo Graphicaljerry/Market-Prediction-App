@@ -251,7 +251,7 @@ async function fetchCrowd(seriesTicker) {
   // Also surface the NEXT round's market — that's the one the client locks a bet on in the
   // final 2 minutes, when this round's price is already pinned near 0/100 and useless as a prior.
   const m1 = markets[1];
-  const next1 = m1 ? { overPct: overFromMarket(m1), strike: strikeFromMarket(m1), closeTime: m1.close_time } : null;
+  const next1 = m1 ? { overPct: overFromMarket(m1), strike: strikeFromMarket(m1), closeTime: m1.close_time, ticker: m1.ticker } : null;
   return { overPct: over, source: "Kalshi", ticker: m.ticker, closeTime: m.close_time, strike: strikeFromMarket(m), next: next1 };
 }
 
@@ -1014,28 +1014,45 @@ async function runCoinPick(env, coin, st) {
     rec.pending = null;
   }
 
-  // 2) make a fresh pick for the round that just opened (the current Kalshi market)
-  if (crowd && typeof crowd.overPct === "number" && typeof crowd.strike === "number") {
-    const sigVals = { crowdOver: crowd.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose, rsi: micro && micro.rsi, macdH: micro && micro.macdH, price: micro && micro.price, lastMargin: rec.lastMargin };
-    const nowTs = Date.now();
-    const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
-    if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;
-    const modelOver = predictBlend(coinModel, global, feat);        // learned P(OVER) for this round
-    const fp = freePick(crowd.overPct, micro && micro.mom, obi, modelOver, micro && micro.sig);
-    if (fp) {
-      const d = new Date(nowTs);
-      rec.pending = {
-        coin, ticker: crowd.ticker || null, strike: crowd.strike, openPrice: micro ? micro.price : crowd.strike, side: fp.side,
-        pOver: Math.round(fp.pOver * 100),
-        prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
-        conf: fp.conf, agree: fp.agree,                              // confluence: share of reads (0–1) + count agreeing
-        modelOver: Math.round(modelOver * 100),
-        closeMs: crowd.closeTime ? new Date(crowd.closeTime).getTime() : nowTs + 900000,
-        ts: nowTs,                                                   // client formats this to 12-hour local time
-        label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",   // fallback for older clients
-        feat,                                                        // remembered so the next run can learn from it
-        signals: { crowdOver: Math.round(crowd.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null, rsi: micro && typeof micro.rsi === "number" ? Math.round(micro.rsi) : null, macdH: micro && typeof micro.macdH === "number" ? round4(micro.macdH) : null, stochK: micro && typeof micro.stochK === "number" ? micro.stochK : null, stochD: micro && typeof micro.stochD === "number" ? micro.stochD : null },
-      };
+  // 2) Lock ONE pick for the freshly-opened round — at its OPEN, and never again this round.
+  //    INTEGRITY (this is the whole point of the Track Record): if a pick is already pending and
+  //    its round hasn't closed yet, we DON'T touch it. Re-picking mid-round is exactly what would
+  //    let the tracked side quietly drift to the near-certain outcome and fake a ~100% hit rate.
+  //    We also refuse the about-to-close market: at the 15-min boundary the soonest-closing market
+  //    is already decided (price pinned near 0/100), so "grading" a pick made on it is free money.
+  //    Only a market with ~12-16 min left is a genuinely fresh, still-live round we can honestly
+  //    call at its open and grade at its close. (Step 1 above already cleared pending once its
+  //    round closed, so reaching here with no pending means we're due to open the next round.)
+  if (!rec.pending) {
+    const nowMs = Date.now();
+    let mkt = null;
+    for (const c of [crowd, crowd && crowd.next]) {                 // markets[0] (soonest) then markets[1] (next)
+      if (!c || !c.closeTime || c.strike == null || typeof c.overPct !== "number") continue;
+      const left = (new Date(c.closeTime).getTime() - nowMs) / 60000;
+      if (left >= 12 && left <= 16.5) { mkt = c; break; }           // a 15-min round that just opened
+    }
+    if (mkt) {
+      const sigVals = { crowdOver: mkt.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose, rsi: micro && micro.rsi, macdH: micro && micro.macdH, price: micro && micro.price, lastMargin: rec.lastMargin };
+      const nowTs = nowMs;
+      const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
+      if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;
+      const modelOver = predictBlend(coinModel, global, feat);      // learned P(OVER) for this round
+      const fp = freePick(mkt.overPct, micro && micro.mom, obi, modelOver, micro && micro.sig);
+      if (fp) {
+        const d = new Date(nowTs);
+        rec.pending = {
+          coin, ticker: mkt.ticker || null, strike: mkt.strike, openPrice: micro ? micro.price : mkt.strike, side: fp.side,
+          pOver: Math.round(fp.pOver * 100),
+          prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
+          conf: fp.conf, agree: fp.agree,                            // confluence: share of reads (0–1) + count agreeing
+          modelOver: Math.round(modelOver * 100),
+          closeMs: new Date(mkt.closeTime).getTime(),                // grade exactly when THIS round closes
+          ts: nowTs,                                                 // client formats this to 12-hour local time
+          label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",   // fallback for older clients
+          feat,                                                      // remembered so the next run can learn from it
+          signals: { crowdOver: Math.round(mkt.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null, rsi: micro && typeof micro.rsi === "number" ? Math.round(micro.rsi) : null, macdH: micro && typeof micro.macdH === "number" ? round4(micro.macdH) : null, stochK: micro && typeof micro.stochK === "number" ? micro.stochK : null, stochD: micro && typeof micro.stochD === "number" ? micro.stochD : null },
+        };
+      }
     }
   }
   rec.model = coinModel;

@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Track-Record integrity fix: the tracker now locks ONE pick per round at its OPEN, so the hit-rate is honest.** The ~100% it was showing was an artifact, not skill. On the 15-min boundary the worker grabbed the **soonest-closing** Kalshi market to pick — but at that instant that's the round *about to close*, already decided (price pinned near 0/100). It then **overwrote its pending pick every cron**, so the tracked side could quietly drift to the near-certain outcome right before grading — and "grading" a pick made on an already-settled round is free. The worker now selects only a **freshly-opened** market (≈12–16 min left, never the about-to-close one), locks **exactly one** pick for that round, and **refuses to touch it** until the round closes (a `!rec.pending` same-round guard) — then grades that genuinely-uncertain call at the close. The in-flight "Now" pick is shown but, as before, only *closed* rounds count toward Bets/Hit-Rate. Net effect: the headline rate drops to a real number (and coverage too, since fresh rounds with no posted quotes are honestly skipped). **Hit "Clear all" to wipe the old inflated rows and start the record clean.**
 - **"Prime entry" is now a VALUE entry — buy the big-multiplier underdog, not the 1.0× sure thing.** Buying the side that's already 99% locked pays ~1.0× (no profit). So the cue now fires for the *opposite*: when price is on one side but **momentum is carrying it toward the line**, and the side it's heading to is still the **big-multiplier underdog** — buy that longshot just before it crosses (`primeCheck` projects the per-minute move against the gap to the line, and requires a ≥2.5× implied payout). It's higher-variance by design, so the record now reports the real **return** — *"~1.30× back per $1"* (win-rate × average payout), which can beat 1.0× even at a low win-rate. Below 1.0× means the longshots aren't paying.
 - **The learned model keeps getting smarter: it now learns from settlement *magnitude*, and tells you the recent *regime*.** Added an 11th feature — **`lastMargin`**, how far the *last* round settled past its line (signed %): the model already knew the last round's *direction*, now it also knows the *size* of the over-shoot, so it can learn whether big over-shoots continue or snap back. The "What the model has learned" panel now also surfaces the **regime** (trending vs choppy/mean-reverting, from round-to-round transition rates), the current **streak**, and how decisively rounds have been settling — so you can see more of what it's figured out. (It already trains on *every* round, bet or skip, and reads RSI/MACD.)
 
@@ -356,12 +357,19 @@ Each run, per coin with a Kalshi series:
    `cbAvg60`) — fast and Kalshi-free so grading can never stall — then **reconciles** it to Kalshi's
    own settled result (`result: yes/no` → OVER/UNDER, literally what you bet on) on a later cron,
    kept off the critical path (`reconcileKalshi`, ≤1 Kalshi call/coin/cron).
-2. Makes a fresh pick the simple way: the **Kalshi market price** nudged by **1-min momentum**,
-   **order-book imbalance** and the learned model, with **SKIP** near 50/50 (`freePick`). The
-   commit is **confluence-gated** — it only fires when several *independent* reads point the same
-   way, demanding more edge (a wider SKIP band, ±0.08 aligned → ±0.18 split) when they conflict —
-   and reports how many reads agree (`agree`) and the share of signal-weight behind the side
-   (`conf`), so a low-agreement pick or a SKIP is itself an honest "this round is a coin-flip".
+2. Locks **one** pick for the round **at its open** — and that's the load-bearing integrity rule.
+   It selects only a **freshly-opened** Kalshi market (≈12–16 min to close), never the
+   soonest-closing one (on the 15-min boundary that market is *about to settle* — price pinned near
+   0/100, already decided, so "grading" a pick made on it would be free), and it **will not
+   overwrite a pick once made** (a `!rec.pending` same-round guard) — so the tracked side can't
+   drift to the near-certain outcome before grading. The pick itself is the simple blend: the
+   **Kalshi market price** nudged by **1-min momentum**, **order-book imbalance** and the learned
+   model, with **SKIP** near 50/50 (`freePick`). The commit is **confluence-gated** — it only fires
+   when several *independent* reads point the same way, demanding more edge (a wider SKIP band,
+   ±0.08 aligned → ±0.18 split) when they conflict — and reports how many reads agree (`agree`) and
+   the share of signal-weight behind the side (`conf`), so a low-agreement pick or a SKIP is itself
+   an honest "this round is a coin-flip". The pick is held untouched until the round closes, then
+   step 1 grades that genuinely-uncertain call — the only thing the Hit-Rate ever counts.
 3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV`. The whole auto-tracker —
    every coin **and** the pooled model — lives in **one** consolidated record (read back per-coin
    via `?picks=COIN`), so a cron run is a single KV write and stays inside the free tier.
