@@ -2994,7 +2994,8 @@
     var lat = $("autoLatest");
     if (p) {
       var cls = p.side === "OVER" ? "over" : p.side === "UNDER" ? "under" : "skip", sig = p.signals || {};
-      var sub = "market " + (sig.crowdOver != null ? sig.crowdOver + "% over" : "n/a") + (sig.obi != null ? " · book " + (sig.obi > 0 ? "+" : "") + sig.obi : "");
+      var book = sig.obi != null ? " · book " + (sig.obi > 0 ? "+" : "") + sig.obi : "";
+      var sub = p.self ? ("self-tracked · Kalshi unreachable" + book) : ("market " + (sig.crowdOver != null ? sig.crowdOver + "% over" : "n/a") + book);
       lat.className = "autoLatest " + cls;
       lat.innerHTML = (p.side === "SKIP" ? "SKIP — no clear edge" : "Auto pick: " + p.side + " · " + p.prob + "%") + '<span class="sub">' + sub + '</span>';
     } else { lat.className = "autoLatest"; lat.textContent = ""; }
@@ -3017,7 +3018,9 @@
       var actual = e ? (e.d > 0 ? "OVER" : "UNDER") : h.actual;                       // moveLog (Kalshi-priority) wins
       if (actual !== "OVER" && actual !== "UNDER") return "";                          // not graded yet
       var isKalshi = (e && (e.lvl != null ? e.lvl : 1) >= 2) || h.src === "kalshi";    // confirmed against Kalshi's settled result
-      var settling = isKalshi ? '' : ' <span style="color:var(--label-3);font-size:10px;font-weight:600">· settling</span>';
+      var settling = isKalshi ? '' : (h.self
+        ? ' <span style="color:var(--label-3);font-size:10px;font-weight:600" title="Kalshi was unreachable, so the tracker self-anchored this round and graded it on the Coinbase close vs the round open. Honest, but not Kalshi-confirmed.">· self-tracked</span>'
+        : ' <span style="color:var(--label-3);font-size:10px;font-weight:600">· settling</span>');
       var tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
       var lean = (h.lean === "OVER" || h.lean === "UNDER") ? h.lean : ((h.side === "OVER" || h.side === "UNDER") ? h.side : null);
       if (lean) { seenN++; if (lean === actual) shadowCorrectN++; }                    // shadow tally: every round by the side it leaned

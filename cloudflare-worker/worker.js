@@ -1024,6 +1024,14 @@ function modelInsights(coin, global, history) {
     streak: streak >= 2 ? { dir: sDir, len: streak } : null, avgMarginAbsPct, thinSharePct, regime };
 }
 
+// Next 15-min round boundary (UTC :00/:15/:30/:45) at least `minLead` minutes ahead. Used by the
+// Kalshi-independent fallback to anchor a self-tracked round from the clock when Kalshi is unreachable.
+function nextRoundClose(nowMs, minLead) {
+  const Q = 15 * 60000;
+  let t = Math.ceil(nowMs / Q) * Q;                       // the next quarter-hour boundary
+  while (t - nowMs < (minLead || 0) * 60000) t += Q;      // ...and far enough out to be a real, open round
+  return t;
+}
 async function runCoinPick(env, coin, st) {
   const series = env["KALSHI_SERIES_" + coin], product = CB_PRODUCT[coin];
   if (!series || !product) return;
@@ -1067,7 +1075,7 @@ async function runCoinPick(env, coin, st) {
       const correct = bet ? (actual === p.side) : null;
       const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
       const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
-      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, src: "candle" });
+      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, src: p.self ? "self" : "candle" });
       if (rec.history.length > 300) rec.history.pop();
       rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
       rec.lastActual = actual;
@@ -1100,6 +1108,17 @@ async function runCoinPick(env, coin, st) {
         if (left >= 6 && left <= 16.5) { mkt = c; break; }          // an open, still-undecided round (tolerates a late cron)
       }
     }
+    // Kalshi-independent FALLBACK so the tracker keeps logging 24/7 even when Kalshi is unreachable
+    // (it rate-limits the server's IP, especially while the app is closed — the main cause of skipped
+    // rounds). Self-anchor a round from the clock + the live Coinbase price: strike = price NOW (= the
+    // round's open), close = the next 15-min boundary ≥6 min out. PURELY ADDITIVE — it only fires when
+    // the Kalshi path above locked nothing AND Kalshi was genuinely unreachable (no fresh crowd), so a
+    // normal Kalshi-reachable pick is byte-for-byte unchanged. No ticker, so reconcileKalshi never
+    // claims these as Kalshi-confirmed (they stay honestly "self-tracked"); and since the model already
+    // trains on close-vs-open, strike = open makes a self-anchored round its cleanest, most consistent case.
+    if (!mkt && (!crowd || crowd.stale) && micro && typeof micro.price === "number") {
+      mkt = { ticker: null, strike: micro.price, overPct: null, closeTime: nextRoundClose(nowMs, 6), self: true };
+    }
     if (mkt) {
       const sigVals = { crowdOver: mkt.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose, rsi: micro && micro.rsi, macdH: micro && micro.macdH, price: micro && micro.price, lastMargin: rec.lastMargin };
       const nowTs = nowMs;
@@ -1110,7 +1129,7 @@ async function runCoinPick(env, coin, st) {
       if (fp) {
         const d = new Date(nowTs);
         rec.pending = {
-          coin, ticker: mkt.ticker || null, strike: mkt.strike, openPrice: micro ? micro.price : mkt.strike, side: fp.side,
+          coin, ticker: mkt.ticker || null, self: mkt.self || false, strike: mkt.strike, openPrice: micro ? micro.price : mkt.strike, side: fp.side,
           pOver: Math.round(fp.pOver * 100),
           pRaw: Math.round(fp.pRaw * 100),                          // pre-calibration blend — fit the calibrator on this, never on itself
           prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
@@ -1120,7 +1139,7 @@ async function runCoinPick(env, coin, st) {
           ts: nowTs,                                                 // client formats this to 12-hour local time
           label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",   // fallback for older clients
           feat,                                                      // remembered so the next run can learn from it
-          signals: { crowdOver: Math.round(mkt.overPct), mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null, rsi: micro && typeof micro.rsi === "number" ? Math.round(micro.rsi) : null, macdH: micro && typeof micro.macdH === "number" ? round4(micro.macdH) : null, stochK: micro && typeof micro.stochK === "number" ? micro.stochK : null, stochD: micro && typeof micro.stochD === "number" ? micro.stochD : null },
+          signals: { crowdOver: typeof mkt.overPct === "number" ? Math.round(mkt.overPct) : null, mom: micro ? round4(micro.mom) : null, obi: obi != null ? Math.round(obi * 100) / 100 : null, rsi: micro && typeof micro.rsi === "number" ? Math.round(micro.rsi) : null, macdH: micro && typeof micro.macdH === "number" ? round4(micro.macdH) : null, stochK: micro && typeof micro.stochK === "number" ? micro.stochK : null, stochD: micro && typeof micro.stochD === "number" ? micro.stochD : null },
         };
       }
     }
