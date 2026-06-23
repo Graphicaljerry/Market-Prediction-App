@@ -727,7 +727,7 @@ async function kalshiResult(ticker) {
 // arrows converge to Kalshi within one cycle instead of trickling one at a time.
 async function reconcileKalshi(rec) {
   const h = rec.history || [];
-  for (let i = 0, checked = 0; i < h.length && checked < 12; i++) {  // up to ~12 unconfirmed rounds/coin/cron — clears any backlog so EVERY round converges to Kalshi's settled result
+  for (let i = 0, checked = 0; i < h.length && checked < 4; i++) {   // KEEP THIS CHEAP: every Kalshi call here competes with the cron's essential crowd-odds fetch for a tight free-tier subrequest + rate-limit budget; too many and the whole run fails to save (rounds go unlogged). Newest-first; a backlog still clears over a few crons and every round converges to Kalshi.
     const e = h[i];
     if (e.src === "kalshi" || !e.ticker) continue;
     checked++;
