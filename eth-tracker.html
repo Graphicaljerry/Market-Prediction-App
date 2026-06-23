@@ -3039,7 +3039,10 @@
     var lr = d.learned, le = $("autoLearned");
     if (le) {
       var items = lr && lr.tendencies ? lr.tendencies.slice() : [];
+      if (lr && lr.regime) items.push("recent regime: " + lr.regime);
       if (lr && lr.afterUpOverPct != null) items.push("after an UP round → OVER " + lr.afterUpOverPct + "%; after a DOWN round → OVER " + lr.afterDownOverPct + "%");
+      if (lr && lr.streak) items.push(lr.streak.len + " " + lr.streak.dir + " rounds in a row right now");
+      if (lr && typeof lr.avgMarginAbsPct === "number") items.push("rounds lately settle " + (lr.avgMarginAbsPct < 0.05 ? "razor-thin" : "±" + lr.avgMarginAbsPct + "%") + " past the line" + (typeof lr.thinSharePct === "number" && lr.thinSharePct >= 25 ? " (" + lr.thinSharePct + "% within a hair — fragile)" : ""));
       var modelNow = (p && typeof p.modelOver === "number") ? p.modelOver : null;
       if (lr && (items.length || modelNow != null)) {
         le.innerHTML = '<div class="lh">What the model has learned · ' + (lr.confidence || "warming up") + ' · ' + (lr.n || 0) + ' rounds</div>' +

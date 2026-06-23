@@ -872,7 +872,7 @@ async function saveState(env, st) { st.updated = Date.now(); await kvPutRaw(env,
 // Cont 2018, arXiv:1803.06917; Bugaenko 2004.08290), and a *pooled* feature→move mapping is
 // "universal" and beats isolated per-asset models — so we partial-pool each coin toward a
 // shared global model, weighted by how much data the coin has earned.
-const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin", "todCos", "rangeClose", "rsi", "macdHist"];
+const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin", "todCos", "rangeClose", "rsi", "macdHist", "lastMargin"];
 // Constant LR (NOT 1/sqrt(t)) so the model keeps tracking a drifting market; strong-ish L2
 // because samples are scarce. Tuning per research synthesis (online logistic regression
 // under distribution shift): eta ~0.05-0.15, L2 ~3e-3-1e-2.
@@ -903,8 +903,11 @@ function featuresFor(model, signals, prevActual, ts) {
   const rsi = typeof signals.rsi === "number" ? clampF((signals.rsi - 50) / 50, -1, 1) : 0;
   const macdH = (typeof signals.macdH === "number" && typeof signals.price === "number" && signals.price > 0)
     ? Math.tanh(signals.macdH / signals.price * 800) : 0;
+  // How far the LAST round settled past its line (signed %): lastDir gave only the direction, this
+  // adds the magnitude — so the model can learn whether a big over-shoot tends to continue or revert.
+  const lastMargin = typeof signals.lastMargin === "number" ? Math.tanh(signals.lastMargin * 4) : 0;
   const hourFrac = ((new Date(ts).getUTCHours()) + new Date(ts).getUTCMinutes() / 60) / 24;
-  return [obi, mom, volr, crowdLean, lastDir, Math.sin(2 * Math.PI * hourFrac), Math.cos(2 * Math.PI * hourFrac), rngClose, rsi, macdH];
+  return [obi, mom, volr, crowdLean, lastDir, Math.sin(2 * Math.PI * hourFrac), Math.cos(2 * Math.PI * hourFrac), rngClose, rsi, macdH, lastMargin];
 }
 function scoreModel(model, f) { let z = model.b; for (let i = 0; i < f.length; i++) z += model.w[i] * f[i]; return z; }
 // Partial-pooled probability: blend the coin's linear score toward the pooled (global) one by
@@ -935,6 +938,7 @@ function modelInsights(coin, global, history) {
   if (w.length > 7 && Math.abs(w[7]) > 0.12) tend.push(w[7] > 0 ? "tends to keep going when the prior round closed near an extreme (momentum)" : "tends to reverse when the prior round closed near an extreme (mean-reversion)");
   if (w.length > 8 && Math.abs(w[8]) > 0.12) tend.push(w[8] > 0 ? "a high RSI (overbought) has tended to keep pushing OVER (momentum)" : "a high RSI has tended to fade back UNDER (overbought = exhaustion)");
   if (w.length > 9 && Math.abs(w[9]) > 0.12) tend.push(w[9] > 0 ? "a rising MACD histogram has led to OVER" : "a rising MACD histogram has led to UNDER");
+  if (w.length > 10 && Math.abs(w[10]) > 0.12) tend.push(w[10] > 0 ? "a big over-shoot last round tends to keep going (momentum)" : "a big over-shoot last round tends to snap back (mean-reversion)");
   // round-to-round transition rates from graded history (interpretable regime read)
   let uu = 0, un = 0, du = 0, dn = 0;
   for (let i = 0; i + 1 < history.length; i++) {
@@ -952,10 +956,18 @@ function modelInsights(coin, global, history) {
     avgMarginAbsPct = Math.round(margins.reduce((s, x) => s + Math.abs(x), 0) / margins.length * 1e3) / 1e3;
     thinSharePct = Math.round(margins.filter((x) => Math.abs(x) < 0.05).length / margins.length * 100);   // within ~0.05% of the line
   }
+  // Plain-English regime read from the recent transition rates: does direction tend to flip
+  // (choppy / mean-reverting) or persist (trending)? "stay" = P(same direction as last round).
+  let regime = null;
+  const tot = uu + un + du + dn;
+  if (tot >= 10) {
+    const stay = (uu + dn) / tot;   // share of rounds that repeated the prior direction
+    regime = stay >= 0.6 ? "trending — rounds tend to repeat direction" : stay <= 0.4 ? "choppy — rounds tend to alternate (mean-reverting)" : "mixed — no strong round-to-round pattern";
+  }
   // Honest confidence by sample size: a true 53% edge needs ~2,500 graded rounds to confirm.
   const confidence = coin.n >= 2500 ? "established" : coin.n >= 600 ? "building" : "warming up";
   return { n: coin.n, confidence, tendencies: tend, afterUpOverPct: afterUp, afterDownOverPct: afterDown,
-    streak: streak >= 2 ? { dir: sDir, len: streak } : null, avgMarginAbsPct, thinSharePct };
+    streak: streak >= 2 ? { dir: sDir, len: streak } : null, avgMarginAbsPct, thinSharePct, regime };
 }
 
 async function runCoinPick(env, coin, st) {
@@ -1004,7 +1016,7 @@ async function runCoinPick(env, coin, st) {
 
   // 2) make a fresh pick for the round that just opened (the current Kalshi market)
   if (crowd && typeof crowd.overPct === "number" && typeof crowd.strike === "number") {
-    const sigVals = { crowdOver: crowd.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose, rsi: micro && micro.rsi, macdH: micro && micro.macdH, price: micro && micro.price };
+    const sigVals = { crowdOver: crowd.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose, rsi: micro && micro.rsi, macdH: micro && micro.macdH, price: micro && micro.price, lastMargin: rec.lastMargin };
     const nowTs = Date.now();
     const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
     if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;
