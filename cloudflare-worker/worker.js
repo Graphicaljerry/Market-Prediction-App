@@ -785,10 +785,12 @@ function favLongshotAdj(p) {
   if (Math.abs(d) < 0.06) return p;
   return Math.max(0.02, Math.min(0.98, p + Math.max(-0.05, Math.min(0.05, d * 0.12))));
 }
-// --- Calibration (make the probability trustworthy) + scoring (measure it) -----------------------
+// --- Calibration (measure how trustworthy the % is) + scoring ------------------------------------
 // Platt scaling maps the model's RAW blended P(OVER) through a learned logistic so a stated "70%"
-// actually lands ~70% of the time. The fit is regularized toward identity (a=1, b=0) and gated by
-// sample size, so it's a gentle no-op while the log is small and only corrects once it has earned it.
+// actually lands ~70% of the time. For now this is MEASUREMENT-ONLY: we compute and score it, but the
+// live pick still uses the raw model (the proven picker, untouched). Flip CALIBRATE_PICKS to true once
+// the Brier score proves a correction would help — then the same map is applied before the decision.
+const CALIBRATE_PICKS = false;
 function calibApply(pRaw, calib) {
   if (!calib || typeof calib.a !== "number") return pRaw;
   const pc = Math.min(0.999, Math.max(0.001, pRaw));
@@ -855,7 +857,7 @@ function freePick(crowdOverPct, mom, obi, modelOver, sig, calib) {
   if (!parts.length) return null;
   let ws = 0, ac = 0; for (const x of parts) { ws += x.w; ac += x.p * x.w; }
   const pRaw = ac / ws;
-  const pOver = calibApply(pRaw, calib);               // trustworthy probability (identity until the log is big enough)
+  const pOver = CALIBRATE_PICKS ? calibApply(pRaw, calib) : pRaw;   // measurement-only by default: the pick uses the RAW model (unchanged); calibration is only scored
   const dir = pOver >= 0.5 ? 1 : -1;
   // Confluence: weighted share of reads leaning the SAME way as the blend (and a plain count).
   let agreeW = 0, agreeN = 0, totW = 0;
