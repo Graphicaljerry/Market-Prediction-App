@@ -2263,6 +2263,13 @@
     if (now >= currentRoundEnd) {
       closeRound();                                                // stash the just-ended round for accurate settle
       currentRoundEnd = nextBoundary(now);
+      // Set the NEW round's remaining BEFORE any render below. Otherwise renderRoundCall →
+      // renderPickCard reads the PREVIOUS tick's remaining (~0s, still inside the 2-min bet
+      // window) and wrongly fires ensureLockedNext — locking a "NEXT round" pick ~3s into the
+      // fresh round (the glitch where NEXT ROUND lit up with a lock at round open). With ~15 min
+      // left, nextMode is correctly false, so NEXT ROUND stays dormant until this round's final 2m.
+      state.remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
+      state._nextMode = false;                                     // reset the bet-window latch for the new round
       state.leanFlips = 0; state.leanDir = null; state.committed = null; state._staleRefresh = false;   // fresh stability + commit state per round
       openRound(false);
       state.betWindowFired = false;
