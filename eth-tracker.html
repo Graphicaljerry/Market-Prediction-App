@@ -2263,7 +2263,7 @@
     if (now >= currentRoundEnd) {
       closeRound();                                                // stash the just-ended round for accurate settle
       currentRoundEnd = nextBoundary(now);
-      state.leanFlips = 0; state.leanDir = null; state.committed = null;   // fresh stability + commit state per round
+      state.leanFlips = 0; state.leanDir = null; state.committed = null; state._staleRefresh = false;   // fresh stability + commit state per round
       openRound(false);
       state.betWindowFired = false;
       resetChart();                                                // fresh price track for the new round
@@ -3084,11 +3084,23 @@
     var crowdVal = crowd && typeof crowd.overPct === "number"
       ? crowd.overPct.toFixed(0) + "% OVER" + (crowd.stale ? " · last known" : "")
       : "n/a";
+    // The AI read runs once per round; the crowd + price keep moving, so its stored verdict/edge can
+    // go STALE (and even contradict the live crowd). Recompute the edge against the CURRENT crowd, and
+    // flag the read as "aging" when its call now sits on the opposite side of BOTH the crowd and the
+    // live blend — and pull one fresh read so it catches up (budget-gated, once per round).
+    var crowdDir = crowd && typeof crowd.overPct === "number" ? (crowd.overPct > 55 ? "OVER" : crowd.overPct < 45 ? "UNDER" : null) : null;
+    var aiDir = ai && (ai.verdict === "OVER" || ai.verdict === "UNDER") ? ai.verdict : null;
+    var live = state.lastRecoObj ? combinedOdds(state.lastRecoObj).pOver : null;
+    var liveDir = live != null ? (live >= 0.5 ? "OVER" : "UNDER") : null;
+    var aging = !!(aiDir && crowdDir && liveDir && aiDir !== crowdDir && aiDir !== liveDir);
+    if (aging && aiAvailable() && !state._staleRefresh) { state._staleRefresh = true; callWorker(false); }   // catch the read up (self-gates on budget)
     var aiVal, aiCls = "";
-    if (ai && ai.verdict) { aiVal = ai.verdict + (ai.confidence ? " · " + ai.confidence : ""); aiCls = ai.verdict === "OVER" ? "o" : ai.verdict === "UNDER" ? "u" : ""; }
-    else aiVal = aiAvailable() ? "reading…" : "not connected";
-    var edge = ai && ai.edge === "against-crowd" ? '<span class="aiEdge against">EDGE vs crowd</span>'
-      : ai && ai.edge === "with-crowd" ? '<span class="aiEdge with">agrees w/ crowd</span>' : "";
+    if (ai && ai.verdict) {
+      aiVal = ai.verdict + (ai.confidence ? " · " + ai.confidence : "") + (aging ? ' <span style="color:var(--orange);font-weight:600;font-size:11px">· read aging</span>' : "");
+      aiCls = ai.verdict === "OVER" ? "o" : ai.verdict === "UNDER" ? "u" : "";
+    } else aiVal = aiAvailable() ? "reading…" : "not connected";
+    var edge = aging ? '<span class="aiEdge" style="color:var(--label-3);background:none;border:1px solid var(--separator)">read predates the move</span>'
+      : (aiDir && crowdDir) ? (aiDir === crowdDir ? '<span class="aiEdge with">agrees w/ crowd</span>' : '<span class="aiEdge against">EDGE vs crowd</span>') : "";
     el.innerHTML =
       '<div class="aiRow"><span class="k">Crowd · Kalshi</span><span class="v">' + crowdVal + '</span></div>' +
       '<div class="aiRow"><span class="k">AI · ' + providerNice(state.lastProvider) + '</span><span class="v ' + aiCls + '">' + aiVal + '</span></div>' +
