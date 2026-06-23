@@ -31,6 +31,7 @@ jobs:
           mkdir -p _site
           cp eth-tracker.html _site/index.html
           cp eth-tracker.html _site/eth-tracker.html
+          cp guide.html _site/guide.html
 
       - name: Configure Pages (auto-enable)
         uses: actions/configure-pages@v5

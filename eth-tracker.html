@@ -3163,7 +3163,9 @@
   }
   var _cl = $("clearLog"); if (_cl) _cl.addEventListener("click", function () {
     var coin = state.coin;
-    if (!confirm("Start the " + coin + " log fresh?\n\nThis wipes the recorded rounds, the Recent-15-min arrows and the hit-rate — here AND on the 24/7 tracker — so they rebuild on newly-settled rounds only. The learned model is kept.")) return;
+    var ln = state.lastAuto && state.lastAuto.learned;
+    var nTxt = (ln && typeof ln.n === "number" && ln.n > 0) ? " (≈" + ln.n.toLocaleString() + " rounds learned and counting)" : "";
+    if (!confirm("Start the " + coin + " log fresh?\n\nThis wipes the recorded rounds, the Recent-15-min arrows and the hit-rate — here AND on the 24/7 tracker — so they rebuild on newly-settled rounds only.\n\nThe learned model" + nTxt + " is KEPT — clearing resets the scoreboard, not what it's learned, and it keeps getting smarter every round.")) return;
     clearCoinData(coin);
     saveRounds(); saveLateRounds(); saveClearTs(); saveMoveLog();
     state.lastSettled = null; state.lastAuto = null; renderAccuracy(); renderRounds(); renderLateRecord(); renderLastClose();
@@ -3175,7 +3177,7 @@
   });
   var _ca = $("clearAll"); if (_ca) _ca.addEventListener("click", function () {
     var coins = Object.keys(COINS);
-    if (!confirm("Start ALL " + coins.length + " coins fresh?\n\nThis wipes every coin's recorded rounds, arrows and hit-rate — here AND on the 24/7 tracker — so they rebuild on newly-settled rounds only. The learned models are kept.")) return;
+    if (!confirm("Start ALL " + coins.length + " coins fresh?\n\nThis wipes every coin's recorded rounds, arrows and hit-rate — here AND on the 24/7 tracker — so they rebuild on newly-settled rounds only.\n\nThe learned models are KEPT — clearing resets the scoreboards, not what they've learned, and they keep getting smarter every round.")) return;
     coins.forEach(clearCoinData);
     saveRounds(); saveLateRounds(); saveClearTs(); saveMoveLog();
     state.lastSettled = null; state.lastAuto = null; state.best = [];
