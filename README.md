@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Fixed the 24/7 tracker going silent while the app was closed (no rounds logged for hours).** Two causes, both fixed. (1) The integrity rule was *too* strict: it only locked a pick on a market with **12–16 min** left, but **free-tier crons fire late** — by the time the cron ran, a genuinely fresh round often showed only ~7–10 min left, so it matched *nothing* and logged *nothing*. The floor is now **6 min**, and integrity is enforced directly instead of by timing — it refuses any market whose odds are already pinned (**≤3% / ≥97%** = decided), so it still can't fake a ~100% hit-rate, but it stops dropping real rounds. (2) The cron leaned on the app to keep the Kalshi cache warm; with the app closed it saw only stale data. It now **retries the Kalshi fetch (a few attempts) and persists each success itself**, so it stays warm and logs around the clock. (If a round is genuinely unreachable it still honestly skips rather than inventing a pick.)
 - **Style guide (Figma): added the indicator + desktop-chart UI assets.** The shared Figma **style-guide** frame now reproduces the live app's **indicator components** — the BULL / BEAR / NEU / INFO signal chips and the full indicator panel (RSI, MACD, Stochastic, Momentum, order book, EMA-trend rows) at **desktop (620)** and **mobile (358)** widths — plus the **RSI / MACD / Stochastic sub-panes** in both sizes, and the **desktop price chart** (the price line crossing the dashed *beat* line, with green/red H/L labels). All built natively in **Space Mono** with the app's exact iOS-dark tokens, matching the frame's existing CHART COMPONENTS / color / type sections.
 - **Fixed the Auto Pick card "glitching" at the round rollover — NEXT ROUND no longer wakes up at round open.** Right at the 15-min boundary the card re-rendered using the *previous* tick's countdown (still reading ~0s, i.e. inside the final-2-min bet window), so it wrongly fired the next-round lock **~3 seconds into the fresh round** — the NEXT ROUND column lit up with a "locked HH:MM:SS" pick at round open (and it burned a spurious AI read every rollover). The rollover now refreshes the countdown *before* re-rendering, so NEXT ROUND stays dormant ("locks in m:ss") until this round's own final 2 minutes. Worth knowing while reading this: the big **Auto Pick card is the live Co-Pilot** (it recomputes every refresh and is *not* logged); the **Track Record** panel below it is the *separate, server-side* pick that's the only thing graded, logged and learned from — so the card flipping around the boundary never touches your record.
 - **Fixed the 📖 Guide button (it 404'd) and made "Clear" spell out that your learning is kept.** The Pages build only copied `eth-tracker.html` into the published site, so `guide.html` — though it's in the repo — was never deployed and the Guide link hit GitHub's 404. The deploy workflow now copies `guide.html` too. Separately, the **Clear log / Clear all** confirmations now state plainly that the **learned model is KEPT and keeps growing** — clearing resets only the scoreboard (recorded rounds, arrows, hit-rate), never what the model has learned — and the per-coin dialog shows the live *"≈N rounds learned and counting"* so it's unmistakable.
@@ -360,12 +361,17 @@ Each run, per coin with a Kalshi series:
    `cbAvg60`) — fast and Kalshi-free so grading can never stall — then **reconciles** it to Kalshi's
    own settled result (`result: yes/no` → OVER/UNDER, literally what you bet on) on a later cron,
    kept off the critical path (`reconcileKalshi`, ≤1 Kalshi call/coin/cron).
-2. Locks **one** pick for the round **at its open** — and that's the load-bearing integrity rule.
-   It selects only a **freshly-opened** Kalshi market (≈12–16 min to close), never the
-   soonest-closing one (on the 15-min boundary that market is *about to settle* — price pinned near
-   0/100, already decided, so "grading" a pick made on it would be free), and it **will not
-   overwrite a pick once made** (a `!rec.pending` same-round guard) — so the tracked side can't
-   drift to the near-certain outcome before grading. The pick itself is the simple blend: the
+2. Locks **one** pick per round and **won't overwrite it** once made (a `!rec.pending` same-round
+   guard) — so the tracked side can't drift to the near-certain outcome before grading. It only
+   locks on a round that's **still undecided**: ≥ **6 minutes** of time left **and** odds that
+   aren't pinned (**3–97%**) — a market sitting at 0/100 is already settled, and "grading" a pick
+   made on it would be free. (The 6-min floor — rather than insisting on a brand-new ~15-min market —
+   is deliberate: free-tier crons fire **late**, often several minutes past the boundary, so a
+   genuinely fresh round may already show only ~7–10 min left; 6 still guarantees the outcome is
+   open. Earlier this floor was 12, which silently dropped picks whenever the cron ran late — the
+   "stopped logging while I was away" bug.) It acts only on **fresh** Kalshi data, and the cron now
+   **retries the fetch and warms the cache itself** instead of relying on the app being open, so it
+   keeps logging 24/7. The pick itself is the simple blend: the
    **Kalshi market price** nudged by **1-min momentum**, **order-book imbalance** and the learned
    model, with **SKIP** near 50/50 (`freePick`). The commit is **confluence-gated** — it only fires
    when several *independent* reads point the same way, demanding more edge (a wider SKIP band,

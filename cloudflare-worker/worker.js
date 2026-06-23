@@ -224,10 +224,11 @@ async function getKalshiCrowd(env, seriesTicker, persist = true) {
     if (data) {
       const entry = { t: now, data };
       crowdMem.set(seriesTicker, entry);
-      // Persist to the shared cache only on the live (app) path. The 15-min cron passes
-      // persist=false — it still READS this cache, but never writes it, so the free-tier KV
-      // write budget is spent on data that matters. The app keeps this cache warm while in use.
-      if (env.CROWD_KV && persist) await kvPut(env, seriesTicker, entry);   // share with other isolates
+      // Persist successful fetches to the shared cache when persist=true. Both the live (app) path
+      // AND the 15-min cron now write it — the cron can't lean on the app being open to keep Kalshi
+      // data warm, so it persists its own fetches (a few KV writes/run, still far under the free-tier
+      // budget). Shared across every Worker isolate so one success serves them all.
+      if (env.CROWD_KV && persist) await kvPut(env, seriesTicker, entry);
       return data;
     }
     return staleOrNull(cached, now);
@@ -974,11 +975,21 @@ async function runCoinPick(env, coin, st) {
   const series = env["KALSHI_SERIES_" + coin], product = CB_PRODUCT[coin];
   if (!series || !product) return;
   const global = st.global;
-  const [crowd, micro, obi] = await Promise.all([
-    getKalshiCrowd(env, series, false).catch(() => null),   // false: read the shared cache, don't spend a KV write
+  const [micro, obi] = await Promise.all([
     cbMicro(product).catch(() => null),
     cbObi(product).catch(() => null),
   ]);
+  // The cron can't rely on the app to keep the Kalshi crowd cache warm (the app is usually closed
+  // when this runs), and Kalshi 429s Cloudflare's shared egress IPs — so make a few attempts to land
+  // FRESH data and PERSIST a success, keeping the shared cache (and the app/best endpoints) warm.
+  // Without this the cron routinely saw only stale data and locked no pick — the "stopped logging
+  // while I was away" bug. A couple of 1s waits only happen when a fetch is actually failing.
+  let crowd = null;
+  for (let i = 0; i < 3; i++) {
+    crowd = await getKalshiCrowd(env, series, true).catch(() => null);
+    if (crowd && !crowd.stale) break;
+    if (i < 2) await sleep(1000);
+  }
   const rec = st.coins[coin] || (st.coins[coin] = { coin, pending: null, history: [], graded: 0, correct: 0 });
   const coinModel = padModel(rec.model || newModel());
 
@@ -1014,22 +1025,27 @@ async function runCoinPick(env, coin, st) {
     rec.pending = null;
   }
 
-  // 2) Lock ONE pick for the freshly-opened round — at its OPEN, and never again this round.
-  //    INTEGRITY (this is the whole point of the Track Record): if a pick is already pending and
-  //    its round hasn't closed yet, we DON'T touch it. Re-picking mid-round is exactly what would
-  //    let the tracked side quietly drift to the near-certain outcome and fake a ~100% hit rate.
-  //    We also refuse the about-to-close market: at the 15-min boundary the soonest-closing market
-  //    is already decided (price pinned near 0/100), so "grading" a pick made on it is free money.
-  //    Only a market with ~12-16 min left is a genuinely fresh, still-live round we can honestly
-  //    call at its open and grade at its close. (Step 1 above already cleared pending once its
-  //    round closed, so reaching here with no pending means we're due to open the next round.)
+  // 2) Lock ONE pick per round, and never touch it again until that round closes.
+  //    INTEGRITY: if a pick is already pending we DON'T re-pick (the !rec.pending gate) — re-picking
+  //    mid-round is what would let the tracked side drift to the near-certain outcome and fake a
+  //    ~100% hit rate. We also never lock on an ALREADY-DECIDED market: a round must still have real
+  //    time left (>=6 min) AND odds that aren't pinned (3-97%); a market sitting at 0/100 is settled,
+  //    and "grading" a pick made on it is the exact free-money trap this guard prevents.
+  //    COVERAGE: the floor is 6 (not 12) min because free-tier crons fire LATE — often several
+  //    minutes past the boundary — so by the time we run, a genuinely fresh round may show only
+  //    ~7-10 min left; 6 still guarantees the outcome is open. We only act on FRESH crowd data
+  //    (a stale cache carries an old close time whose round already settled), so an app-closed cron
+  //    that couldn't reach Kalshi makes no pick rather than a bogus one.
   if (!rec.pending) {
     const nowMs = Date.now();
     let mkt = null;
-    for (const c of [crowd, crowd && crowd.next]) {                 // markets[0] (soonest) then markets[1] (next)
-      if (!c || !c.closeTime || c.strike == null || typeof c.overPct !== "number") continue;
-      const left = (new Date(c.closeTime).getTime() - nowMs) / 60000;
-      if (left >= 12 && left <= 16.5) { mkt = c; break; }           // a 15-min round that just opened
+    if (crowd && !crowd.stale) {
+      for (const c of [crowd, crowd.next]) {                        // markets[0] (soonest) then markets[1] (next)
+        if (!c || !c.closeTime || c.strike == null || typeof c.overPct !== "number") continue;
+        if (c.overPct <= 3 || c.overPct >= 97) continue;            // already-decided market — never lock a fake pick
+        const left = (new Date(c.closeTime).getTime() - nowMs) / 60000;
+        if (left >= 6 && left <= 16.5) { mkt = c; break; }          // an open, still-undecided round (tolerates a late cron)
+      }
     }
     if (mkt) {
       const sigVals = { crowdOver: mkt.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose, rsi: micro && micro.rsi, macdH: micro && micro.macdH, price: micro && micro.price, lastMargin: rec.lastMargin };
