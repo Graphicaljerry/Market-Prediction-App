@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Style guide (Figma): added the indicator + desktop-chart UI assets.** The shared Figma **style-guide** frame now reproduces the live app's **indicator components** — the BULL / BEAR / NEU / INFO signal chips and the full indicator panel (RSI, MACD, Stochastic, Momentum, order book, EMA-trend rows) at **desktop (620)** and **mobile (358)** widths — plus the **RSI / MACD / Stochastic sub-panes** in both sizes, and the **desktop price chart** (the price line crossing the dashed *beat* line, with green/red H/L labels). All built natively in **Space Mono** with the app's exact iOS-dark tokens, matching the frame's existing CHART COMPONENTS / color / type sections.
 - **Fixed the Auto Pick card "glitching" at the round rollover — NEXT ROUND no longer wakes up at round open.** Right at the 15-min boundary the card re-rendered using the *previous* tick's countdown (still reading ~0s, i.e. inside the final-2-min bet window), so it wrongly fired the next-round lock **~3 seconds into the fresh round** — the NEXT ROUND column lit up with a "locked HH:MM:SS" pick at round open (and it burned a spurious AI read every rollover). The rollover now refreshes the countdown *before* re-rendering, so NEXT ROUND stays dormant ("locks in m:ss") until this round's own final 2 minutes. Worth knowing while reading this: the big **Auto Pick card is the live Co-Pilot** (it recomputes every refresh and is *not* logged); the **Track Record** panel below it is the *separate, server-side* pick that's the only thing graded, logged and learned from — so the card flipping around the boundary never touches your record.
 - **Fixed the 📖 Guide button (it 404'd) and made "Clear" spell out that your learning is kept.** The Pages build only copied `eth-tracker.html` into the published site, so `guide.html` — though it's in the repo — was never deployed and the Guide link hit GitHub's 404. The deploy workflow now copies `guide.html` too. Separately, the **Clear log / Clear all** confirmations now state plainly that the **learned model is KEPT and keeps growing** — clearing resets only the scoreboard (recorded rounds, arrows, hit-rate), never what the model has learned — and the per-coin dialog shows the live *"≈N rounds learned and counting"* so it's unmistakable.
 - **Track-Record integrity fix: the tracker now locks ONE pick per round at its OPEN, so the hit-rate is honest.** The ~100% it was showing was an artifact, not skill. On the 15-min boundary the worker grabbed the **soonest-closing** Kalshi market to pick — but at that instant that's the round *about to close*, already decided (price pinned near 0/100). It then **overwrote its pending pick every cron**, so the tracked side could quietly drift to the near-certain outcome right before grading — and "grading" a pick made on an already-settled round is free. The worker now selects only a **freshly-opened** market (≈12–16 min left, never the about-to-close one), locks **exactly one** pick for that round, and **refuses to touch it** until the round closes (a `!rec.pending` same-round guard) — then grades that genuinely-uncertain call at the close. The in-flight "Now" pick is shown but, as before, only *closed* rounds count toward Bets/Hit-Rate. Net effect: the headline rate drops to a real number (and coverage too, since fresh rounds with no posted quotes are honestly skipped). **Hit "Clear all" to wipe the old inflated rows and start the record clean.**
@@ -516,8 +517,12 @@ The UI is mocked up in Figma with the same design system across three breakpoint
 | **📲 Tablet · 834** | two-column layout |
 | **🖥 Desktop · 1440** | 3-up top row (hero · timer · pick) + grid |
 
-The file also includes a **Crypto Icons** style-guide frame (the brand marks reproduced as
-SVG in the app) and a board of curated references.
+The file also includes a **`style-guide`** frame that documents the design system — color +
+gradient palettes, typography, the **Crypto Icons** (brand marks reproduced as SVG in the app),
+the **chart components**, and the **Indicators & Desktop Chart** assets: the BULL/BEAR/NEU/INFO
+signal chips, the indicator panel and the RSI/MACD/Stochastic sub-panes at **desktop & mobile**
+sizes, plus the **desktop price-vs-line chart** — all reproduced from the live app in Space Mono.
+A board of curated references sits alongside.
 
 ### Inspiration (via Mobbin)
 
