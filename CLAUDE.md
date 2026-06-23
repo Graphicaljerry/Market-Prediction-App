@@ -3,6 +3,16 @@
 Project memory for the **15-Minute Crypto Over/Under Tracker**. Read this at the start of
 every session and follow the conventions below.
 
+## Tell me what changed, in plain terms (standing rule)
+
+When you ship something, explain it to me **in chat** in **simple, concise language**: what changed
+and — most important — whether it touches the **live picks / commitment / confidence** or only the
+**log / measurement**. I care more that the **picks** are accurate than that the log looks tidy, so
+**always call out explicitly when a change could alter pick behavior**, and prefer leaving the proven
+picker alone unless we've agreed otherwise. For a big change give a short plain-English summary; for a
+batch of small ones, summarize the last few. (This is on top of — not instead of — keeping the docs in
+sync below.)
+
 ## Keep the docs in sync with the app (standing rule)
 
 Whenever we ship a **notable feature** or land an **important insight** about how the app
