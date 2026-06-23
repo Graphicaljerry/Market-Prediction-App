@@ -223,6 +223,13 @@
   .clearBtn { float: right; font: inherit; font-size: 11px; font-weight: 700; color: var(--label-3); background: transparent; border: 1px solid var(--separator); border-radius: 7px; padding: 2px 9px; cursor: pointer; transition: color .2s, border-color .2s; }
   .clearBtn:hover { color: var(--red); border-color: var(--red); }
   .clearBtn:active { opacity: .6; }
+  /* Track Record header (title + subtitle + help + the two Clear buttons). Flex-wrap so the
+     buttons sit as a group on the right and drop to their own row on a narrow column, instead of
+     the floats overlapping the heading text. */
+  .secHead { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+  .secHead .ihelp { margin-left: 0; }
+  .secHead .clearBtn { float: none; }                 /* drop the fragile float — flex items never overlap */
+  .secHead #clearLog { margin-left: auto; }           /* push the Clear pair to the right; they wrap together below on narrow screens */
 
   /* ---------- Responsive dashboard layout ---------- */
   .module { break-inside: avoid; -webkit-column-break-inside: avoid; page-break-inside: avoid; }
@@ -809,7 +816,7 @@
 
   <!-- TRACK RECORD — 24/7 auto-tracker (server-side, free; grades a round every 15 min even when the app is closed) -->
   <div class="module m-autotracker" id="autoMod">
-  <div class="sec">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
+  <div class="sec secHead">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
   <div class="card flat">
     <div id="autoLatest" class="autoLatest"></div>
     <div class="scoreGrid">
