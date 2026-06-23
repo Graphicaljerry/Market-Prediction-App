@@ -1278,33 +1278,51 @@
     if (sigT < 1e-9) return price >= strike ? 0.995 : 0.005;
     return Math.max(0.005, Math.min(0.995, normCdf(Math.log(price / strike) / sigT)));
   }
-  // "Prime entry" = late in the round AND the outcome is nearly locked — the single
-  // highest-probability moment to bet THIS round (a decisive position with little time left).
-  var PRIME_MAX_LEFT = 450, PRIME_MIN_LEFT = 20, PRIME_HI = 0.86, PRIME_LO = 0.14;
+  // VALUE ENTRY = the moment actually worth buying. Buying the ~99%-locked side pays ~1.0x (no
+  // profit), so that's useless. The edge is the opposite: price is on one side, momentum is carrying
+  // it TOWARD the line, and the side it's heading to is still the big-multiplier UNDERDOG — buy that
+  // longshot just before it crosses. Higher-variance by nature; the record below tracks the real $ back.
+  var PRIME_MAX_LEFT = 480, PRIME_MIN_LEFT = 18;
   function primeCheck() {
     var rem = state.remaining;
     if (rem == null || rem > PRIME_MAX_LEFT || rem < PRIME_MIN_LEFT) return null;
     if (!state.pendingRound || state.pendingRound.partial) return null;   // need a real, gradable round
-    var pb = currentRoundBarrier(); if (pb == null) return null;
-    var side = pb >= PRIME_HI ? "OVER" : pb <= PRIME_LO ? "UNDER" : null;
-    if (!side) return null;
-    return { side: side, prob: Math.round((side === "OVER" ? pb : 1 - pb) * 100), rem: rem };
+    var strike = roundStrike(), price = state.lastPrice;
+    if (strike == null || price == null || price <= 0 || strike <= 0) return null;
+    var m = state.micro && typeof state.micro.mom === "number" ? state.micro.mom : null;   // per-min log return
+    if (m == null) return null;
+    var underdog = price < strike ? "OVER" : "UNDER";          // the side a flip would land on = the big payout
+    var toward = (underdog === "OVER" && m > 0) || (underdog === "UNDER" && m < 0);
+    if (!toward) return null;                                   // momentum must be carrying price toward the line
+    var dist = Math.abs(Math.log(strike / price));             // gap to the line (log)
+    var proj = Math.abs(m) * (rem / 60);                       // projected move over the time left
+    if (proj < dist * 0.8) return null;                        // not on pace to actually reach/cross the line
+    // multiplier ≈ 1 / the underdog's implied probability — use the real market price when we have it.
+    var pb = currentRoundBarrier();
+    var impU = pb == null ? null : (underdog === "OVER" ? pb : 1 - pb);
+    var cw = activeCrowd();
+    if (cw && typeof cw.overPct === "number") { var co = cw.overPct / 100; impU = underdog === "OVER" ? co : 1 - co; }
+    if (impU == null) return null;
+    var mult = 1 / Math.max(0.035, impU);
+    if (mult < 2.5) return null;                               // too small a payout to be worth the longshot
+    return { side: underdog, mult: mult, rem: rem };
   }
   var _primeSig = "";
   function renderPrime() {
     var el = $("primeCue"); if (!el) return;
     var p = primeCheck();
     if (!p) { if (_primeSig !== "") { _primeSig = ""; el.className = "primeCue"; el.innerHTML = ""; } return; }
-    // Log the prime moment once per round so we can grade it later (does late actually win?).
+    // Log the value moment once per round so we can grade it later (does the longshot actually cross?).
     if (state.pendingRound && !state.pendingRound.lateEntry) {
-      state.pendingRound.lateEntry = { side: p.side, prob: p.prob, atMs: Date.now(), secsLeft: p.rem, price: state.lastPrice, strike: roundStrike() };
+      state.pendingRound.lateEntry = { side: p.side, mult: Math.round(p.mult * 10) / 10, atMs: Date.now(), secsLeft: p.rem, price: state.lastPrice, strike: roundStrike() };
     }
-    var mins = Math.ceil(p.rem / 60), sig = p.side + "|" + Math.round(p.prob / 3) + "|" + mins;
+    var mins = Math.max(1, Math.ceil(p.rem / 60)), multTxt = p.mult >= 10 ? Math.round(p.mult) + "x" : p.mult.toFixed(1) + "x";
+    var sig = p.side + "|" + multTxt + "|" + mins;
     if (sig === _primeSig) return;                                       // no visible change → leave the DOM alone
     _primeSig = sig;
     el.className = "primeCue show " + (p.side === "OVER" ? "over" : "under");
-    el.innerHTML = '<span class="pcBolt">⚡ PRIME ENTRY</span> · BUY ' + p.side + (p.side === "OVER" ? " ↑" : " ↓") +
-      '<span class="pcSub">~' + p.prob + '% locked · under ' + mins + ' min left · act on THIS round</span>';
+    el.innerHTML = '<span class="pcBolt">⚡ VALUE ENTRY</span> · BUY ' + p.side + (p.side === "OVER" ? " ↑" : " ↓") +
+      '<span class="pcSub">' + (p.side === "OVER" ? "below the line but climbing toward it" : "above the line but dropping toward it") + ' · pays ~' + multTxt + ' · ~' + mins + ' min to cross</span>';
   }
   function loadLateRounds() { try { var s = localStorage.getItem("lateTracker_v1"); state.lateRounds = s ? (JSON.parse(s) || []) : []; } catch (e) { state.lateRounds = []; } }
   function saveLateRounds() { try { localStorage.setItem("lateTracker_v1", JSON.stringify(state.lateRounds || [])); } catch (e) {} }
@@ -1313,11 +1331,15 @@
   function renderLateRecord() {
     var el = $("lateRecord"); if (!el) return;
     var r = (state.lateRounds || []).filter(function (x) { return x.coin === state.coin && (x.actual === "OVER" || x.actual === "UNDER"); });
-    if (!r.length) { el.className = "lateRecord"; el.innerHTML = '<span class="lrLbl">Prime-entry record</span><span class="lrVal">no late calls graded yet</span>'; return; }
-    var win = 0; for (var i = 0; i < r.length; i++) if (r[i].correct) win++;
-    var pct = Math.round(win / r.length * 100);
-    el.className = "lateRecord " + (pct >= 50 ? "pos" : "neg");
-    el.innerHTML = '<span class="lrLbl">Prime-entry record · ' + state.coin + '</span><span class="lrVal">' + win + '/' + r.length + ' won · ' + pct + '%</span>';
+    if (!r.length) { el.className = "lateRecord"; el.innerHTML = '<span class="lrLbl">Value-entry record</span><span class="lrVal">no value calls graded yet</span>'; return; }
+    var win = 0, multSum = 0, mn = 0;
+    for (var i = 0; i < r.length; i++) { if (r[i].correct) win++; if (typeof r[i].mult === "number") { multSum += r[i].mult; mn++; } }
+    // "Return" = the average $ back per $1 staked = win-rate × average payout. >1 = profitable even at a
+    // low win-rate (that's the whole point of buying the big-multiplier underdog).
+    var ret = mn ? (win / r.length) * (multSum / mn) : null;
+    el.className = "lateRecord " + (ret != null ? (ret >= 1 ? "pos" : "neg") : (win / r.length >= 0.5 ? "pos" : "neg"));
+    el.innerHTML = '<span class="lrLbl">Value-entry record · ' + state.coin + '</span><span class="lrVal">' + win + '/' + r.length + ' won' +
+      (ret != null ? ' · ~' + ret.toFixed(2) + 'x back per $1' : '') + '</span>';
   }
   // Signal snapshot behind the current pick — stored per round so we can learn what works.
   function snapshotFeat() {
@@ -2440,11 +2462,12 @@
       if (state.rounds.length > 700) state.rounds.pop();   // ~7 days of 15-min rounds
       saveRounds(); renderAccuracy(); renderRounds();
     }
-    // Grade the prime-entry call for this round (if one fired) into its own late-entry record.
+    // Grade the value-entry call for this round (if one fired) into its own record — including the
+    // multiplier, so we can show the real $ return (a longshot can win <50% and still be profitable).
     if (pr.lateEntry && (actual === "OVER" || actual === "UNDER")) {
       state.lateRounds = state.lateRounds || [];
       state.lateRounds.unshift({ coin: pr.coin, time: pr.endLabel, side: pr.lateEntry.side, actual: actual,
-        correct: pr.lateEntry.side === actual, prob: pr.lateEntry.prob, secsLeft: pr.lateEntry.secsLeft, endMs: pr.openTime + 900000 });
+        correct: pr.lateEntry.side === actual, mult: pr.lateEntry.mult, secsLeft: pr.lateEntry.secsLeft, endMs: pr.openTime + 900000 });
       if (state.lateRounds.length > 400) state.lateRounds.pop();
       saveLateRounds(); renderLateRecord();
     }
