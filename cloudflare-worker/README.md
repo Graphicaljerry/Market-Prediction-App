@@ -83,6 +83,9 @@ tracker in **KV** as a single consolidated record (read back per-coin via `?pick
 - **Read it:** open `…workers.dev/?picks=ETH` (or `?picks` for all coins) — latest pick, rolling
   history, and hit rate. The app shows this in its **24/7 Auto-Tracker** panel and feeds the
   record into the AI prompt.
+- **Which coins are tracked:** only those with a `KALSHI_SERIES_*` set. `?best` returns the live
+  `tracked` list, which the app uses to mark the rest **live only** in the coin switcher — they
+  still get a live pick, just no graded record (Kalshi runs no 15-min market to settle them).
 - **After deploying,** confirm the schedule under the Worker → **Triggers** tab.
 - Uses the same **`CROWD_KV`** namespace already bound for the crowd cache — nothing extra to set up.
 

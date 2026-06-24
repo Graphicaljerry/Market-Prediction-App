@@ -172,6 +172,9 @@
   .seg button.active { background: var(--surface-3); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
   .seg button.active .sym { color: var(--label); }
   .seg button:active { opacity: .7; }
+  /* Coins the 24/7 tracker doesn't log (no Kalshi 15-min market) — dimmed + a tiny "live" tag. */
+  .seg button.untracked { opacity: .5; }
+  .seg button.untracked::after { content: "live"; font-size: 8px; font-weight: 700; letter-spacing: .03em; color: var(--label-3); border: 1px solid rgba(255,255,255,.14); border-radius: 4px; padding: 0 3px; line-height: 1.5; }
 
   /* ---------- Coin dropdown (mobile only) — compact pill, top-left ---------- */
   .coinSelectWrap {
@@ -872,6 +875,11 @@
     SHIB: { name: "Shiba Inu", pair: "SHIB · USD", sym: "🐕", cgId: "shiba-inu", cbProduct: "SHIB-USD" },
     XRP:  { name: "XRP",       pair: "XRP · USD",  sym: "✕",  cgId: "ripple",    cbProduct: "XRP-USD" }
   };
+  // Coins the 24/7 tracker actually logs — i.e. the ones with a Kalshi 15-min market to grade against.
+  // This is the immediate default; the Worker reports the LIVE set via ?best (state.trackedCoins), so if
+  // you ever add/remove a KALSHI_SERIES_* the app auto-syncs after the next worker deploy. The rest stay
+  // selectable for a live pick, but have no graded record (so we mark them "live only").
+  var DEFAULT_TRACKED = ["ETH", "BTC", "SOL"];
   // Brand coin icons — crisp inline SVG (matching the Figma "Crypto Icons" set) for the switcher + hero badge.
   var COIN_ICONS = {
     ETH: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+IDxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjIwIiBmaWxsPSIjNjI3RUVBIi8+IDxnIGZpbGw9IiNmZmYiPiA8cGF0aCBkPSJNMjAgNS41IEwxMS42IDIxIEwyMCAxNi42IFoiIGZpbGwtb3BhY2l0eT0iLjg1Ii8+IDxwYXRoIGQ9Ik0yMCA1LjUgTDI4LjQgMjEgTDIwIDE2LjYgWiIgZmlsbC1vcGFjaXR5PSIuNTUiLz4gPHBhdGggZD0iTTIwIDM0LjUgTDExLjYgMjMgTDIwIDI3LjYgWiIgZmlsbC1vcGFjaXR5PSIuODUiLz4gPHBhdGggZD0iTTIwIDM0LjUgTDI4LjQgMjMgTDIwIDI3LjYgWiIgZmlsbC1vcGFjaXR5PSIuNTUiLz4gPC9nPjwvc3ZnPg==",
@@ -2689,6 +2697,7 @@
     b.addEventListener("click", function () { setCoin(b.getAttribute("data-coin")); });
   });
   (function () { var s = $("coinSelect"); if (s) s.addEventListener("change", function () { setCoin(s.value); }); })();
+  applyCoinTracking();   // mark live-only coins right away (default set); ?best refines it once it loads
   Array.prototype.forEach.call(document.querySelectorAll("#tfBar .tfBtn"), function (b) {
     b.addEventListener("click", function () { setChartTF(b.getAttribute("data-tf")); });
   });
@@ -2904,6 +2913,20 @@
     try { var u = new URL(base); Object.keys(params).forEach(function (k) { u.searchParams.set(k, params[k]); }); return u.toString(); }
     catch (e) { return base + (base.indexOf("?") < 0 ? "?" : "&") + Object.keys(params).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&"); }
   }
+  // Mark coins the 24/7 tracker doesn't log as "live only" — in the desktop switcher AND the mobile
+  // dropdown — so an empty Track Record is never a mystery. Driven by the live tracked set when the
+  // worker has reported it, else the built-in default.
+  function trackedCoins() { return (state.trackedCoins && state.trackedCoins.length) ? state.trackedCoins : DEFAULT_TRACKED; }
+  function isCoinTracked(coin) { return trackedCoins().indexOf(coin) >= 0; }
+  function applyCoinTracking() {
+    Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) {
+      var c = b.getAttribute("data-coin"), off = !isCoinTracked(c);
+      b.classList.toggle("untracked", off);
+      b.title = off ? "Live pick only — not in the 24/7 tracker (no Kalshi 15-min market to grade against)" : "";
+    });
+    var sel = $("coinSelect");
+    if (sel) Array.prototype.forEach.call(sel.options, function (o) { o.textContent = o.value + (isCoinTracked(o.value) ? "" : " · live only"); });
+  }
   var _lastAutoAt = 0, _autoHistLen = 0;
   function fetchAutoTracker(coin, force) {
     var url = workerGet({ picks: coin }); if (!url) return;
@@ -2926,7 +2949,12 @@
     _lastBestAt = now;
     fetch(url, { cache: "no-store" })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
-      .then(function (d) { state.best = (d && Array.isArray(d.best)) ? d.best : []; renderBestBar(); maybeNotifyHot(); })
+      .then(function (d) {
+        state.best = (d && Array.isArray(d.best)) ? d.best : [];
+        if (d && Array.isArray(d.tracked)) state.trackedCoins = d.tracked;   // live set from the worker; auto-syncs the "live only" marks
+        applyCoinTracking();
+        renderBestBar(); maybeNotifyHot();
+      })
       .catch(function () {});
   }
   // In-app alert (Notification API) when a coin opens a high-confidence, non-SKIP pick — fires while a
@@ -2989,6 +3017,20 @@
     var mod = $("autoMod"); if (!mod) return;
     state.lastAuto = d || null; renderConsensus();   // keep the "which to follow" line in sync with the tracker
     renderMoveStrip();                                // refresh the "Recent 15-min" arrows from the freshly graded history
+    // Live-pick-only coins (no Kalshi 15-min market) are never logged by the cron — say so plainly
+    // instead of an endless "warming up", and clear any stats left over from the previous coin.
+    if (!isCoinTracked(state.coin)) {
+      $("aPick").textContent = "—"; $("aPick").className = "v mono";
+      var _al = $("autoLatest"); if (_al) { _al.className = "autoLatest"; _al.textContent = ""; }
+      $("aGraded").textContent = "—"; $("aCorrect").textContent = "—";
+      $("aHit").textContent = "—"; $("aHit").className = "v mono"; $("aHit").title = "";
+      var _cv = $("autoCoverage"); if (_cv) _cv.innerHTML = "";
+      var _le2 = $("autoLearned"); if (_le2) _le2.innerHTML = "";
+      var _ca2 = $("autoCalib"); if (_ca2) _ca2.innerHTML = "";
+      $("autoHistory").innerHTML = '<div class="empty">Live pick only — this coin isn’t in the 24/7 tracker (Kalshi runs no 15-min market for it to grade against), so there’s no record to build. The live OVER/UNDER call at the top still works.</div>';
+      updateSeeMore("autoHistory", "moreAuto", 0);
+      return;
+    }
     var has = d && !d.empty && (d.pending || (d.history && d.history.length));
     if (!has) return;   // stay visible with the warming-up placeholder — the tracker is the primary scoreboard now
     var p = d.pending;

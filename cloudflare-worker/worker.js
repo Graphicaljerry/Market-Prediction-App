@@ -80,7 +80,7 @@ export default {
       // Best bet across all coins right now — a compact ranked leaderboard for the app's footer ticker.
       if (u.searchParams.has("best")) {
         const st = await loadState(env);
-        return json({ best: rankBest(st), ts: Date.now() });
+        return json({ best: rankBest(st), tracked: AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]), ts: Date.now() });
       }
       // One-time cleanup: ?reset=ETH zeroes the auto-tracker's record for a coin (hit-rate
       // counters + history + pending) so it rebuilds on correctly-graded rounds only; ?reset=all does
