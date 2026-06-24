@@ -1750,9 +1750,12 @@
   // The big card = the LOCKED call for the round (set only at each round open).
   function renderRoundCall(reco) {
     state.roundCall = reco;
-    // Freeze this round's actionable call — prefer the pick you locked last bet window.
-    state.thisRoundLock = state.lockedNext || makeCall(reco);
-    state.lockedNext = null; clearLocks();
+    // Freeze this round's actionable call — prefer the pick you locked last bet window. BUT if we're
+    // ALREADY inside the final 2 min (e.g. the page was just (re)loaded mid-bet-window), the card is
+    // showing the LOCKED NEXT-round pick — don't consume/null it here, or a refresh would re-roll it.
+    var rem = Math.floor((currentRoundEnd.getTime() - Date.now()) / 1000);
+    if (rem > BET_WINDOW) { state.thisRoundLock = state.lockedNext || makeCall(reco); state.lockedNext = null; clearLocks(); }
+    else { state.thisRoundLock = makeCall(reco); }   // in the bet window the restored next-round lock stays put
     state.baseConf = reco.conf;                 // indicator-strength confidence; consensus can temper it
     $("recoConf").textContent = reco.conf;
     $("recoTally").textContent = reco.bull + "↑   " + reco.bear + "↓   of " + reco.total + " indicators";
