@@ -725,7 +725,7 @@ async function kalshiResult(ticker) {
 // single Coinbase candle close can land on the OPPOSITE side on a thin round — only Kalshi's own
 // result is guaranteed to match Robinhood. We now reconcile several recent rounds per cron so the
 // arrows converge to Kalshi within one cycle instead of trickling one at a time.
-async function reconcileKalshi(rec) {
+async function reconcileKalshi(rec, coinModel, global) {
   const h = rec.history || [];
   for (let i = 0, checked = 0; i < h.length && checked < 4; i++) {   // KEEP THIS CHEAP: every Kalshi call here competes with the cron's essential crowd-odds fetch for a tight free-tier subrequest + rate-limit budget; too many and the whole run fails to save (rounds go unlogged). Newest-first; a backlog still clears over a few crons and every round converges to Kalshi.
     const e = h[i];
@@ -735,7 +735,11 @@ async function reconcileKalshi(rec) {
     if (!kal) continue;                                   // not settled yet — retried next cron
     e.src = "kalshi"; e.actual = kal;                     // row-level truth; the caller recomputes all aggregates from history
     if (e.side === "OVER" || e.side === "UNDER") e.correct = (kal === e.side);
+    learnFromRound(coinModel, global, e);                 // train on Kalshi's DEFINITIVE label — the most accurate target
   }
+  // Grace net: a round Kalshi hasn't confirmed after ~an hour (index ≥4) still teaches the model — train
+  // it on its provisional Coinbase label so no round is lost, after giving Kalshi ample time to confirm.
+  for (let i = 4; i < h.length; i++) { const e = h[i]; if (e && !e.trained) learnFromRound(coinModel, global, e); }
   if (h[0]) rec.lastActual = h[0].actual;
 }
 // Background phone push (ntfy.sh) the moment a coin opens a HIGH-CONFIDENCE, non-SKIP pick — the rare
@@ -980,6 +984,19 @@ function trainModel(model, f, y) {
   model.b += LR * g;
   model.n++;
 }
+// Train each graded round EXACTLY ONCE, on the most accurate label available: open-time features →
+// did the round finish OVER (1) or UNDER (0). Kalshi-ticketed rounds are trained from reconcileKalshi
+// once Kalshi confirms the DEFINITIVE settled result (so the model learns Kalshi's truth, not a
+// provisional candle grade that can flip on a thin round); self-tracked rounds train on their Coinbase
+// outcome at grade time. The `trained` flag guarantees no round ever teaches the model twice.
+function learnFromRound(coinModel, global, e) {
+  if (!e || e.trained || !Array.isArray(e.feat)) return;
+  if (e.actual !== "OVER" && e.actual !== "UNDER") return;
+  const y = e.actual === "OVER" ? 1 : 0;
+  if (coinModel) trainModel(coinModel, e.feat, y);
+  if (global) trainModel(global, e.feat, y);
+  e.trained = true;
+}
 // Plain-language read of what a coin has learned (for the AI prompt + the app panel).
 function modelInsights(coin, global, history) {
   if (!coin || coin.n < 12) return null;
@@ -1075,13 +1092,15 @@ async function runCoinPick(env, coin, st) {
       const correct = bet ? (actual === p.side) : null;
       const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
       const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
-      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, src: p.self ? "self" : "candle" });
+      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, feat: Array.isArray(p.feat) ? p.feat : null, trained: false, src: p.self ? "self" : "candle" });
       if (rec.history.length > 300) rec.history.pop();
       rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
       rec.lastActual = actual;
-      // online update — learn from EVERY round (bet or skip): open-features -> did price finish OVER (1) or UNDER (0)?
-      const closeOver = typeof settle === "number" ? (settle > (typeof p.openPrice === "number" ? p.openPrice : p.strike) ? 1 : 0) : (actual === "OVER" ? 1 : 0);
-      if (Array.isArray(p.feat)) { trainModel(coinModel, p.feat, closeOver); trainModel(global, p.feat, closeOver); }
+      // LEARN from the most accurate label, training each round exactly once. Self-tracked rounds (no
+      // Kalshi ticker) get their final label now — their outcome IS the Coinbase close vs the open.
+      // Kalshi-ticketed rounds DEFER to reconcileKalshi, which trains them on Kalshi's DEFINITIVE
+      // settled result rather than a provisional candle grade that can flip on a thin round.
+      if (!p.ticker) learnFromRound(coinModel, global, rec.history[0]);
     }
     rec.pending = null;
   }
@@ -1147,7 +1166,7 @@ async function runCoinPick(env, coin, st) {
   rec.model = coinModel;
   // Kalshi upgrade runs LAST and wrapped — off the critical path, so a Kalshi hiccup can't stall the
   // grade/pick above or get us rate-limited into a failed crowd fetch next cron.
-  try { await reconcileKalshi(rec); } catch (_) {}
+  try { await reconcileKalshi(rec, coinModel, global); } catch (_) {}
   // Recompute ALL scoreboard stats from history — one source of truth, no counter drift through
   // reconcile or shadow-grading. bet = committed OVER/UNDER; shadow = EVERY round by the side it
   // leaned (so we can show "if it bet every round" + how often it actually bets / coverage).
