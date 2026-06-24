@@ -154,7 +154,9 @@ export default {
       // so a cron run is a SINGLE KV write instead of ~7 — keeping us inside the free tier's
       // 1,000 writes/day. (Previously each coin and the global model each wrote their own key.)
       const st = await loadState(env);
-      const coins = AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]);
+      // Process the market leader (BTC) FIRST so the other coins' models can read its FRESH momentum
+      // this same run as a cross-asset feature (crypto moves together, BTC leads). Order-only change.
+      const coins = AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]).sort((a, b) => (a === "BTC" ? -1 : b === "BTC" ? 1 : 0));
       for (const c of coins) { try { await runCoinPick(env, c, st); } catch (_) {} }
       try { await notifyHotPicks(env, st); } catch (_) {}   // background phone push on a high-confidence pick (ntfy)
       await saveState(env, st);
@@ -930,7 +932,7 @@ async function saveState(env, st) { st.updated = Date.now(); await kvPutRaw(env,
 // Cont 2018, arXiv:1803.06917; Bugaenko 2004.08290), and a *pooled* feature→move mapping is
 // "universal" and beats isolated per-asset models — so we partial-pool each coin toward a
 // shared global model, weighted by how much data the coin has earned.
-const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin", "todCos", "rangeClose", "rsi", "macdHist", "lastMargin"];
+const FEATS = ["book", "momentum", "volregime", "crowdLean", "lastDir", "todSin", "todCos", "rangeClose", "rsi", "macdHist", "lastMargin", "marketMom"];
 // Constant LR (NOT 1/sqrt(t)) so the model keeps tracking a drifting market; strong-ish L2
 // because samples are scarce. Tuning per research synthesis (online logistic regression
 // under distribution shift): eta ~0.05-0.15, L2 ~3e-3-1e-2.
@@ -964,8 +966,11 @@ function featuresFor(model, signals, prevActual, ts) {
   // How far the LAST round settled past its line (signed %): lastDir gave only the direction, this
   // adds the magnitude — so the model can learn whether a big over-shoot tends to continue or revert.
   const lastMargin = typeof signals.lastMargin === "number" ? Math.tanh(signals.lastMargin * 4) : 0;
+  // Cross-asset: net momentum of the OTHER tracked coins right now. Crypto moves together and BTC
+  // tends to LEAD, so a coin's next 15-min move partly follows the pack. Squashed like the coin's own mom.
+  const marketMom = typeof signals.marketMom === "number" ? Math.tanh(signals.marketMom * 120) : 0;
   const hourFrac = ((new Date(ts).getUTCHours()) + new Date(ts).getUTCMinutes() / 60) / 24;
-  return [obi, mom, volr, crowdLean, lastDir, Math.sin(2 * Math.PI * hourFrac), Math.cos(2 * Math.PI * hourFrac), rngClose, rsi, macdH, lastMargin];
+  return [obi, mom, volr, crowdLean, lastDir, Math.sin(2 * Math.PI * hourFrac), Math.cos(2 * Math.PI * hourFrac), rngClose, rsi, macdH, lastMargin, marketMom];
 }
 function scoreModel(model, f) { let z = model.b; for (let i = 0; i < f.length; i++) z += model.w[i] * f[i]; return z; }
 // Partial-pooled probability: blend the coin's linear score toward the pooled (global) one by
@@ -1010,6 +1015,7 @@ function modelInsights(coin, global, history) {
   if (w.length > 8 && Math.abs(w[8]) > 0.12) tend.push(w[8] > 0 ? "a high RSI (overbought) has tended to keep pushing OVER (momentum)" : "a high RSI has tended to fade back UNDER (overbought = exhaustion)");
   if (w.length > 9 && Math.abs(w[9]) > 0.12) tend.push(w[9] > 0 ? "a rising MACD histogram has led to OVER" : "a rising MACD histogram has led to UNDER");
   if (w.length > 10 && Math.abs(w[10]) > 0.12) tend.push(w[10] > 0 ? "a big over-shoot last round tends to keep going (momentum)" : "a big over-shoot last round tends to snap back (mean-reversion)");
+  if (w.length > 11 && Math.abs(w[11]) > 0.12) tend.push(w[11] > 0 ? "follows the broader market — when the other coins are rising, this one leans OVER" : "tends to diverge from the broader market (counter-moves the pack)");
   // round-to-round transition rates from graded history (interpretable regime read)
   let uu = 0, un = 0, du = 0, dn = 0;
   for (let i = 0; i + 1 < history.length; i++) {
@@ -1049,6 +1055,20 @@ function nextRoundClose(nowMs, minLead) {
   while (t - nowMs < (minLead || 0) * 60000) t += Q;      // ...and far enough out to be a real, open round
   return t;
 }
+// Net momentum of the OTHER tracked coins (excluding `coin`), from the per-run cross-asset snapshot
+// in st.market. Stale-guarded to ~20 min so a coin that stopped updating can't drag the signal.
+// Returns null until peers have data — the model then treats the feature as neutral (0).
+function otherCoinsMom(st, coin) {
+  if (!st || !st.market) return null;
+  const cutoff = Date.now() - 20 * 60000;
+  let sum = 0, n = 0;
+  for (const c in st.market) {
+    if (c === coin) continue;
+    const m = st.market[c];
+    if (m && typeof m.mom === "number" && m.ts >= cutoff) { sum += m.mom; n++; }
+  }
+  return n ? sum / n : null;
+}
 async function runCoinPick(env, coin, st) {
   const series = env["KALSHI_SERIES_" + coin], product = CB_PRODUCT[coin];
   if (!series || !product) return;
@@ -1057,6 +1077,9 @@ async function runCoinPick(env, coin, st) {
     cbMicro(product).catch(() => null),
     cbObi(product).catch(() => null),
   ]);
+  // Cross-asset snapshot: stash this coin's live momentum so the OTHER coins' models can read a
+  // market-wide / leader factor THIS SAME run — zero extra fetches (momentum is already computed).
+  if (micro && typeof micro.mom === "number") { (st.market || (st.market = {}))[coin] = { mom: micro.mom, ts: Date.now() }; }
   // The cron can't rely on the app to keep the Kalshi crowd cache warm (the app is usually closed
   // when this runs), and Kalshi 429s Cloudflare's shared egress IPs — so make a few attempts to land
   // FRESH data and PERSIST a success, keeping the shared cache (and the app/best endpoints) warm.
@@ -1139,7 +1162,8 @@ async function runCoinPick(env, coin, st) {
       mkt = { ticker: null, strike: micro.price, overPct: null, closeTime: nextRoundClose(nowMs, 6), self: true };
     }
     if (mkt) {
-      const sigVals = { crowdOver: mkt.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose, rsi: micro && micro.rsi, macdH: micro && micro.macdH, price: micro && micro.price, lastMargin: rec.lastMargin };
+      const marketMom = otherCoinsMom(st, coin);   // net momentum of the OTHER coins (cross-asset beta / BTC lead-lag); null until peers have data
+      const sigVals = { crowdOver: mkt.overPct, mom: micro && micro.mom, obi: obi, sig: micro && micro.sig, rngClose: micro && micro.rngClose, rsi: micro && micro.rsi, macdH: micro && micro.macdH, price: micro && micro.price, lastMargin: rec.lastMargin, marketMom };
       const nowTs = nowMs;
       const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
       if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;

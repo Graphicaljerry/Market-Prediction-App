@@ -80,6 +80,10 @@ tracker in **KV** as a single consolidated record (read back per-coin via `?pick
 - **Costs nothing beyond the free tier:** no Anthropic calls on the schedule. The cron writes
   **one** KV key per run (all coins + the pooled model together), so it stays well under the free
   tier's limit of **1,000 KV writes/day** — even running 24/7 it's ~96 writes/day.
+- **Cross-asset feature is free:** the per-coin model reads a `marketMom` feature (net momentum of
+  the *other* coins — crypto moves together, BTC leads). It **reuses momentum already computed each
+  run** (the cron processes **BTC first** so the others get its fresh read), so it adds **zero extra
+  Coinbase/Kalshi subrequests** — no impact on the free-tier per-invocation budget.
 - **Read it:** open `…workers.dev/?picks=ETH` (or `?picks` for all coins) — latest pick, rolling
   history, and hit rate. The app shows this in its **24/7 Auto-Tracker** panel and feeds the
   record into the AI prompt.

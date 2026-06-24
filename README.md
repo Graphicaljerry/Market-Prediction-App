@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **The learned model now reads a *cross-asset* signal — how the other coins are moving.** Crypto moves together and **BTC tends to lead**, so a 12th feature — **`marketMom`** — feeds each coin's per-coin model the net 1-min momentum of the *other* tracked coins. The cron now processes **BTC first** so ETH/SOL read its *fresh* momentum, at **zero extra Coinbase/Kalshi calls** (it reuses momentum already computed each run, so it stays well inside the free tier). Built to be **self-limiting**: the new weight starts at **0** and only moves as the model grades new rounds, so a migrated model's picks are **byte-identical until it actually learns the signal** — verified with a runtime test. **Pick-impact (per the standing rule): yes, this is a model/picker change. Picks will drift *gradually* — and only if the cross-asset signal proves predictive, which we'll read off the **Brier score**. It can sharpen accuracy but can't hurt the proven picker (worst case the model learns a ~0 weight). Fully reversible — drop the feature and models re-migrate.**
 - **The "price to beat" now shows "(est.)" until Kalshi's real strike loads.** At a fresh round open the app briefly shows the line as the **Coinbase open price** (a placeholder) until the crowd read fills in Kalshi's official strike — which is why it could sit a few cents off Robinhood for a moment, then snap into alignment at the round turn. That fallback is now tagged **(est.)** in the "Beat $X" readout and chart (and the official line **(Kalshi)**), so the brief mismatch is self-explanatory rather than a mystery. **Display only — the strike, picks and grading are unchanged.**
 - **Coins with no Kalshi 15-min market are now marked "live only" instead of showing an empty record.** The 24/7 tracker can only log coins it can grade against Kalshi — **ETH, BTC, SOL**. The others (**DOGE, SHIB, XRP**) are still selectable and still get a **live** OVER/UNDER pick, but they were showing a permanent "warming up" Track Record that read like a bug. Now the switcher **dims** them with a tiny **live** tag (the mobile dropdown appends "· live only"), and their Track Record says plainly there's no graded record because Kalshi runs no 15-min market for them to settle against. The tracked set is driven by the worker's live config — `?best` now reports it — so it **auto-syncs** if you ever add/remove a `KALSHI_SERIES_*`. **Log/display only — picks, commitment and confidence are untouched.**
 - **Home-screen app icon.** Added a real `apple-touch-icon` (a green "over" ▲ / red "under" ▼ on the app's near-black, generated at build and published by the Pages workflow) so the **Add to Home Screen** shortcut shows a proper icon instead of iOS's auto-made "1" tile. iOS caches the icon at add-time, so an existing shortcut must be **removed and re-added** to pick it up.
@@ -416,8 +417,12 @@ AI and the auto-tracker panel. Design choices are grounded in the literature:
 - **Features:** order-book imbalance, 1-min momentum, volatility regime, crowd lean,
   **last-round direction** (continuation vs reversal), **time-of-day** (sin/cos), **round-shape**
   (where the latest price sat in the just-closed round's high–low range, an exhaustion tell), and
-  now two classic technicals computed server-side from 1-min closes — **RSI(14)** (re-centred so
-  +1 = overbought, −1 = oversold) and the **MACD(12,26,9) histogram** (price-scaled, `tanh`-squashed).
+  two classic technicals computed server-side from 1-min closes — **RSI(14)** (re-centred so
+  +1 = overbought, −1 = oversold) and the **MACD(12,26,9) histogram** (price-scaled, `tanh`-squashed) —
+  and a **cross-asset market-momentum** factor (`marketMom`): the net 1-min momentum of the *other*
+  tracked coins, since crypto moves together and BTC tends to *lead*, so a coin's next move partly
+  follows the pack (the cron processes **BTC first** so the others read its fresh momentum, at zero
+  extra data cost; the weight starts at 0 and is learned, so it can only help once it proves itself).
   Order flow is the strongest short-horizon predictor — but it's a *seconds*-scale signal (Cont et
   al. 2010; Sirignano & Cont 2018), so at 15 min the model simply *learns* to down-weight it.
   Saved models auto-migrate when features are added (`padModel` zero-pads the weight vector, so an
