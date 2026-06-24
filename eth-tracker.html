@@ -2292,7 +2292,9 @@
     var g = meta.def ? meta.def.g : 60, agg = meta.def && meta.def.agg ? meta.def.agg : 1;
     var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     var date = MON[d.getMonth()] + " " + d.getDate();
-    if (g >= 86400) return agg >= 7 ? ("Week of " + date) : (date + ", " + d.getFullYear());   // daily / weekly / monthly
+    if (g >= 86400) return agg >= 28 ? (MON[d.getMonth()] + " " + d.getFullYear())              // monthly bar → "Aug 2025"
+      : agg >= 7 ? ("Week of " + date)                                                           // weekly bar → "Week of Aug 21"
+      : (date + ", " + d.getFullYear());                                                         // daily bar → "Aug 21, 2025"
     return date + " " + hma(d);                                                          // intraday: "Jun 21 2:45 PM"
   }
   // Linear-interpolate the charted point at an arbitrary x (pts are sorted by x) so the crosshair
