@@ -80,7 +80,7 @@ export default {
       // Best bet across all coins right now — a compact ranked leaderboard for the app's footer ticker.
       if (u.searchParams.has("best")) {
         const st = await loadState(env);
-        return json({ best: rankBest(st), tracked: AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]), ts: Date.now() });
+        return json({ best: rankBest(st), tracked: AUTO_COINS.filter((c) => CB_PRODUCT[c]), ts: Date.now() });
       }
       // One-time cleanup: ?reset=ETH zeroes the auto-tracker's record for a coin (hit-rate
       // counters + history + pending) so it rebuilds on correctly-graded rounds only; ?reset=all does
@@ -156,7 +156,7 @@ export default {
       const st = await loadState(env);
       // Process the market leader (BTC) FIRST so the other coins' models can read its FRESH momentum
       // this same run as a cross-asset feature (crypto moves together, BTC leads). Order-only change.
-      const coins = AUTO_COINS.filter((c) => env["KALSHI_SERIES_" + c]).sort((a, b) => (a === "BTC" ? -1 : b === "BTC" ? 1 : 0));
+      const coins = AUTO_COINS.filter((c) => CB_PRODUCT[c]).sort((a, b) => (a === "BTC" ? -1 : b === "BTC" ? 1 : 0));   // ALL coins log now: Kalshi-graded where a series exists, else self-graded on Coinbase (paid plan has the subrequest headroom)
       for (const c of coins) { try { await runCoinPick(env, c, st); } catch (_) {} }
       try { await notifyHotPicks(env, st); } catch (_) {}   // background phone push on a high-confidence pick (ntfy)
       await saveState(env, st);
@@ -1071,7 +1071,7 @@ function otherCoinsMom(st, coin) {
 }
 async function runCoinPick(env, coin, st) {
   const series = env["KALSHI_SERIES_" + coin], product = CB_PRODUCT[coin];
-  if (!series || !product) return;
+  if (!product) return;   // no Kalshi series? still SELF-track it (Coinbase close vs the round open) — we just skip the Kalshi crowd fetch below
   const global = st.global;
   const [micro, obi] = await Promise.all([
     cbMicro(product).catch(() => null),
@@ -1086,7 +1086,7 @@ async function runCoinPick(env, coin, st) {
   // Without this the cron routinely saw only stale data and locked no pick — the "stopped logging
   // while I was away" bug. A couple of 1s waits only happen when a fetch is actually failing.
   let crowd = null;
-  for (let i = 0; i < 3; i++) {
+  if (series) for (let i = 0; i < 3; i++) {   // self-tracked coins (no series) skip straight to the fallback — zero Kalshi load
     crowd = await getKalshiCrowd(env, series, true).catch(() => null);
     if (crowd && !crowd.stale) break;
     if (i < 2) await sleep(1000);

@@ -19,6 +19,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **On the paid Cloudflare plan now — gap-free logging, all six coins tracked, firmer grading.** Upgraded the Worker to the paid plan, which lifts the per-run subrequest limit (50→1,000) that was causing the cron to silently fail and stop logging for hours. Two things follow: **(1) every coin is tracked now** — DOGE/SHIB/XRP have no Kalshi 15-min market, so they're **self-anchored** (strike = the round's open) and **self-graded** on the Coinbase close (flagged "· self-tracked"; they don't count toward the confirmed-vs-Kalshi rate). They add zero Kalshi load (they skip the crowd fetch) and just a few Coinbase calls, well within budget. The "live only" marks are gone. **(2) Un-throttled Kalshi reconciliation** (4→8 rounds/coin) for faster, firmer convergence to the definitive grade. **Honest note: this fixes *reliability and coverage* — a complete, trustworthy record and a model that learns from every round — not the predictive *ceiling*; 15-min direction is still near-random.**
 - **The 1d / 1W / 1M chart buttons are now real time-windows, not candle sizes.** They used to be candle *granularities* (trading-chart convention), so "1M" meant *monthly candles* and stretched ~10 months back — confusing, and a label bug compounded it (monthly points read *"Week of Aug 21"*). Now **1d = last 24 hours, 1W = last 7 days, 1M = last 30 days** (using native Coinbase intervals, so zero extra data cost), and the date labels are fixed. The short buttons (1m–1h) are unchanged. Chart/display only — picks and grading untouched.
 - **The locked next-round pick now survives a refresh — and a built-in test will reveal if locking later is better.** Two things. **(1) Persistence:** the 2-min lock used to live only in memory, so reloading the page re-rolled it from the noisier final-minute signals (the *"SKIP on the timer, OVER after I refresh"* surprise). It's now saved per-round and restored on load, so a refresh shows the **same** committed pick — no re-roll. **Pick-impact: this stabilizes what you *see* (the proven 2-min lock); it does not change how the pick is made.** **(2) Lock-timing A/B:** the app now quietly records both the 2-min pick **and** a ~1-min "late" pick every round and grades them against the same definitive outcome, showing a running **"Lock-timing test · 2-min X% vs 1-min Y%"** in the Track Record. After ~50 rounds it'll say which timing is actually sharper — so we change it on **data, not a hunch**. The A/B is measurement-only; the live pick is untouched.
 - **New "model lean + rounds learned" chip.** A compact, always-visible indicator in the Track Record shows which way the per-coin model is currently leaning (e.g. *"🧠 Model leaning OVER 56%"*) and **how many rounds it's learned from** — so you can see at a glance what it's thinking and how seasoned it is. Display only.
@@ -108,9 +109,9 @@ Recent work, newest first:
   makes a market-anchored pick from **free data only** — Kalshi price + 1-min momentum +
   order book, **no LLM** — and grades the previous round, building an always-on per-coin
   record even when no tab is open. Shown in a new **24/7 Auto-Tracker** panel, and the AI
-  reads this record too. Read it directly at `…/?picks=ETH`. Only coins with a Kalshi 15-min
-  market (**ETH/BTC/SOL**) are tracked; the rest stay selectable for a **live** pick but are
-  marked **live only** (no graded record).
+  reads this record too. Read it directly at `…/?picks=ETH`. **All coins are tracked**: ETH/BTC/SOL
+  grade against Kalshi's settled result; DOGE/SHIB/XRP have no Kalshi market, so they're
+  **self-graded** on the Coinbase close vs the round's open (flagged "· self-tracked").
 - **AI cost controls.** Default model switched from Opus → **Claude Haiku 4.5** (~20× cheaper).
   The free **Kalshi crowd** is decoupled from the paid AI call; the paid read now runs **at
   most once per round** (the 2-min lock), **never while the tab is hidden**, and an **"AI
