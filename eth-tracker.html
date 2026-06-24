@@ -789,10 +789,10 @@
       <div class="aiSetupBody">
         <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
         <select id="aiModel" class="settingsInput">
-          <option value="gemini-2.0-flash">Gemini 2.0 Flash · free (default)</option>
+          <option value="gemini-2.0-flash">Gemini 2.0 Flash · free</option>
           <option value="llama-3.3-70b-versatile">Groq Llama 3.3 70B · free</option>
           <option value="claude-haiku-4-5">Claude Haiku 4.5 · cheap (paid)</option>
-          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 · balanced (paid)</option>
+          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 · sharpest (default · paid)</option>
           <option value="claude-opus-4-8">Claude Opus 4.8 · smartest (paid)</option>
         </select>
         <select id="aiBudget" class="settingsInput">
@@ -1394,7 +1394,7 @@
   function makeCall(reco) {
     if (!reco) return null;
     var o = combinedOdds(reco);
-    var dir = reco.dir === "SKIP" ? (o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP") : reco.dir;
+    var dir = reco.dir === "SKIP" ? (o.pOver >= 0.55 ? "OVER" : o.pOver <= 0.45 ? "UNDER" : "SKIP") : reco.dir;
     return { dir: dir, pct: dir === "SKIP" ? 50 : pctFor(o.pOver, dir), conv: convictionFor(reco), atLabel: null };
   }
   function fallbackThisCall() { var rc = state.roundCall || state.lastRecoObj; return rc ? makeCall(rc) : null; }
@@ -1427,7 +1427,7 @@
     if (state.lockTimer) { clearTimeout(state.lockTimer); state.lockTimer = null; }
     if (state.lockedNext || !state.lockingNext) return;
     var reco = state.lastRecoObj; if (!reco) { state.lockingNext = false; return; }
-    var o = combinedOdds(reco), dir = o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP";
+    var o = combinedOdds(reco), dir = o.pOver >= 0.55 ? "OVER" : o.pOver <= 0.45 ? "UNDER" : "SKIP";
     state.lockedNext = {
       dir: dir, pct: dir === "SKIP" ? 50 : pctFor(o.pOver, dir), conv: convictionFor(reco),
       atLabel: nowClock(), forLabel: hma(currentRoundEnd)
@@ -1474,7 +1474,7 @@
   }
   function abLateSample() {   // the "1-min" pick — same rule as commitLockedNext, sampled near the bell
     var reco = state.lastRecoObj; if (!reco) return;
-    var o = combinedOdds(reco); abRecord("late", o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP");
+    var o = combinedOdds(reco); abRecord("late", o.pOver >= 0.55 ? "OVER" : o.pOver <= 0.45 ? "UNDER" : "SKIP");
   }
   function gradeLockAB() {
     var ab = lockABState(), changed = false, nowB = Math.floor(Date.now() / 900000);
@@ -1669,7 +1669,7 @@
       // here (that was the duplicate). The timer card stays just the countdown during the bet window.
       html = "";
     } else if (state.lastRecoObj) {
-      var o = combinedOdds(state.lastRecoObj), pd = o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP";
+      var o = combinedOdds(state.lastRecoObj), pd = o.pOver >= 0.55 ? "OVER" : o.pOver <= 0.45 ? "UNDER" : "SKIP";
       var pcls = pd === "OVER" ? "over" : pd === "UNDER" ? "under" : "skip";
       var body = pd === "SKIP" ? "Leaning flat — no clear side yet" : ("Leaning " + pd + (pd === "OVER" ? " ↑ " : " ↓ ") + pctFor(o.pOver, pd) + "%");
       var rrp = roundRange(), rtail = rrp ? " · price " + rangePhrase(rrp.pos) : "";
@@ -2873,7 +2873,7 @@
   var WORKER_KEY = "workerUrl_v1", AI_MODEL_KEY = "aiModel_v1";
   var DEFAULT_WORKER = "https://market-prediction-app.jrodsuniverse.workers.dev";   // baked-in so you never retype it
   function getWorkerUrl() { try { return ((localStorage.getItem(WORKER_KEY) || "").trim()) || DEFAULT_WORKER; } catch (e) { return DEFAULT_WORKER; } }
-  var DEFAULT_AI_MODEL = "gemini-2.0-flash";   // free by default; the dropdown also picks the provider (Worker needs GEMINI_API_KEY). A mismatched key falls back gracefully.
+  var DEFAULT_AI_MODEL = "claude-sonnet-4-6";   // sharpest read; the dropdown also picks the provider (Worker needs ANTHROPIC_API_KEY for Claude). No key → falls back gracefully to a free provider.
   function getModel() { try { return localStorage.getItem(AI_MODEL_KEY) || DEFAULT_AI_MODEL; } catch (e) { return DEFAULT_AI_MODEL; } }
   function aiAvailable() { return !!getWorkerUrl(); }
 

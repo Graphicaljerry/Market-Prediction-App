@@ -869,9 +869,10 @@ function freePick(crowdOverPct, mom, obi, modelOver, sig, calib) {
   let agreeW = 0, agreeN = 0, totW = 0;
   for (const x of parts) { totW += x.w; if ((x.p - 0.5) * dir > 0.005) { agreeW += x.w; agreeN++; } }
   const conf = totW ? agreeW / totW : 0;
-  // Commit threshold widens as the reads split: ±0.08 when fully aligned (the old band) up to ±0.18
-  // when they're at odds — so a conflicted, barely-lopsided blend now SKIPs instead of guessing.
-  const band = 0.08 + 0.10 * (1 - conf);
+  // Commit threshold widens as the reads split: ±0.10 when fully aligned up to ±0.20 when they're at
+  // odds — tightened from ±0.08 so it bets LESS but only on stronger, more-aligned setups (discipline
+  // over coverage). Validate via bet-rate vs hit-rate-on-bets in the now-complete record.
+  const band = 0.10 + 0.10 * (1 - conf);
   const side = pOver >= 0.5 + band ? "OVER" : pOver <= 0.5 - band ? "UNDER" : "SKIP";
   return { pOver, pRaw, side, conf: Math.round(conf * 100) / 100, agree: agreeN };
 }
