@@ -834,9 +834,14 @@
     </div>
     <div id="autoCoverage" class="autoCoverage"></div>
     <div id="lateRecord" class="lateRecord"></div>
-    <div id="autoLearned" class="autoLearned"></div>
-    <div id="autoCalib" class="autoLearned"></div>
-    <div id="lockABStat" class="autoLearned"></div>
+    <details class="collapsePanel" id="modelPanel">
+      <summary class="sec secToggle" style="margin-top:18px">Model &amp; accuracy <span class="tiny" id="modelPanelSummary"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
+      <div class="collapseCard">
+        <div id="autoLearned" class="autoLearned"></div>
+        <div id="autoCalib" class="autoLearned"></div>
+        <div id="lockABStat" class="autoLearned"></div>
+      </div>
+    </details>
     <div class="sec" style="margin-top:20px">Recent Rounds</div>
     <div id="autoHistory" class="history collapsed"><div class="empty">Warming up — grades a round every 15 minutes, even while you're away.</div></div>
     <button class="seeMore" id="moreAuto" style="display:none"></button>
@@ -3131,6 +3136,7 @@
       var _cv = $("autoCoverage"); if (_cv) _cv.innerHTML = "";
       var _le2 = $("autoLearned"); if (_le2) _le2.innerHTML = "";
       var _ca2 = $("autoCalib"); if (_ca2) _ca2.innerHTML = "";
+      var _mp2 = $("modelPanel"); if (_mp2) _mp2.style.display = "none";   // live-only coins have no learned model
       $("autoHistory").innerHTML = '<div class="empty">Live pick only — this coin isn’t in the 24/7 tracker (Kalshi runs no 15-min market for it to grade against), so there’s no record to build. The live OVER/UNDER call at the top still works.</div>';
       updateSeeMore("autoHistory", "moreAuto", 0);
       return;
@@ -3211,11 +3217,10 @@
       if (lr && lr.streak) items.push(lr.streak.len + " " + lr.streak.dir + " rounds in a row right now");
       if (lr && typeof lr.avgMarginAbsPct === "number") items.push("rounds lately settle " + (lr.avgMarginAbsPct < 0.05 ? "razor-thin" : "±" + lr.avgMarginAbsPct + "%") + " past the line" + (typeof lr.thinSharePct === "number" && lr.thinSharePct >= 25 ? " (" + lr.thinSharePct + "% within a hair — fragile)" : ""));
       var modelNow = (p && typeof p.modelOver === "number") ? p.modelOver : null;
-      if (lr && (items.length || modelNow != null)) {
-        le.innerHTML = '<div class="lh">What the model has learned · ' + (lr.confidence || "warming up") + ' · ' + (lr.n || 0) + ' rounds</div>' +
-          (modelNow != null ? '<div>Model-only lean: <span class="pnow">' + modelNow + '% OVER</span> <span style="color:var(--label-3)">— just one input; the Auto pick above blends it with the market &amp; flow</span></div>' : '') +
-          (items.length ? '<ul>' + items.map(function (t) { return '<li>' + t + '</li>'; }).join("") + '</ul>' : '') +
-          '<div style="color:var(--label-3);margin-top:6px">15-min direction is near-random — these are faint tilts, not certainties.</div>';
+      if (lr && items.length) {
+        le.innerHTML = '<div class="lh">What it\'s learned · ' + (lr.confidence || "warming up") + '</div>' +
+          '<ul>' + items.map(function (t) { return '<li>' + t + '</li>'; }).join("") + '</ul>' +
+          '<div style="color:var(--label-3);margin-top:6px">15-min direction is near-random — faint tilts, not certainties.</div>';
       } else { le.innerHTML = ""; }
     }
     // Calibration & accuracy — is the stated % trustworthy, and how good are the probabilities (Brier)?
@@ -3230,12 +3235,14 @@
         }
         var confLine = (typeof d.confirmedHitPct === "number")
           ? '<div style="color:var(--label-3);margin-top:4px">Settled vs Kalshi · <b>' + d.confirmedHitPct + '%</b> over ' + d.confirmedGraded + ' confirmed bets — the definitive number</div>' : '';
-        calEl.innerHTML = '<div class="lh">Calibration &amp; accuracy · ' + scr.n + ' scored</div>' +
+        calEl.innerHTML = '<div class="lh">Accuracy · ' + scr.n + ' scored</div>' +
           '<div>Brier <b>' + scr.brier.toFixed(3) + '</b> <span style="color:var(--label-3)">— ' + qual + ' · 0.25 = a coin-flip, lower is better</span></div>' +
           (rel ? '<div style="margin-top:2px">' + rel + '</div>' : '') + confLine;
       } else {
-        calEl.innerHTML = '<div class="lh">Calibration &amp; accuracy</div><div style="color:var(--label-3)">warming up — needs ~20+ graded rounds to score, ~80 to calibrate the %</div>';
+        calEl.innerHTML = '<div class="lh">Accuracy</div><div style="color:var(--label-3)">warming up — needs ~20+ graded rounds to score, ~80 to calibrate the %</div>';
       }
+      var sumEl = $("modelPanelSummary"); if (sumEl) sumEl.textContent = (scr && scr.n >= 20) ? ("· Brier " + scr.brier.toFixed(3) + " · " + scr.n + " scored") : "· warming up";
+      var mPanel = $("modelPanel"); if (mPanel) mPanel.style.display = "";
     }
   }
 
