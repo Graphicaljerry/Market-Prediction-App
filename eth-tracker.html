@@ -1903,9 +1903,9 @@
     { k: "15m", g: 900,   bars: 60, span: "last 15 hours" },
     { k: "30m", g: 900, agg: 2, bars: 48, span: "last day" },
     { k: "1h",  g: 3600,  bars: 48, span: "last 2 days" },
-    { k: "1d",  g: 86400, bars: 60, span: "last 2 months" },
-    { k: "1w",  g: 86400, agg: 7,  bars: 52, span: "weekly · last ~10 months" },
-    { k: "1mo", g: 86400, agg: 30, bars: 24, span: "monthly · last ~10 months" }
+    { k: "1d",  g: 3600,  bars: 24, span: "last 24 hours" },
+    { k: "1w",  g: 21600, bars: 28, span: "last 7 days" },
+    { k: "1mo", g: 86400, bars: 30, span: "last 30 days" }
   ];
   function tfDef(k) { for (var i = 0; i < TF_DEFS.length; i++) if (TF_DEFS[i].k === k) return TF_DEFS[i]; return TF_DEFS[0]; }
   // Aggregate finer candles into bigger OHLC bars (e.g. 30m = two 15m bars) so candlesticks work.
