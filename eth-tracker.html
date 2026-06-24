@@ -1501,7 +1501,7 @@
     var mo = (p && typeof p.modelOver === "number") ? p.modelOver : null;
     if (mo == null && !n) { el.style.display = "none"; return; }
     var dir = mo == null ? "n" : mo >= 53 ? "o" : mo <= 47 ? "u" : "n";
-    var word = dir === "o" ? "leaning OVER " + mo + "%" : dir === "u" ? "leaning UNDER " + (100 - mo) + "%" : (mo == null ? "warming up" : "no lean (~50/50)");
+    var word = dir === "o" ? "leaning OVER " + mo + "%" : dir === "u" ? "leaning UNDER " + (100 - mo) + "%" : (mo == null ? "no live read right now" : "no lean (~50/50)");
     var col = dir === "o" ? "#16c784" : dir === "u" ? "#ea3943" : "var(--label-3)";
     el.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--label-2);margin:10px 0 2px;padding:8px 10px;background:rgba(255,255,255,.05);border-radius:10px";
     el.innerHTML = '<span>🧠 Model <b style="color:' + col + '">' + word + '</b></span>' +
