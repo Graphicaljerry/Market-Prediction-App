@@ -1944,8 +1944,8 @@
     drawOverlays(ctx, oCl, data.map(function (d, ix) { return candle ? CX(ix) : X(ix); }), Y);
     if (hasStrike) {
       ctx.fillStyle = "rgba(235,235,245,.92)"; ctx.font = "800 14px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "left";
-      var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
-      ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
+      var strikeSrc = strikeSrcLabel();
+      ctx.fillText("beat " + fmtMoney(strike) + (strikeSrc ? " " + strikeSrc : ""), 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     }
     if (vp.a > 0.001 || vp.b < 0.999) {   // zoom affordance
       ctx.fillStyle = "rgba(235,235,245,.45)"; ctx.font = "9px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "right"; ctx.textBaseline = "alphabetic";
@@ -2192,8 +2192,8 @@
     if (vp.a > 0.001 || vp.b < 0.999) { ctx.fillStyle = "rgba(235,235,245,.45)"; ctx.font = "9px ui-monospace, 'SF Mono', monospace"; ctx.textAlign = "right"; ctx.textBaseline = "alphabetic"; ctx.fillText("zoomed · double-tap to reset", W - 4, H - 5); }
     drawOverlays(ctx, hist.map(function (h) { return h.p; }), hist.map(function (h) { return X(h.t); }), Y);
     ctx.fillStyle = "rgba(235,235,245,.92)"; ctx.font = "800 14px -apple-system, system-ui, sans-serif"; ctx.textAlign = "left";
-    var strikeSrc = (state.pendingRound && state.pendingRound.marketStrike != null) ? " (Kalshi)" : "";
-    ctx.fillText("beat " + fmtMoney(strike) + strikeSrc, 5, yS - 4 < 11 ? yS + 13 : yS - 4);
+    var strikeSrc = strikeSrcLabel();
+    ctx.fillText("beat " + fmtMoney(strike) + (strikeSrc ? " " + strikeSrc : ""), 5, yS - 4 < 11 ? yS + 13 : yS - 4);
     if (lbl) lbl.textContent = (lastAbove ? "Above the line → OVER winning now" : "Below the line → UNDER winning now") +
       (rr ? " · " + rangePhrase(rr.pos) + " (H " + fmtMoney(rr.hi) + " / L " + fmtMoney(rr.lo) + ")" : "");
   }
@@ -2269,7 +2269,10 @@
     var side = d > 0 ? "OVER" : d < 0 ? "UNDER" : "FLAT";
     var arrow = d > 0 ? "▲" : d < 0 ? "▼" : "•";
     el.className = "roundStatus mono" + (d > 0 ? " over" : d < 0 ? " under" : "");   // whole line lights up green/red for hierarchy
-    el.innerHTML = "Beat " + fmtMoney(strike) + " · " + arrow + " " + (d >= 0 ? "+" : "−") + fmtMoney(Math.abs(d)) +
+    var estTag = strikeSrcLabel() === "(est.)"
+      ? ' <span style="color:var(--label-3);font-weight:600;font-size:.85em" title="Estimated from the Coinbase open — Kalshi’s official strike hasn’t loaded for this round yet; it snaps to the exact line once the crowd read returns.">(est.)</span>'
+      : "";
+    el.innerHTML = "Beat " + fmtMoney(strike) + estTag + " · " + arrow + " " + (d >= 0 ? "+" : "−") + fmtMoney(Math.abs(d)) +
       " (" + (pct >= 0 ? "+" : "") + pct.toFixed(3) + "%) · " + side;
   }
 
@@ -2407,6 +2410,14 @@
   function roundStrike() {
     var pr = state.pendingRound; if (!pr) return null;
     return pr.marketStrike != null ? pr.marketStrike : pr.openPrice;
+  }
+  // Which line are we showing? Kalshi's official strike once the crowd read fills it in, or the
+  // Coinbase-open ESTIMATE we fall back to until then. Surfaced as a small "(est.)"/"(Kalshi)" tag so
+  // the brief round-open mismatch with Robinhood is self-explanatory. Display only — never the grade.
+  function strikeSrcLabel() {
+    var pr = state.pendingRound;
+    if (!pr || roundStrike() == null) return "";
+    return pr.marketStrike != null ? "(Kalshi)" : "(est.)";
   }
   // Capture the round's real Kalshi strike — but ONLY during its active phase. In the final
   // BET_WINDOW seconds the worker reframes to the NEXT round, so the strike it returns then is the
