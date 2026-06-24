@@ -32,6 +32,7 @@ jobs:
           cp eth-tracker.html _site/index.html
           cp eth-tracker.html _site/eth-tracker.html
           cp guide.html _site/guide.html
+          cp apple-touch-icon.png _site/apple-touch-icon.png
 
       - name: Configure Pages (auto-enable)
         uses: actions/configure-pages@v5
