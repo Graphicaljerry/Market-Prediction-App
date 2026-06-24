@@ -825,6 +825,7 @@
   <div class="sec secHead">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
   <div class="card flat">
     <div id="autoLatest" class="autoLatest"></div>
+    <div id="modelLeanChip" style="display:none"></div>
     <div class="scoreGrid">
       <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Bets</div></div>
       <div class="stat"><div class="v mono pos" id="aCorrect">0</div><div class="k">Correct</div></div>
@@ -835,6 +836,7 @@
     <div id="lateRecord" class="lateRecord"></div>
     <div id="autoLearned" class="autoLearned"></div>
     <div id="autoCalib" class="autoLearned"></div>
+    <div id="lockABStat" class="autoLearned"></div>
     <div class="sec" style="margin-top:20px">Recent Rounds</div>
     <div id="autoHistory" class="history collapsed"><div class="empty">Warming up — grades a round every 15 minutes, even while you're away.</div></div>
     <button class="seeMore" id="moreAuto" style="display:none"></button>
@@ -1420,9 +1422,91 @@
       atLabel: nowClock(), forLabel: hma(currentRoundEnd)
     };
     state.lockingNext = false;
+    saveLockedNext(); abRecord("two", state.lockedNext.dir);   // persist across reloads + log the 2-min pick for the lock-timing A/B
     renderPickCard(); renderNextPick(); updateBetWindow(state.remaining == null ? 999 : state.remaining);
   }
   function clearLocks() { if (state.lockTimer) { clearTimeout(state.lockTimer); state.lockTimer = null; } state.lockingNext = false; }
+
+  // ---------- Persist the locked next-round pick across reloads ----------
+  // The 2-min lock lived only in memory, so a refresh wiped it and the app re-rolled the pick from the
+  // (noisier) current signals. Save it keyed to the round it's for, and restore it on load while we're
+  // still in that round's bet window — so reloading shows the SAME committed pick, never a re-roll.
+  function lockBucket() { return Math.floor(currentRoundEnd.getTime() / 900000); }
+  function saveLockedNext() {
+    try {
+      if (state.lockedNext) localStorage.setItem("lockedNext_v1", JSON.stringify({ coin: state.coin, bucket: lockBucket(), lock: state.lockedNext }));
+      else localStorage.removeItem("lockedNext_v1");
+    } catch (e) {}
+  }
+  function loadLockedNext() {
+    try {
+      var s = localStorage.getItem("lockedNext_v1"); if (!s) return;
+      var d = JSON.parse(s); if (!d || !d.lock) return;
+      var rem = Math.floor((currentRoundEnd.getTime() - Date.now()) / 1000);
+      if (d.coin === state.coin && d.bucket === lockBucket() && rem > 0 && rem <= BET_WINDOW) {
+        state.lockedNext = d.lock; state.betWindowFired = true;   // restore the committed pick; don't re-roll or re-pull a fresh read
+      } else localStorage.removeItem("lockedNext_v1");
+    } catch (e) {}
+  }
+
+  // ---------- Lock-timing A/B: 2-min lock vs a ~1-min "late" pick, graded head-to-head ----------
+  // Records BOTH picks for each upcoming round (keyed to its open bucket) and grades them against the
+  // SAME definitive moveLog outcome — so we learn, on data not one round, which timing is sharper.
+  function lockABState() { var ab = state.lockAB; if (!ab) ab = state.lockAB = {}; if (!ab.pending) ab.pending = {}; if (!ab.tally) ab.tally = {}; return ab; }
+  function loadLockAB() { try { var s = localStorage.getItem("lockAB_v1"); if (s) state.lockAB = JSON.parse(s); } catch (e) {} lockABState(); }
+  function saveLockAB() { try { localStorage.setItem("lockAB_v1", JSON.stringify(state.lockAB)); } catch (e) {} }
+  function abRecord(stage, dir) {
+    if (dir !== "OVER" && dir !== "UNDER" && dir !== "SKIP") return;
+    var ab = lockABState(), b = lockBucket(), key = state.coin + ":" + b;
+    var e = ab.pending[key] || (ab.pending[key] = { coin: state.coin, bucket: b });
+    if (e[stage] == null) { e[stage] = dir; saveLockAB(); }   // record once per stage per round
+  }
+  function abLateSample() {   // the "1-min" pick — same rule as commitLockedNext, sampled near the bell
+    var reco = state.lastRecoObj; if (!reco) return;
+    var o = combinedOdds(reco); abRecord("late", o.pOver >= 0.53 ? "OVER" : o.pOver <= 0.47 ? "UNDER" : "SKIP");
+  }
+  function gradeLockAB() {
+    var ab = lockABState(), changed = false, nowB = Math.floor(Date.now() / 900000);
+    Object.keys(ab.pending).forEach(function (key) {
+      var e = ab.pending[key];
+      if (nowB - e.bucket > 8) { delete ab.pending[key]; changed = true; return; }      // expire >2h ungraded
+      if (e.two == null || e.late == null) return;                                       // need BOTH stages for a fair head-to-head
+      var log = state.moveLog && state.moveLog[e.coin], o = log && log[e.bucket];
+      if (!o || (o.d !== 1 && o.d !== -1)) return;                                        // round not graded yet
+      var actual = o.d > 0 ? "OVER" : "UNDER";
+      var t = ab.tally[e.coin] || (ab.tally[e.coin] = { rounds: 0, two: { n: 0, c: 0, skip: 0 }, late: { n: 0, c: 0, skip: 0 } });
+      t.rounds++;
+      [["two", e.two], ["late", e.late]].forEach(function (pr) { if (pr[1] === "SKIP") t[pr[0]].skip++; else { t[pr[0]].n++; if (pr[1] === actual) t[pr[0]].c++; } });
+      delete ab.pending[key]; changed = true;
+    });
+    if (changed) { saveLockAB(); renderLockAB(); }
+  }
+  function renderLockAB() {
+    var el = $("lockABStat"); if (!el) return;
+    var t = state.lockAB && state.lockAB.tally && state.lockAB.tally[state.coin];
+    if (!t || !t.rounds) { el.innerHTML = ""; return; }
+    function pc(s) { return s.n ? Math.round(s.c / s.n * 100) + "% (" + s.c + "/" + s.n + ")" : "—"; }
+    var lead;
+    if (t.two.n >= 10 && t.late.n >= 10) { var a = t.two.c / t.two.n, b = t.late.c / t.late.n; lead = Math.abs(a - b) < 0.03 ? "too close to call so far" : (a > b ? "2-min is ahead" : "1-min is ahead"); }
+    else lead = "need ~50 graded rounds to judge";
+    el.innerHTML = '<div class="lh">Lock-timing test · ' + t.rounds + ' rounds</div>' +
+      '<div>2-min lock <b>' + pc(t.two) + '</b> · 1-min <b>' + pc(t.late) + '</b> <span style="color:var(--label-3)">— ' + lead + '</span></div>';
+  }
+  // Compact "model lean + rounds learned" indicator, fed by the 24/7 tracker's learned read.
+  function renderModelChip() {
+    var el = $("modelLeanChip"); if (!el) return;
+    var d = state.lastAuto;
+    if (!d || d.tracked === false) { el.style.display = "none"; return; }
+    var lr = d.learned, p = d.pending, n = (lr && typeof lr.n === "number") ? lr.n : 0;
+    var mo = (p && typeof p.modelOver === "number") ? p.modelOver : null;
+    if (mo == null && !n) { el.style.display = "none"; return; }
+    var dir = mo == null ? "n" : mo >= 53 ? "o" : mo <= 47 ? "u" : "n";
+    var word = dir === "o" ? "leaning OVER " + mo + "%" : dir === "u" ? "leaning UNDER " + (100 - mo) + "%" : (mo == null ? "warming up" : "no lean (~50/50)");
+    var col = dir === "o" ? "#16c784" : dir === "u" ? "#ea3943" : "var(--label-3)";
+    el.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--label-2);margin:10px 0 2px;padding:8px 10px;background:rgba(255,255,255,.05);border-radius:10px";
+    el.innerHTML = '<span>🧠 Model <b style="color:' + col + '">' + word + '</b></span>' +
+      '<span style="margin-left:auto;color:var(--label-3)">learned ' + n + ' round' + (n === 1 ? "" : "s") + (lr && lr.confidence ? " · " + lr.confidence : "") + '</span>';
+  }
 
   // Live blend vs a locked direction — shown only as a note; never rewrites the locked call.
   function liveLeanLine(shownDir) {
@@ -2298,6 +2382,7 @@
       resetChart();                                                // fresh price track for the new round
       if (state.lastRecoObj) renderRoundCall(state.lastRecoObj);   // lock the call (consumes the locked next-round pick)
       else { state.lockedNext = null; clearLocks(); }
+      saveLockedNext();   // lockedNext is now consumed/null — drop the persisted copy for the closed round
       refresh();
       // Round open: just refresh the free market price/strike. The paid AI read happens once
       // per round at the 2-min lock (the actionable moment) — no redundant spend here.
@@ -2306,6 +2391,7 @@
     }
     var remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
     state.remaining = remaining;
+    if (remaining > 2 && remaining <= 60 && state._abLateBucket !== lockBucket()) { state._abLateBucket = lockBucket(); abLateSample(); }   // capture the ~1-min pick once, for the lock-timing A/B
     elTimer.textContent = pad(Math.floor(remaining / 60)) + ":" + pad(remaining % 60);
     var warn = remaining <= 120;
     elTimer.classList.toggle("warn", warn);
@@ -2582,6 +2668,7 @@
     var auto = state.lastAuto, hist = auto && auto.history ? auto.history : null;   // (3) 24/7 server history — Kalshi-confirmed rounds are the definitive truth
     if (hist) for (i = 0; i < hist.length; i++) if (hist[i].ts && (hist[i].actual === "OVER" || hist[i].actual === "UNDER")) record(sideDir(hist[i].actual), hist[i].ts, hist[i].src === "kalshi" ? 2 : 1);
     if (changed) saveMoveLog();
+    gradeLockAB();   // resolve any A/B picks whose round now has a definitive outcome
 
     var byBucket = {};
     Object.keys(log).forEach(function (b) { var e = log[b]; byBucket[b] = { dir: e.d, t: e.t || (Number(b) * 900000 + 900000), graded: true, confirmed: (e.lvl != null ? e.lvl : 1) >= 2 }; });
@@ -3027,6 +3114,7 @@
   function renderAutoTracker(d) {
     var mod = $("autoMod"); if (!mod) return;
     state.lastAuto = d || null; renderConsensus();   // keep the "which to follow" line in sync with the tracker
+    renderModelChip(); renderLockAB();               // compact model-lean/learned chip + lock-timing A/B readout
     renderMoveStrip();                                // refresh the "Recent 15-min" arrows from the freshly graded history
     // Live-pick-only coins (no Kalshi 15-min market) are never logged by the cron — say so plainly
     // instead of an endless "warming up", and clear any stats left over from the previous coin.
@@ -3228,7 +3316,7 @@
   (function () { var s = $("aiBudget"); if (s) s.addEventListener("change", function () { try { localStorage.setItem(AI_BUDGET_KEY, s.value); } catch (e) {} }); })();
   document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshCrowd(true); });   // returning to the tab: free market refresh
 
-  loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog();
+  loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog(); loadLockAB(); loadLockedNext();
   renderAccuracy(); renderRounds(); renderLateRecord(); tickTimer(); refresh(); connectWS();
   (function initAI() { $("aiModel").value = getModel(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
   setInterval(function () { fetchBest(false); }, 60000);   // keep the best-coin ticker fresh between rounds
