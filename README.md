@@ -19,6 +19,8 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Logged what the 24/7 tracker is "doing right" (prompted by a 12-round confirmed streak).** Added a _What it's doing right_ note to the **24/7 Auto-Tracker** section: the edge is **selectivity + confluence**, not volume — it skips ~85–90% of rounds and commits only when the crowd price, momentum, order-book flow and learned model are both lopsided **and** aligned (SKIP band ±0.10 aligned → ±0.20 split). A winning run reflects a **trending regime** where those reads agree; documented the honest caveat that a streak is **variance-laden and regime-dependent**, so the number to trust is the per-bet hit-rate over a large sample, not the streak. Also fixed stale band figures in the docs (the code tightened ±0.08→±0.18 to **±0.10→±0.20**). Docs-only — no behavior changed.
+
 - **Tracker status banners moved to the footer and quieted.** The 24/7 tracker's live **"SKIP — no clear edge"** auto-pick banner (`#autoLatest`) and the **"🧠 Model … lean"** chip (`#modelLeanChip`) sat loud — an orange box — at the top of the Track Record. Neither is in the Figma, and they were the brightest thing on screen. They're now **small, boxless, muted lines in the page footer**, so the Track Record opens straight at the stats (matching the design). Display-only — the tracker's pick still shows prominently in the Auto-Pick panel up top; this just relocates the redundant restatement.
 
 - **This Round / Next Round box matched to the Figma (grey stroke removed).** The dual-pick box had a visible grey border (`1px solid --separator`) and a green/red tint on the committed column — neither is in the design. Per Figma node 84:143 it's now a uniform **`#141414` fill, `10px` radius, no stroke**, with title-case `This Round` / `Next Round` labels (12px) and the 30px green/red picks. Pure styling — no logic touched. (Note: the box still can't look *identical* to the static mock at all times — the mock freezes both rounds as committed picks, while the live **Next Round column stays dormant — "locks in 4:01"** — until the next market opens in the final 2 min. When both rounds are committed, it now matches.)
@@ -409,14 +411,36 @@ Each run, per coin with a Kalshi series:
    itself is the simple blend: the
    **Kalshi market price** nudged by **1-min momentum**, **order-book imbalance** and the learned
    model, with **SKIP** near 50/50 (`freePick`). The commit is **confluence-gated** — it only fires
-   when several *independent* reads point the same way, demanding more edge (a wider SKIP band,
-   ±0.08 aligned → ±0.18 split) when they conflict — and reports how many reads agree (`agree`) and
+   when several *independent* reads point the same way, when they conflict (a wider SKIP band, **±0.10 aligned → ±0.20 split**) — and reports how many reads agree (`agree`) and
    the share of signal-weight behind the side (`conf`), so a low-agreement pick or a SKIP is itself
    an honest "this round is a coin-flip". The pick is held untouched until the round closes, then
    step 1 grades that genuinely-uncertain call — the only thing the Hit-Rate ever counts.
 3. Stores the latest pick + a rolling history + hit rate in `CROWD_KV`. The whole auto-tracker —
    every coin **and** the pooled model — lives in **one** consolidated record (read back per-coin
    via `?picks=COIN`), so a cron run is a single KV write and stays inside the free tier.
+
+### What it's doing right (and what a hot streak does/doesn't prove)
+
+The tracker's edge isn't picking *more* — it's picking **rarely and well**. `freePick` blends four
+*independent* reads: the **Kalshi crowd price** (weight **0.55**, nudged to lean *into* a confident
+favorite — favourite-longshot bias), **1-min momentum** (ride a moderate drift; *fade* a ≈2σ
+over-reaction that tends to snap back), **order-book imbalance** (who's actually buying vs selling
+right now), and the **learned per-coin model** (0.20). It then commits **only when those reads are
+both lopsided and agree** — the SKIP band *widens* from ±0.10 (aligned) to ±0.20 (split) — so it
+**sits out the majority of rounds** (typically ~85–90%). That discipline is the whole game: it
+protects the hit-rate by refusing the coin-flips.
+
+So a **winning run means the market has been in a persistent / trending regime** where the crowd, the
+flow and momentum keep pointing the same way and the round keeps settling on that side — exactly the
+**confluence** setups the blend is built to catch.
+
+**The honest caveat, so a streak isn't over-read:** a confirmed run (e.g. *12 in a row*) is **real** —
+graded against Kalshi's settled result, which is what Robinhood paid — and a genuinely good sign. But
+it has a **variance** component (at a ~70–75% per-bet hit-rate, ~12 straight lands a few percent of
+the time) and is **regime-dependent**: when the market turns choppy / mean-reverting, confluent
+setups get rarer and the streak *will* break. The thing to trust is the **per-bet hit-rate over a
+large sample** and the **bet-rate** (how disciplined it's staying) — **not** the streak itself. The
+repeatable edge is the *SKIP-unless-confluent* discipline, not the run.
 
 Read it at `…/?picks=ETH` (or `?picks` for all coins). The app shows it in the **24/7
 Auto-Tracker** panel (`fetchAutoTracker` / `renderAutoTracker`), and the Worker folds the
