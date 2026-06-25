@@ -439,15 +439,13 @@
   #liveLean { display: none; }   /* redundant with the tally above — one less line of noise */
 
   /* ---------- This round | Next round at-a-glance ---------- */
-  .dualPick { display: flex; align-items: stretch; gap: 0; margin: 0 0 16px; border: 1px solid var(--separator); border-radius: 14px; overflow: hidden; background: rgba(255,255,255,.022); }
+  .dualPick { display: flex; align-items: stretch; gap: 0; margin: 0 0 16px; border-radius: 10px; overflow: hidden; background: #141414; }   /* Figma 84:143 — solid #141414 fill, 10px radius, NO stroke */
   .dpCol { flex: 1 1 130px; min-width: 0; padding: 13px 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; transition: background .3s ease; }
-  .dpCol[data-side="over"] { background: linear-gradient(180deg, rgba(47,224,106,.10), transparent); }
-  .dpCol[data-side="under"] { background: linear-gradient(180deg, rgba(255,91,81,.10), transparent); }
-  .dpCol[data-side="skip"] { background: linear-gradient(180deg, rgba(244,193,80,.09), transparent); }
-  .dpLbl { font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--label-3); }
-  .dpDir { font-size: 27px; font-weight: 800; line-height: 1.04; letter-spacing: -.01em; color: var(--label-2); }
+  /* No per-column tint — the Figma box is one uniform fill; the green/red direction text shows the side. */
+  .dpLbl { font-size: 12px; font-weight: 400; color: var(--label-2); }
+  .dpDir { font-size: 30px; font-weight: 700; line-height: 1.04; letter-spacing: -.01em; color: var(--label-2); }
   .dpDir.over { color: var(--green); } .dpDir.under { color: var(--red); } .dpDir.skip { color: var(--orange); } .dpDir.wait { color: var(--label-3); }
-  .dpSub { font-size: 11px; font-weight: 600; color: var(--label-3); line-height: 1.25; }
+  .dpSub { font-size: 12px; font-weight: 400; color: var(--label-2); line-height: 1.25; }
   .dpDiv { flex: 0 0 1px; align-self: stretch; background: linear-gradient(to bottom, transparent, var(--separator) 16%, var(--separator) 84%, transparent); }
   .dpNextCol.dormant { opacity: .66; }
   .dpNextCol.dormant .dpDir { font-size: 15px; font-weight: 700; color: var(--label-3); }
@@ -730,13 +728,13 @@
     <div id="reco" class="reco skip">
       <div id="dualPick" class="dualPick">
         <div class="dpCol" id="dpThisCol" data-side="wait">
-          <div class="dpLbl">This round</div>
+          <div class="dpLbl">This Round</div>
           <div class="dpDir wait" id="dpThisDir">—</div>
           <div class="dpSub" id="dpThisSub">reading…</div>
         </div>
         <div class="dpDiv" aria-hidden="true"></div>
         <div class="dpCol dpNextCol dormant" id="dpNextCol" data-side="wait">
-          <div class="dpLbl">Next round</div>
+          <div class="dpLbl">Next Round</div>
           <div class="dpDir wait" id="dpNextDir">—</div>
           <div class="dpSub" id="dpNextSub">appears in the final 2 min</div>
         </div>
@@ -875,7 +873,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r3 · recent rounds rebuilt</span>
+    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r4 · dual-pick box</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
