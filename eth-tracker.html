@@ -570,6 +570,10 @@
   .autoCoverage:empty { display: none; }
   .autoCoverage b { color: var(--label); font-weight: 800; }
   .autoCoverage .cov-skip { color: var(--orange); }
+  .recentForm { margin-top: 7px; font-size: 11.5px; font-weight: 600; color: var(--label-3); text-align: center; line-height: 1.5; }
+  .recentForm:empty { display: none; }
+  .recentForm b { color: var(--label); font-weight: 800; }
+  .recentForm .rfFlag { color: var(--orange); font-weight: 700; }
   .hrow .hres { font-weight: 700; text-align: right; white-space: nowrap; display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 8px; }
   .hrow .hres.w { color: var(--green); } .hrow .hres.l { color: var(--red); }
   .hrow .hres.s { color: var(--label-3); font-weight: 500; }
@@ -854,6 +858,7 @@
       <div class="stat"><div class="v mono" id="aHit">—</div><div class="k">Hit Rate</div></div>
     </div>
     <div id="autoCoverage" class="autoCoverage"></div>
+    <div id="recentForm" class="recentForm"></div>
     <details class="collapsePanel" id="modelPanel" open>
       <summary class="sec secToggle" style="margin-top:18px">Model &amp; Accuracy <span class="tiny" id="modelPanelSummary"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
       <div class="collapseCard">
@@ -882,7 +887,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r5 · status to footer</span>
+    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r6 · recent-form stat</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3160,6 +3165,7 @@
       $("aGraded").textContent = "—"; $("aCorrect").textContent = "—";
       $("aHit").textContent = "—"; $("aHit").className = "v mono"; $("aHit").title = "";
       var _cv = $("autoCoverage"); if (_cv) _cv.innerHTML = "";
+      var _rf = $("recentForm"); if (_rf) _rf.innerHTML = "";
       var _le2 = $("autoLearned"); if (_le2) _le2.innerHTML = "";
       var _ca2 = $("autoCalib"); if (_ca2) _ca2.innerHTML = "";
       var _mp2 = $("modelPanel"); if (_mp2) _mp2.style.display = "none";   // live-only coins have no learned model
@@ -3189,7 +3195,7 @@
     // propagates). Rounds before the clear are hidden here exactly as the arrows already hide them,
     // and the stats + coverage are recomputed from the gated rows. Nothing pre-clear can come back.
     var clrB = state.clearTs && state.clearTs[state.coin] ? Math.floor(state.clearTs[state.coin] / 900000) : 0;
-    var graded = 0, correctN = 0, confirmedN = 0, seenN = 0, shadowCorrectN = 0, streak = 0, streakLive = true;
+    var graded = 0, correctN = 0, confirmedN = 0, seenN = 0, shadowCorrectN = 0, streak = 0, streakLive = true, winN = 0, winC = 0;   // winN/winC = rolling last-50-bets tally (recent form)
     var rows = (d.history || []).map(function (h) {
       var b = h.ts ? Math.floor(h.ts / 900000) : null;
       if (clrB && b != null && b < clrB) return "";                                   // hide rounds from before the last Clear
@@ -3219,6 +3225,7 @@
       }
       var correct = (h.side === actual);
       graded++; if (correct) correctN++; if (isKalshi) confirmedN++;
+      if (winN < 50) { winN++; if (correct) winC++; }   // rolling window: history is newest-first, so the first 50 graded bets ARE the last 50
       if (streakLive) { if (correct) streak++; else streakLive = false; }   // consecutive wins from the newest graded round (history is newest-first)
       var w = correct ? "w" : "l";
       var pctTxt = rp == null ? "" : '<span class="hpct">' + (rp >= 0 ? "+" : "") + rp.toFixed(2) + '%</span>';
@@ -3234,6 +3241,14 @@
     $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");
     $("aHit").title = confirmedN < graded ? (confirmedN + " of " + graded + " confirmed vs Kalshi; the rest still settling") : "all confirmed vs Kalshi";
     $("aStreak").textContent = streak;   // current win streak shown in the stats row (replaces the old "Now" pick, which the Auto Pick panel already shows)
+    // Recent form — rolling hit-rate over the last 50 BETS (not rounds): steadier than the streak and
+    // not diluted by ancient history. Until there are 50 bets it shows however many there are, with a
+    // "small sample" tag under ~30 so the number isn't over-trusted early.
+    var rf = $("recentForm");
+    if (rf) {
+      if (winN >= 5) rf.innerHTML = 'Recent form · <b>' + winC + '</b> of last <b>' + winN + '</b> bets right · <b>' + Math.round(winC / winN * 100) + '%</b>' + (winN < 30 ? ' <span class="rfFlag">small sample</span>' : '');
+      else rf.innerHTML = '';
+    }
     // Coverage + "if it bet every round" — computed from the SAME gated rows, so it respects Clear too.
     var cov = $("autoCoverage");
     if (cov) {
@@ -3384,6 +3399,7 @@
     var al = $("autoLatest"); if (al) { al.className = "autoLatest"; al.textContent = ""; }
     var alr = $("autoLearned"); if (alr) alr.innerHTML = "";
     var cov = $("autoCoverage"); if (cov) cov.innerHTML = "";
+    var rfc = $("recentForm"); if (rfc) rfc.innerHTML = "";
     var ahy = $("autoHistory"); if (ahy) ahy.innerHTML = '<div class="empty">' + (msg || "Cleared — rebuilding as new rounds settle.") + '</div>';
   }
   function resetCoinServer(coin) {   // zero the worker's record for a coin (keeps the learned model); resolves to the JSON or null
