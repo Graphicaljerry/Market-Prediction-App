@@ -824,7 +824,7 @@
 
   <!-- INDICATORS · collapsed by default so the call stays the focus -->
   <div class="module m-indicators">
-  <details class="collapsePanel">
+  <details class="collapsePanel" open>
     <summary class="sec secToggle">Live Indicators <span class="tiny" id="indSummary">· the signals behind the %</span><span class="secChevron" aria-hidden="true">▸</span></summary>
     <div class="card flat collapseCard">
       <div id="indicators"><div class="empty">Loading indicators…</div></div>
@@ -839,14 +839,14 @@
     <div id="autoLatest" class="autoLatest"></div>
     <div id="modelLeanChip" style="display:none"></div>
     <div class="scoreGrid">
-      <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Bets</div></div>
+      <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
       <div class="stat"><div class="v mono pos" id="aCorrect">0</div><div class="k">Correct</div></div>
+      <div class="stat"><div class="v mono" id="aStreak">0</div><div class="k">Streak</div></div>
       <div class="stat"><div class="v mono" id="aHit">—</div><div class="k">Hit Rate</div></div>
-      <div class="stat"><div class="v mono" id="aPick">—</div><div class="k">Now</div></div>
     </div>
     <div id="autoCoverage" class="autoCoverage"></div>
-    <details class="collapsePanel" id="modelPanel">
-      <summary class="sec secToggle" style="margin-top:18px">Model &amp; accuracy <span class="tiny" id="modelPanelSummary"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
+    <details class="collapsePanel" id="modelPanel" open>
+      <summary class="sec secToggle" style="margin-top:18px">Model &amp; Accuracy <span class="tiny" id="modelPanelSummary"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
       <div class="collapseCard">
         <div id="autoLearned" class="autoLearned"></div>
         <div id="autoCalib" class="autoLearned"></div>
@@ -3143,7 +3143,7 @@
     // Live-pick-only coins (no Kalshi 15-min market) are never logged by the cron — say so plainly
     // instead of an endless "warming up", and clear any stats left over from the previous coin.
     if (!isCoinTracked(state.coin)) {
-      $("aPick").textContent = "—"; $("aPick").className = "v mono";
+      $("aStreak").textContent = "—"; $("aStreak").className = "v mono";
       var _al = $("autoLatest"); if (_al) { _al.className = "autoLatest"; _al.textContent = ""; }
       $("aGraded").textContent = "—"; $("aCorrect").textContent = "—";
       $("aHit").textContent = "—"; $("aHit").className = "v mono"; $("aHit").title = "";
@@ -3158,8 +3158,6 @@
     var has = d && !d.empty && (d.pending || (d.history && d.history.length));
     if (!has) return;   // stay visible with the warming-up placeholder — the tracker is the primary scoreboard now
     var p = d.pending;
-    $("aPick").textContent = p ? p.side : "—";
-    $("aPick").className = "v mono " + (p && p.side === "OVER" ? "pos" : p && p.side === "UNDER" ? "neg" : "");
     var lat = $("autoLatest");
     if (p) {
       var cls = p.side === "OVER" ? "over" : p.side === "UNDER" ? "under" : "skip", sig = p.signals || {};
@@ -3179,7 +3177,7 @@
     // propagates). Rounds before the clear are hidden here exactly as the arrows already hide them,
     // and the stats + coverage are recomputed from the gated rows. Nothing pre-clear can come back.
     var clrB = state.clearTs && state.clearTs[state.coin] ? Math.floor(state.clearTs[state.coin] / 900000) : 0;
-    var graded = 0, correctN = 0, confirmedN = 0, seenN = 0, shadowCorrectN = 0;
+    var graded = 0, correctN = 0, confirmedN = 0, seenN = 0, shadowCorrectN = 0, streak = 0, streakLive = true;
     var rows = (d.history || []).map(function (h) {
       var b = h.ts ? Math.floor(h.ts / 900000) : null;
       if (clrB && b != null && b < clrB) return "";                                   // hide rounds from before the last Clear
@@ -3201,6 +3199,7 @@
       }
       var correct = (h.side === actual);
       graded++; if (correct) correctN++; if (isKalshi) confirmedN++;
+      if (streakLive) { if (correct) streak++; else streakLive = false; }   // consecutive wins from the newest graded round (history is newest-first)
       var w = correct ? "w" : "l";
       return '<div class="hrow ' + w + '"><span class="htime">' + tlabel + '</span>' +
         '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
@@ -3212,6 +3211,7 @@
     $("aHit").textContent = graded ? Math.round(correctN / graded * 100) + "%" : "—";
     $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");
     $("aHit").title = confirmedN < graded ? (confirmedN + " of " + graded + " confirmed vs Kalshi; the rest still settling") : "all confirmed vs Kalshi";
+    $("aStreak").textContent = streak;   // current win streak shown in the stats row (replaces the old "Now" pick, which the Auto Pick panel already shows)
     // Coverage + "if it bet every round" — computed from the SAME gated rows, so it respects Clear too.
     var cov = $("autoCoverage");
     if (cov) {
@@ -3357,7 +3357,7 @@
     state.clearTs = state.clearTs || {}; state.clearTs[coin] = Date.now();   // gate arrows + server history to post-clear rounds
   }
   function blankAutoPanel(msg) {
-    var z = { aGraded: "0", aCorrect: "0", aHit: "—", aPick: "—" };
+    var z = { aGraded: "0", aCorrect: "0", aStreak: "0", aHit: "—" };
     Object.keys(z).forEach(function (id) { var e = $(id); if (e) { e.textContent = z[id]; e.className = "v mono"; } });
     var al = $("autoLatest"); if (al) { al.className = "autoLatest"; al.textContent = ""; }
     var alr = $("autoLearned"); if (alr) alr.innerHTML = "";
