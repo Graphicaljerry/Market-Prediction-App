@@ -227,6 +227,10 @@
   .card.orb::before, .card.orb::after { display: none; }
   .pageGlow { display: none; }
   .card.orb { background: rgba(43,43,43,0.20); border-color: rgba(255,255,255,0.09); box-shadow: 0 8px 30px rgba(0,0,0,0.30); }
+  /* Timer card stays clean like the mockup — hide the next-round preview line in the timer. The
+     next-round pick is NOT lost: it still surfaces in the Auto Pick panel's "Next round" column
+     when it locks in the final 2 min. One-line revert. (id selector so it wins over .nextPick below.) */
+  #nextPick { display: none; }
   /* crypto icons in the switcher + hero badge */
   .cico { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; display: inline-block; vertical-align: middle; flex: 0 0 auto; }
   .badge img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block; }
@@ -777,8 +781,9 @@
 
   <!-- THE READ · crowd + AI Co-Pilot -->
   <div class="module m-read">
-  <div class="sec">AI Co-Pilot <span class="tiny">· the read</span> <button class="ihelp" data-info="autopick">?</button></div>
-  <div class="card orb">
+  <details class="collapsePanel">
+  <summary class="sec secToggle">AI Co-Pilot <span class="tiny">· the read</span><span class="secChevron" aria-hidden="true">▸</span></summary>
+  <div class="card orb collapseCard">
     <div id="blend" class="blend"></div>
     <details id="aiWhy" class="aiWhy aiSetup aiSummary hidden">
       <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span></summary>
@@ -807,6 +812,7 @@
       </div>
     </details>
   </div>
+  </details>
 
   </div>
 
