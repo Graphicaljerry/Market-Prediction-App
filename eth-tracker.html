@@ -552,30 +552,30 @@
 
   /* ---------- History ---------- */
   /* lists are already capped to 10 rows in JS — show them in full so a row never half-clips */
-  .history { overflow: visible; }
+  /* Recent Rounds — flat text rows in one subtle card, matching the Figma "Past Performance". */
+  .history { overflow: visible; background: rgba(255,255,255,0.018); border: 1px solid var(--separator); border-radius: 16px; padding: 4px 8px; }
   /* collapse long logs to 5 rows behind a "See more" button (data stays intact) */
-  .history.collapsed .hrow:nth-of-type(n+6) { display: none; }
+  .history.collapsed .hrow:nth-of-type(n+7) { display: none; }   /* show 6 rows like the Figma */
   .seeMore { display: block; width: 100%; margin-top: 10px; padding: 9px; background: transparent;
     border: 1px solid var(--separator); border-radius: 10px; color: var(--label-2); font: inherit;
     font-size: 12px; font-weight: 700; letter-spacing: .02em; cursor: pointer; transition: color .2s, border-color .2s; }
   .seeMore:hover { color: var(--label); border-color: rgba(var(--accent-rgb), 0.45); }
   .seeMore:active { opacity: .6; }
-  .hrow { display: grid; grid-template-columns: auto 1fr auto; gap: 5px 10px; align-items: center; padding: 13px 14px; border-radius: 13px; margin-bottom: 9px; font-size: 14px; background: var(--surface-2); }
-  .hrow.w { background: rgba(48,209,88,.10); } .hrow.l { background: rgba(255,69,58,.10); }
-  .hrow.s { background: rgba(118,118,128,.10); }   /* sat-out round — logged, not scored */
-  .hrow .hpred.skip { color: var(--label-3); font-weight: 600; }
-  .hrow .hres.s { color: var(--label-3); }
-  .hrow .htime { font-size: 13px; color: var(--label-2); }
+  .hrow { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 12px; align-items: center; padding: 16px 12px; font-size: 15px; background: transparent; }
+  .hrow.w, .hrow.l, .hrow.s { background: transparent; }   /* no per-row win/loss tint — flat rows like the Figma */
+  .hrow .htime { font-size: 14px; color: var(--label-2); font-variant-numeric: tabular-nums; letter-spacing: .01em; }
   .hrow .hpred { font-weight: 600; }
-  .hrow .hpred.over { color: var(--green); } .hrow .hpred.under { color: var(--red); }
-  .hrow .shadow { font-size: 11px; font-weight: 600; }
+  .hrow .hcoin { color: var(--label); }
+  .hrow .hdir.over { color: var(--green); } .hrow .hdir.under { color: var(--red); }
+  .hrow .hpred.skip { color: var(--label-3); font-weight: 500; }
   .autoCoverage { margin-top: 12px; font-size: 12px; font-weight: 600; color: var(--label-3); line-height: 1.5; text-align: center; }
   .autoCoverage:empty { display: none; }
   .autoCoverage b { color: var(--label); font-weight: 800; }
   .autoCoverage .cov-skip { color: var(--orange); }
-  .hrow .hres { font-weight: 600; text-align: right; }
+  .hrow .hres { font-weight: 700; text-align: right; white-space: nowrap; display: inline-flex; align-items: baseline; justify-content: flex-end; gap: 8px; }
   .hrow .hres.w { color: var(--green); } .hrow .hres.l { color: var(--red); }
-  .hrow .hmeta { grid-column: 1 / -1; font-size: 12px; color: var(--label-3); }
+  .hrow .hres.s { color: var(--label-3); font-weight: 500; }
+  .hrow .hpct { color: var(--label-3); font-weight: 500; min-width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
   .empty { text-align: center; color: var(--label-3); font-size: 14px; padding: 24px 0; }
   .accNote { font-size: 12px; color: var(--label-3); margin-top: 14px; text-align: center; }
   /* 24/7 auto-tracker latest pick banner */
@@ -875,7 +875,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r2 · Rounds/Streak · open panels</span>
+    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r3 · recent rounds rebuilt</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3191,25 +3191,35 @@
       var actual = e ? (e.d > 0 ? "OVER" : "UNDER") : h.actual;                       // moveLog (Kalshi-priority) wins
       if (actual !== "OVER" && actual !== "UNDER") return "";                          // not graded yet
       var isKalshi = (e && (e.lvl != null ? e.lvl : 1) >= 2) || h.src === "kalshi";    // confirmed against Kalshi's settled result
-      var settling = isKalshi ? '' : (h.self
-        ? ' <span style="color:var(--label-3);font-size:10px;font-weight:600" title="Kalshi was unreachable, so the tracker self-anchored this round and graded it on the Coinbase close vs the round open. Honest, but not Kalshi-confirmed.">· self-tracked</span>'
-        : ' <span style="color:var(--label-3);font-size:10px;font-weight:600">· settling</span>');
-      var tlabel = h.ts ? hma(new Date(h.ts)) : disp12(h.time);
+      // The round's price move vs the line (strike), signed by the outcome — the Figma's "±%".
+      var rp = (typeof h.strike === "number" && typeof h.close === "number" && h.strike > 0)
+        ? (actual === "OVER" ? 1 : -1) * Math.abs((h.close - h.strike) / h.strike * 100) : null;
+      // The Kalshi-confirmed / self-tracked / settling nuance moves into a hover title so the row stays
+      // clean like the mockup — the info isn't lost, just not cluttering every line.
+      var srcNote = isKalshi ? "Confirmed vs Kalshi — the definitive settled result."
+        : (h.self ? "Self-tracked: Kalshi was unreachable, so this round was graded on the Coinbase close vs the round open. Honest, but not Kalshi-confirmed."
+                  : "Settling: provisional grade (candle close vs the line), not yet Kalshi-confirmed.");
+      var dd = h.ts ? new Date(h.ts) : null;
+      var tlabel = dd ? (("0" + dd.getHours()).slice(-2) + ":" + ("0" + dd.getMinutes()).slice(-2)) : disp12(h.time);
       var lean = (h.lean === "OVER" || h.lean === "UNDER") ? h.lean : ((h.side === "OVER" || h.side === "UNDER") ? h.side : null);
-      if (lean) { seenN++; if (lean === actual) shadowCorrectN++; }                    // shadow tally: every round by the side it leaned
+      if (lean) { seenN++; if (lean === actual) shadowCorrectN++; }                    // shadow tally kept (feeds the coverage line) — just no longer shown per-row
+      var coin = h.coin || state.coin;
       if (h.side === "SKIP" || h.skipped) {                                            // sat-out round — shown, but NOT scored
-        var leanOk = lean && lean === actual;
-        return '<div class="hrow s"><span class="htime">' + tlabel + '</span>' +
-          '<span class="hpred skip">SKIP</span>' +
-          '<span class="hres s">sat out · ' + actual + (lean ? ' <span class="shadow">(leaned ' + lean + ' ' + (leanOk ? '✓' : '✗') + ')</span>' : '') + settling + '</span></div>';
+        var leanTxt = lean ? " Would have leaned " + lean + (lean === actual ? " ✓." : " ✗.") : "";
+        return '<div class="hrow s" title="Sat out — not scored. Settled ' + actual + '.' + leanTxt + ' ' + srcNote + '">' +
+          '<span class="htime">' + tlabel + '</span>' +
+          '<span class="hpred skip">Skipped</span>' +
+          '<span class="hres s">' + actual + '</span></div>';
       }
       var correct = (h.side === actual);
       graded++; if (correct) correctN++; if (isKalshi) confirmedN++;
       if (streakLive) { if (correct) streak++; else streakLive = false; }   // consecutive wins from the newest graded round (history is newest-first)
       var w = correct ? "w" : "l";
-      return '<div class="hrow ' + w + '"><span class="htime">' + tlabel + '</span>' +
-        '<span class="hpred ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span>' +
-        '<span class="hres ' + w + '">' + (correct ? "✓ " : "✗ ") + actual + settling + '</span></div>';
+      var pctTxt = rp == null ? "" : '<span class="hpct">' + (rp >= 0 ? "+" : "") + rp.toFixed(2) + '%</span>';
+      return '<div class="hrow ' + w + '" title="Picked ' + h.side + ' · settled ' + actual + ' · ' + (correct ? "correct" : "wrong") + '. ' + srcNote + '">' +
+        '<span class="htime">' + tlabel + '</span>' +
+        '<span class="hpred"><span class="hcoin">' + coin + '</span> <span class="hdir ' + (h.side === "OVER" ? "over" : "under") + '">' + h.side + '</span></span>' +
+        '<span class="hres ' + w + '">' + (correct ? "✓" : "✗") + pctTxt + '</span></div>';
     }).join("");
     $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet — rebuilding as new rounds settle.</div>';
     $("aGraded").textContent = graded;
