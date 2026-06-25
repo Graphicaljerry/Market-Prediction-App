@@ -581,6 +581,13 @@
     background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); }
   .autoLatest.over { color: var(--green); } .autoLatest.under { color: var(--red); } .autoLatest.skip { color: var(--orange); }
   .autoLatest .sub { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); margin-top: 4px; letter-spacing: 0; }
+  /* The tracker's live status (auto pick + model lean) now sits quietly in the footer — boxless,
+     small, muted — so it's available without competing with the picks up top. */
+  .footStatus { margin-bottom: 18px; }
+  .footStatus:empty { display: none; }
+  .footnote .autoLatest { font-size: 12px; font-weight: 700; padding: 0; margin: 0 0 5px; background: none; border: none; border-radius: 0; }
+  .footnote .autoLatest:empty { display: none; }
+  .footnote .autoLatest .sub { font-size: 10.5px; margin-top: 2px; }
   /* what the online model has learned */
   .autoLearned { margin-top: 14px; font-size: 12.5px; color: var(--label-2); line-height: 1.5; }
   .autoLearned .lh { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--label-3); margin-bottom: 6px; }
@@ -840,8 +847,6 @@
   <div class="module m-autotracker" id="autoMod">
   <div class="sec secHead">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
   <div class="card flat">
-    <div id="autoLatest" class="autoLatest"></div>
-    <div id="modelLeanChip" style="display:none"></div>
     <div class="scoreGrid">
       <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
       <div class="stat"><div class="v mono pos" id="aCorrect">0</div><div class="k">Correct</div></div>
@@ -870,10 +875,14 @@
   <div id="infoSheet"><div class="infoCard"><h3 id="infoTitle">—</h3><p id="infoText">—</p><button class="closeBtn" id="infoClose">Got it</button></div></div>
 
   <div class="footnote">
+    <div class="footStatus">
+      <div id="autoLatest" class="autoLatest"></div>
+      <div id="modelLeanChip" style="display:none"></div>
+    </div>
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r4 · dual-pick box</span>
+    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r5 · status to footer</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1526,9 +1535,8 @@
     var dir = mo == null ? "n" : mo >= 53 ? "o" : mo <= 47 ? "u" : "n";
     var word = dir === "o" ? "leaning OVER " + mo + "%" : dir === "u" ? "leaning UNDER " + (100 - mo) + "%" : (mo == null ? "no live read right now" : "no lean (~50/50)");
     var col = dir === "o" ? "#16c784" : dir === "u" ? "#ea3943" : "var(--label-3)";
-    el.style.cssText = "display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--label-2);margin:10px 0 2px;padding:8px 10px;background:rgba(255,255,255,.05);border-radius:10px";
-    el.innerHTML = '<span>🧠 Model <b style="color:' + col + '">' + word + '</b></span>' +
-      '<span style="margin-left:auto;color:var(--label-3)">learned ' + n + ' round' + (n === 1 ? "" : "s") + (lr && lr.confidence ? " · " + lr.confidence : "") + '</span>';
+    el.style.cssText = "display:block;text-align:center;font-size:11.5px;color:var(--label-3);margin:0;padding:0;background:none";   // quiet single line for the footer
+    el.innerHTML = '🧠 Model <b style="color:' + col + '">' + word + '</b> · learned ' + n + ' round' + (n === 1 ? "" : "s") + (lr && lr.confidence ? " · " + lr.confidence : "");
   }
 
   // Live blend vs a locked direction — shown only as a note; never rewrites the locked call.
