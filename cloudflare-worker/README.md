@@ -94,6 +94,47 @@ tracker in **KV** as a single consolidated record (read back per-coin via `?pick
 - **After deploying,** confirm the schedule under the Worker → **Triggers** tab.
 - Uses the same **`CROWD_KV`** namespace already bound for the crowd cache — nothing extra to set up.
 
+### The pick algorithm (`freePick`), kept on record
+
+The 24/7 tracker's pick is a **deterministic, no-LLM blend**. Per coin, per round:
+
+**Inputs**
+- `crowdOverPct` — Kalshi market's implied P(OVER), 0–100
+- `mom` — 1-min momentum (signed log-return drift); `sig` — per-minute return volatility (σ)
+- `obi` — order-book imbalance within ±0.15% of mid (−1 sell-heavy … +1 buy-heavy)
+- `modelOver` — the learned per-coin logistic model's P(OVER)
+- `calib` — calibration map (scored, **not** applied by default: `CALIBRATE_PICKS = false`)
+
+**Each input becomes one P(OVER) "read" with a fixed weight** (missing inputs drop out and the weights renormalize):
+
+| Read | Formula → P(OVER) | Weight |
+|---|---|---|
+| **Crowd** (market) | `favLongshotAdj(clamp(crowdOverPct/100, .02, .98))` | **0.55** |
+| **Momentum** — *ride* (\|z\| < 2) | `clamp(0.5 + 0.5·tanh(mom·120), .40, .60)` | 0.15 |
+| **Momentum** — *panic-fade* (\|z\| ≥ 2) | `clamp(0.5 − sign(z)·(.05 + .09·s), .38, .62)` | 0.18 |
+| **Order book** | `clamp(0.5 + 0.5·tanh(2·obi), .30, .70)` | 0.15 |
+| **Learned model** | `clamp(modelOver, .05, .95)` | 0.20 |
+
+where `z = mom·3.16/sig` (momentum in σ units) and `s = min(1, (|z|−2)/2)`.
+
+- **`favLongshotAdj(p)`** corrects the favourite-longshot bias: for a confident read (`|p−0.5| ≥ 0.06`) it pushes `p` *further* from 0.5 by `clamp((p−0.5)·0.12, ±0.05)` — firm up favorites, never chase the cheap longshot. Near 50/50 it does nothing.
+- **Panic-fade vs ride:** a ≈2σ move is treated as an over-reaction and *faded*; a moderate drift is *ridden*.
+
+**Blend:** `pRaw = Σ(pᵢ·wᵢ) / Σwᵢ`. The pick uses `pRaw` (the RAW model).
+
+**Confluence:** `dir = sign(pRaw − 0.5)`; `conf =` (weight of reads leaning the same way as `dir`, past a 0.005 margin) ÷ (total weight); `agree =` how many reads do.
+
+**Commit / SKIP gate:** `band = 0.10 + 0.10·(1 − conf)`
+- `pRaw ≥ 0.5 + band` → **OVER**  ·  `pRaw ≤ 0.5 − band` → **UNDER**  ·  otherwise → **SKIP**
+
+So fully-aligned reads commit past **±0.10**; fully-split reads need **±0.20**. It SKIPs the majority *by design* — that selectivity is the edge.
+
+**Output:** `{ side, prob = round(pRaw·100), conf, agree }`.
+
+**Lock & grade (the honesty layer):** one pick per round, never overwritten (`!rec.pending`); only locks a still-open round (≥ 6 min left **and** odds 3–97%); graded on the finalized boundary candle, then **reconciled to Kalshi's settled result** — the definitive outcome, exactly what Robinhood pays (a separate **confirmed hit-rate** counts only Kalshi-settled rounds). If Kalshi is unreachable, a self-anchored fallback grades on the Coinbase close vs the round's open (flagged *self-tracked*, never counted as confirmed).
+
+*(Source of truth: `freePick`, `favLongshotAdj`, `reconcileKalshi` in `worker.js` — update this table if those change.)*
+
 ## Phone alerts on a high-confidence pick (optional, free)
 Get a push **on your phone even when the app is closed** the moment a coin opens a
 **high-confidence, non-SKIP** pick (≥75% and ≥3 independent reads agreeing):

@@ -444,6 +444,10 @@ setups get rarer and the streak *will* break. The thing to trust is the **per-be
 large sample** and the **bet-rate** (how disciplined it's staying) — **not** the streak itself. The
 repeatable edge is the *SKIP-unless-confluent* discipline, not the run.
 
+The **exact `freePick` formula** — every input, weight, the commit band, and the favourite-longshot
+and panic-fade rules — is **kept on record in [`cloudflare-worker/README.md`](cloudflare-worker/README.md)**
+(under _The pick algorithm_), so it survives future sessions and rewrites.
+
 Read it at `…/?picks=ETH` (or `?picks` for all coins). The app shows it in the **24/7
 Auto-Tracker** panel (`fetchAutoTracker` / `renderAutoTracker`), and the Worker folds the
 record into the AI prompt as an independent reality check on the market.
