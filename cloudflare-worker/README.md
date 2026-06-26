@@ -135,6 +135,19 @@ So fully-aligned reads commit past **±0.10**; fully-split reads need **±0.20**
 
 *(Source of truth: `freePick`, `favLongshotAdj`, `reconcileKalshi` in `worker.js` — update this table if those change.)*
 
+### Backups — the learned state is snapshotted daily
+
+The whole tracker (every coin's model + history + the pooled model) lives in **one** KV record
+(`auto:state`), overwritten each cron run. So that a bad write or an accidental wipe can't erase weeks
+of learning, the cron also keeps a **rolling 7-day backup**: once per UTC day it copies the full state
+into a `auto:state:backup:<0-6>` slot (gated by `lastBackupDay`, so it's **one extra KV write/day** —
+negligible next to the ~96 the cron already does).
+
+- **List them:** `…workers.dev/?backups` → each slot's timestamp, day, coin count, and model size (`modelN`), plus the live model size to compare against.
+- **Restore one:** `…workers.dev/?restore=<slot>` → copies that slot back over the live state (find the slot with `?backups` first). **This overwrites the current record** — it's for recovery only.
+- **Lock them down:** both honor `ACCESS_TOKEN` exactly like `?reset` — set that secret and pass `&token=…`, especially for `?restore` (it can overwrite the live record).
+- Purely protective: the backup path only ever **copies** the record — it never reads into, tunes, or touches a pick. (`maybeBackup` in `worker.js`.)
+
 ## Phone alerts on a high-confidence pick (optional, free)
 Get a push **on your phone even when the app is closed** the moment a coin opens a
 **high-confidence, non-SKIP** pick (≥75% and ≥3 independent reads agreeing):

@@ -109,6 +109,29 @@ export default {
         await saveState(env, st);
         return json({ ok: true, coin, reset: true, modelKept: keepModel, clearedGraded: cleared });
       }
+      // List the rolling daily backups of the learned state (read-only; token-gated like ?reset).
+      if (u.searchParams.has("backups")) {
+        if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
+        const slots = [];
+        for (let i = 0; i < BACKUP_SLOTS; i++) {
+          const b = await kvGetRaw(env, "auto:state:backup:" + i);
+          slots.push(b && b.state
+            ? { slot: i, backupAt: b.backupAt, day: b.day, coins: b.state.coins ? Object.keys(b.state.coins).length : 0, modelN: b.state.global ? b.state.global.n : null }
+            : { slot: i, empty: true });
+        }
+        const live = await loadState(env);
+        return json({ ok: true, liveModelN: live.global ? live.global.n : null, slots });
+      }
+      // Restore the live state from a backup slot — OVERWRITES current (token-gated like ?reset).
+      if (u.searchParams.has("restore")) {
+        if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
+        const slot = parseInt(u.searchParams.get("restore"), 10);
+        if (!(slot >= 0 && slot < BACKUP_SLOTS)) return json({ error: "specify a slot 0-" + (BACKUP_SLOTS - 1) + ", e.g. ?restore=3 (see ?backups)" }, 400);
+        const b = await kvGetRaw(env, "auto:state:backup:" + slot);
+        if (!b || !b.state) return json({ error: "backup slot " + slot + " is empty" }, 404);
+        await kvPutRaw(env, STATE_KEY, b.state);
+        return json({ ok: true, restored: true, slot, backupAt: b.backupAt, day: b.day, coins: b.state.coins ? Object.keys(b.state.coins).length : 0 });
+      }
       // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
     }
@@ -159,6 +182,7 @@ export default {
       const coins = AUTO_COINS.filter((c) => CB_PRODUCT[c]).sort((a, b) => (a === "BTC" ? -1 : b === "BTC" ? 1 : 0));   // ALL coins log now: Kalshi-graded where a series exists, else self-graded on Coinbase (paid plan has the subrequest headroom)
       for (const c of coins) { try { await runCoinPick(env, c, st); } catch (_) {} }
       try { await notifyHotPicks(env, st); } catch (_) {}   // background phone push on a high-confidence pick (ntfy)
+      try { await maybeBackup(env, st); } catch (_) {}      // once-a-day rolling snapshot of the learned state (7-slot ring); never blocks the save
       await saveState(env, st);
     })());
   },
@@ -925,6 +949,19 @@ async function loadState(env) {
   return st;
 }
 async function saveState(env, st) { st.updated = Date.now(); await kvPutRaw(env, STATE_KEY, st); }
+// Daily snapshot of the WHOLE learned state (every coin's model + history + the pooled model) into a
+// 7-slot ring — a rolling week of backups — so a single bad write or accidental wipe can't erase the
+// learning. Gated by st.lastBackupDay, so it's exactly ONE extra KV write per day (well inside the
+// free tier). Purely protective: it only ever COPIES the record — it never reads, changes, or touches
+// a pick. Restore a slot with ?restore=<0-6>; list slots with ?backups.
+const BACKUP_SLOTS = 7;
+async function maybeBackup(env, st) {
+  const today = Math.floor(Date.now() / 86400000);
+  if (st.lastBackupDay === today) return;                 // already snapshotted today
+  st.lastBackupDay = today;                               // persisted by the saveState that follows
+  const slot = today % BACKUP_SLOTS;
+  await kvPutRaw(env, "auto:state:backup:" + slot, { backupAt: Date.now(), day: today, slot, state: st });
+}
 
 // --- Online learning model (per-coin + pooled global) --------------------
 // A tiny online logistic regression that learns, per coin, how round-open signals map to the
