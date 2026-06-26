@@ -13,6 +13,12 @@ picker alone unless we've agreed otherwise. For a big change give a short plain-
 batch of small ones, summarize the last few. (This is on top of — not instead of — keeping the docs in
 sync below.)
 
+**Default to layman's terms — for everything, not just change-summaries.** When I ask how something
+works, or you walk me through the technical side, explain it in plain, simple language with analogies
+over jargon (avoid weights, function names, and math unless I ask for the deep version). I'd rather
+understand the idea than see the implementation. If a technical detail matters, give the plain version
+first, then offer the deeper one.
+
 ## Keep the docs in sync with the app (standing rule)
 
 Whenever we ship a **notable feature** or land an **important insight** about how the app
