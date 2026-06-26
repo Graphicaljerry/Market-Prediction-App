@@ -19,6 +19,10 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Fixed the 24/7 tracker dropping ~30% of rounds (the "behind / out-of-date" log).** Pulled the live Worker state and found the tracker had missed **92 of the last 305 rounds** — and crucially that this was **missing** data, not **wrong** data. (The model trains on Kalshi's *definitive settled* outcome — exactly what Robinhood pays — so even the rounds where the logged Coinbase close looks like it's on the "wrong" side of the line are learning the correct label; Kalshi settles on a 60-sec CF-Benchmarks index average, which can differ from a single candle on a razor-thin round.) The real bug: a cron that fired late (or while Kalshi was rate-limiting the server IP) often found no Kalshi market in its 6–16.5-min window, and because the crowd read was still technically *fresh* the self-tracked fallback was **blocked** — so that run recorded **nothing**. The fallback now fires whenever the Kalshi path locks nothing **for any reason** (stale crowd, no market in the window, or an already-decided market), needing only the live Coinbase price — so **every cron that runs records a round**. **Pick-impact (standing rule): none to how picks are computed** — a normal Kalshi-reachable pick is byte-for-byte unchanged; this only stops rounds being *dropped*, so the log is complete and the model learns from more rounds (the missing ones were lost training signal, never bad labels). Broadens the earlier Kalshi-unreachable fallback; verified against the live `?picks=ETH` data. (It can't recreate already-missed rounds — it stops *future* drops.)
+
+- **⚠️ Pick-timing: the next-round pick now locks at 0:40 left (was 1:30).** `BET_WINDOW` 90 → 40 (and the Worker's next-round reframe threshold `secs <= 120 → 40` to match), so the committed **Next Round** pick shows/locks in the final **~40 seconds** instead of 1:30 — locking later on fresher data, at the cost of less heads-up before the round turns over. The built-in lock-timing A/B keeps grading whether later is actually sharper. **Pick-impact (standing rule): changes *when* the next-round pick commits, not how it's computed.** One-line revert; the AI-free 24/7 tracker is unaffected.
+
 - **⚠️ Pick-affecting (opt-in): "Weight this AI read more" toggle + a tighter next-round lock.** Two changes that *do* alter pick behavior (called out per the standing rule): **(1)** a toggle inside the **AI Co-Pilot · the read** card that bumps **Claude's weight in the in-app Auto-Pick blend from 0.30 → 0.55** (the heaviest voice) — **default OFF**, so the proven blend is untouched unless you flip it. It only moves the **in-app Auto-Pick %**, *not* the AI-free 24/7 tracker (your proven record/streak stay untouched), and only matters when an AI read is actually present. It's an **experiment** — up-weighting the AI isn't proven to help; watch *Recent form* with it on vs off. **(2)** The next-round pick now **locks/shows at 1:30 left (`BET_WINDOW` 120 → 90)** instead of 2:00 — locks later on fresher data (trade-off: less heads-up); the existing lock-timing A/B keeps grading whether later is actually better. Both are one-line reverts; the AI-free tracker and its learning are unaffected.
 
 - **The learned model is now backed up hourly + daily — you can't lose the brain.** The 24/7 tracker's entire state (every coin's model + history + the pooled model) lived in a **single** KV record overwritten every 15 min, with no backup — one bad write or accidental wipe could erase the learning. The cron now keeps **two rolling rings**: an **hourly** snapshot (`auto:state:hourly:<0-23>`, the last 24h) and a **daily** one (`auto:state:backup:<0-6>`, the last 7 days) — so you can roll back to within an hour over the last day, or a day over the last week. Cost is fixed at **~25 extra KV writes/day (~121/day total)**, well inside the free tier's 1,000/day → **$0**. List with `?backups`, recover with `?restore=hourly:<n>` / `?restore=daily:<n>` (token-gated like `?reset`). **Purely protective — only ever copies the record, never touches a pick.** Details in `cloudflare-worker/README.md`.
@@ -200,7 +204,7 @@ The app:
    free data, even while the app is closed.
 6. Asks an **AI Co-Pilot** to weigh the math + your track record + the auto-tracker + the
    Kalshi crowd and issue a calibrated probability with a plain-English reason.
-7. In the final two minutes, the pick card surfaces a prominent **next-round ribbon** with
+7. In the final ~40 seconds, the pick card surfaces a prominent **next-round ribbon** with
    the locked pick — with **conviction tiers** when the signals align.
 
 ---
@@ -283,8 +287,8 @@ Rounds are aligned to wall-clock quarter hours (`:00`, `:15`, `:30`, `:45`).
 - At each boundary `tickTimer` **grades** the round that just ended, **opens** a new one
   (capturing the strike + a signal snapshot), re-locks the headline pick, refreshes the
   free crowd, and pulls the fresh auto-tracker record.
-- A countdown + progress bar show time remaining (12-hour AM/PM labels); the final 2
-  minutes (`BET_WINDOW = 120s`) is the **bet window** when the locked **next-round** pick
+- A countdown + progress bar show time remaining (12-hour AM/PM labels); the final ~40
+  seconds (`BET_WINDOW = 40s`) is the **bet window** when the locked **next-round** pick
   surfaces as a ribbon.
 
 ---
@@ -353,7 +357,7 @@ The headline card (`renderPickCard()`) turns everything into one plain instructi
 - **A single blended likelihood %** from [the probability engine](#the-probability-engine).
   The % updates live; the **direction stays locked** for the round.
 - **Phase-aware scope + next-round ribbon.** Most of the round it reads *"✅ THIS round ·
-  closes h:mm AM/PM"*. In the final 2 minutes a pulsing **ribbon** shows the locked
+  closes h:mm AM/PM"*. In the final ~40 seconds a pulsing **ribbon** shows the locked
   **NEXT-round** pick — *"⏭ NEXT ROUND · BUY OVER ↑ when it opens h:mm · 🔒 locked …"*.
   **SKIP** when there's no clear edge.
 - **Zoomable mini chart** (`drawMiniChart` → `drawLiveChart` / `drawTFChart`) — the live price
@@ -406,13 +410,16 @@ Each run, per coin with a Kalshi series:
    genuinely fresh round may already show only ~7–10 min left; 6 still guarantees the outcome is
    open. Earlier this floor was 12, which silently dropped picks whenever the cron ran late — the
    "stopped logging while I was away" bug.) It acts only on **fresh** Kalshi data, and the cron now
-   **retries the fetch and warms the cache itself** instead of relying on the app being open. And when
-   Kalshi is *still* unreachable (it rate-limits the server's IP, mostly while the app is closed), a
-   **Kalshi-independent fallback** self-anchors the round from the clock + the live Coinbase price —
-   strike = the price at the round's open, close = the next 15-min boundary — and picks from momentum +
-   book + the learned model alone (`nextRoundClose` + a `self: true` market). This is **purely
-   additive**: a normal Kalshi-reachable pick is unchanged; the fallback only fires when the tracker
-   would otherwise log nothing, so it genuinely keeps logging 24/7. Self-anchored rounds carry **no
+   **retries the fetch and warms the cache itself** instead of relying on the app being open. And
+   whenever the Kalshi path locks **nothing** — for *any* reason: Kalshi unreachable/stale (it
+   rate-limits the server's IP, mostly while the app is closed), *or* a late cron leaving no market in
+   the 6–16.5-min window, *or* the only open market already decided — a **Kalshi-independent fallback**
+   self-anchors the round from the clock + the live Coinbase price — strike = the price at the round's
+   open, close = the next 15-min boundary — and picks from momentum + book + the learned model alone
+   (`nextRoundClose` + a `self: true` market). This is **purely additive**: a normal Kalshi-reachable
+   pick is unchanged; the fallback only fires when the tracker would otherwise log nothing, so **any
+   cron that runs records a round** (this closed the ~30%-of-rounds-dropped gap — earlier the fallback
+   was gated on stale crowd, so a late cron with fresh-but-unusable Kalshi data recorded nothing). Self-anchored rounds carry **no
    ticker** (never counted as Kalshi-confirmed) and are flagged **· self-tracked** in the app. The pick
    itself is the simple blend: the
    **Kalshi market price** nudged by **1-min momentum**, **order-book imbalance** and the learned
@@ -539,7 +546,7 @@ Setup details (keys, vars, Git deploy, cron) live in
 
 ## Next-round ribbon & conviction
 
-In the final `BET_WINDOW` (120s) the Auto Pick card surfaces a prominent, pulsing
+In the final `BET_WINDOW` (40s) the Auto Pick card surfaces a prominent, pulsing
 **next-round ribbon** with the locked pick for the **next** round (BUY OVER/UNDER + the blended
 % + the lock timestamp), colored to the side. `convictionFor()` tiers it:
 

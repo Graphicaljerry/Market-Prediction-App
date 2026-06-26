@@ -382,10 +382,10 @@ const fnum = (v, d = 2) => (typeof v === "number" && isFinite(v)) ? (v >= 0 && d
 
 function buildPrompt(body, crowd, autopicks) {
   const secs = typeof body.secondsLeft === "number" ? body.secondsLeft : null;
-  const nextRound = secs != null && secs <= 120;
+  const nextRound = secs != null && secs <= 40;   // matches the client BET_WINDOW: in the final ~40s this round is settled, judge the next
   const m = body.market || {};
 
-  // The right market prior: this round's price is near-settled in the final 2 min, so for the
+  // The right market prior: this round's price is near-settled in the final ~40 sec, so for the
   // NEXT-round decision use the next market's price when we have it.
   const cur = crowd && typeof crowd.overPct === "number" ? crowd : null;
   const nxt = crowd && crowd.next && typeof crowd.next.overPct === "number" ? crowd.next : null;
@@ -1207,15 +1207,18 @@ async function runCoinPick(env, coin, st) {
         if (left >= 6 && left <= 16.5) { mkt = c; break; }          // an open, still-undecided round (tolerates a late cron)
       }
     }
-    // Kalshi-independent FALLBACK so the tracker keeps logging 24/7 even when Kalshi is unreachable
-    // (it rate-limits the server's IP, especially while the app is closed — the main cause of skipped
-    // rounds). Self-anchor a round from the clock + the live Coinbase price: strike = price NOW (= the
-    // round's open), close = the next 15-min boundary ≥6 min out. PURELY ADDITIVE — it only fires when
-    // the Kalshi path above locked nothing AND Kalshi was genuinely unreachable (no fresh crowd), so a
-    // normal Kalshi-reachable pick is byte-for-byte unchanged. No ticker, so reconcileKalshi never
-    // claims these as Kalshi-confirmed (they stay honestly "self-tracked"); and since the model already
-    // trains on close-vs-open, strike = open makes a self-anchored round its cleanest, most consistent case.
-    if (!mkt && (!crowd || crowd.stale) && micro && typeof micro.price === "number") {
+    // Kalshi-independent FALLBACK so the tracker keeps logging 24/7 — the main cause of DROPPED rounds.
+    // Self-anchor a round from the clock + the live Coinbase price: strike = price NOW (= the round's
+    // open), close = the next 15-min boundary ≥6 min out. PURELY ADDITIVE — it only fires when the
+    // Kalshi path above locked NOTHING, for ANY reason: Kalshi unreachable/stale, OR a late cron left no
+    // market in the 6–16.5 min window, OR the only open market was already decided. (Previously it fired
+    // only on stale crowd, so a late cron with FRESH-but-unusable Kalshi data recorded nothing — that was
+    // ~30% of rounds going missing. Now any cron that runs records a round.) A normal Kalshi-reachable
+    // pick is byte-for-byte unchanged. No ticker, so reconcileKalshi never claims these as Kalshi-confirmed
+    // (they stay honestly "self-tracked"); since the model already trains on close-vs-open, strike = open
+    // makes a self-anchored round its cleanest case. Needs only Coinbase (micro), so it still records
+    // while Kalshi is rate-limiting the server IP.
+    if (!mkt && micro && typeof micro.price === "number") {
       mkt = { ticker: null, strike: micro.price, overPct: null, closeTime: nextRoundClose(nowMs, 6), self: true };
     }
     if (mkt) {
