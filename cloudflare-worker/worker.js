@@ -754,7 +754,12 @@ async function kalshiResult(ticker) {
     if (!r || !r.ok) return null;
     const m = (await r.json()).market;
     const res = m && typeof m.result === "string" ? m.result.toLowerCase() : "";
-    return res === "yes" ? "OVER" : res === "no" ? "UNDER" : null;
+    const actual = res === "yes" ? "OVER" : res === "no" ? "UNDER" : null;
+    if (!actual) return null;                              // not resolved yet
+    // The settled UNDERLYING value Kalshi expired the contract against — the real number it averaged
+    // (its 60-sec CF-Benchmarks index). Lets us show the TRUE close + margin instead of a Coinbase proxy.
+    const ev = m && m.expiration_value != null ? parseFloat(m.expiration_value) : NaN;
+    return { actual, settle: (isFinite(ev) && ev > 0) ? ev : null };
   } catch (_) { return null; }
 }
 // Upgrade rounds graded provisionally on the Coinbase candle close to Kalshi's DEFINITIVE settled
@@ -770,13 +775,24 @@ async function reconcileKalshi(rec, coinModel, global) {
     checked++;
     const kal = await kalshiResult(e.ticker);
     if (!kal) continue;                                   // not settled yet — retried next cron
-    e.src = "kalshi"; e.actual = kal;                     // row-level truth; the caller recomputes all aggregates from history
-    if (e.side === "OVER" || e.side === "UNDER") e.correct = (kal === e.side);
+    e.src = "kalshi"; e.actual = kal.actual;              // row-level truth; the caller recomputes all aggregates from history
+    // Upgrade the displayed close + margin to Kalshi's REAL settled value (not the Coinbase proxy), so the
+    // arrow / Recent-Rounds % match exactly what Kalshi paid. Sanity-gated to a sane band around the strike.
+    if (kal.settle != null && typeof e.strike === "number" && e.strike > 0 && kal.settle > e.strike * 0.5 && kal.settle < e.strike * 2) {
+      e.close = kal.settle; e.kalshiClose = true;
+      e.over = Math.round((kal.settle - e.strike) * 100) / 100;
+      e.overPct = Math.round((kal.settle - e.strike) / e.strike * 1e5) / 1e3;
+    }
+    if (e.side === "OVER" || e.side === "UNDER") e.correct = (kal.actual === e.side);
     learnFromRound(coinModel, global, e);                 // train on Kalshi's DEFINITIVE label — the most accurate target
   }
   // Grace net: a round Kalshi hasn't confirmed after ~an hour (index ≥4) still teaches the model — train
   // it on its provisional Coinbase label so no round is lost, after giving Kalshi ample time to confirm.
-  for (let i = 4; i < h.length; i++) { const e = h[i]; if (e && !e.trained) learnFromRound(coinModel, global, e); }
+  for (let i = 4; i < h.length; i++) {
+    const e = h[i]; if (!e || e.trained) continue;
+    if (e.disputed && e.ticker && e.src !== "kalshi") continue;   // photo-finish on a Kalshi market → wait for the DEFINITIVE result; don't teach the model a shaky proxy
+    learnFromRound(coinModel, global, e);
+  }
   if (h[0]) rec.lastActual = h[0].actual;
 }
 // Background phone push (ntfy.sh) the moment a coin opens a HIGH-CONFIDENCE, non-SKIP pick — the rare
@@ -1187,23 +1203,27 @@ async function runCoinPick(env, coin, st) {
   // live price when this cron happens to run — a late cron or a post-close tick used to flip rounds.
   const p = rec.pending;
   if (p && Date.now() >= (p.closeMs || 0) && typeof p.strike === "number") {
-    let settle = await cbCloseAt(product, p.closeMs);                        // the finalized boundary candle close — definitive, matches Robinhood's close / next-strike
-    if (settle == null) settle = await cbAvg60(product, p.closeMs);           // fallback: ~60-sec average only if that candle hasn't posted yet
+    // Match Kalshi's METHOD as closely as free data allows: it settles on a 60-SECOND AVERAGE of a
+    // multi-exchange index, so prefer our 60-sec Coinbase average over a single candle close. Also keep
+    // the single-candle side and flag the round "disputed" when the two land on OPPOSITE sides — a
+    // photo-finish where the proxy can't be trusted, so we won't teach the model until Kalshi confirms
+    // (reconcileKalshi upgrades it to the definitive result on a later cron). We grade EVERY round incl.
+    // SKIPs (shadow-grading) so the app shows both the bets-only and "if it bet every round" hit-rates;
+    // the model learns from every round either way.
+    const avg60 = await cbAvg60(product, p.closeMs);
+    const candle = await cbCloseAt(product, p.closeMs);
+    let settle = avg60 != null ? avg60 : candle;
     if (settle == null && micro && typeof micro.price === "number") settle = micro.price;   // last resort if both are missing
-    // Grade immediately on the candle close — accurate, and ZERO extra Kalshi load on the critical
-    // path. reconcileKalshi() (at the end of this function, wrapped) upgrades it to Kalshi's
-    // definitive result on a later cron. We now grade EVERY round, including the ones it SKIPped:
-    // a SKIP still records what it leaned + the real outcome (shadow-grading) so the app can show
-    // both the disciplined hit-rate (bets only) AND an honest "if it bet every round" hit-rate, and
-    // the coverage (how often it actually bets). The model learns from every round either way.
     const actual = (typeof settle === "number" ? (settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT") : null);
+    const candleSide = (typeof candle === "number") ? (candle > p.strike ? "OVER" : candle < p.strike ? "UNDER" : "FLAT") : null;
+    const disputed = (actual === "OVER" || actual === "UNDER") && !!candleSide && candleSide !== actual;   // 60-sec avg vs single candle disagree → photo-finish
     if (actual && actual !== "FLAT") {
       const bet = (p.side === "OVER" || p.side === "UNDER");
       const lean = bet ? p.side : (p.pOver >= 50 ? "OVER" : "UNDER");          // the side it leaned, even on a SKIP
       const correct = bet ? (actual === p.side) : null;
       const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
       const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
-      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, feat: Array.isArray(p.feat) ? p.feat : null, caseMem: p.caseMem || null, trained: false, src: p.self ? "self" : "candle" });
+      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, feat: Array.isArray(p.feat) ? p.feat : null, caseMem: p.caseMem || null, disputed: disputed, trained: false, src: p.self ? "self" : "candle" });
       if (rec.history.length > 300) rec.history.pop();
       rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
       rec.lastActual = actual;
