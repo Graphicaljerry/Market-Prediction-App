@@ -135,17 +135,22 @@ So fully-aligned reads commit past **±0.10**; fully-split reads need **±0.20**
 
 *(Source of truth: `freePick`, `favLongshotAdj`, `reconcileKalshi` in `worker.js` — update this table if those change.)*
 
-### Backups — the learned state is snapshotted daily
+### Backups — the learned state is snapshotted hourly *and* daily
 
 The whole tracker (every coin's model + history + the pooled model) lives in **one** KV record
-(`auto:state`), overwritten each cron run. So that a bad write or an accidental wipe can't erase weeks
-of learning, the cron also keeps a **rolling 7-day backup**: once per UTC day it copies the full state
-into a `auto:state:backup:<0-6>` slot (gated by `lastBackupDay`, so it's **one extra KV write/day** —
-negligible next to the ~96 the cron already does).
+(`auto:state`), overwritten each cron run. So that a bad write or an accidental wipe can't erase the
+learning, the cron keeps **two rolling backup rings**:
 
-- **List them:** `…workers.dev/?backups` → each slot's timestamp, day, coin count, and model size (`modelN`), plus the live model size to compare against.
-- **Restore one:** `…workers.dev/?restore=<slot>` → copies that slot back over the live state (find the slot with `?backups` first). **This overwrites the current record** — it's for recovery only.
-- **Lock them down:** both honor `ACCESS_TOKEN` exactly like `?reset` — set that secret and pass `&token=…`, especially for `?restore` (it can overwrite the live record).
+- **Hourly** — once per clock hour into `auto:state:hourly:<0-23>` (the **last 24 hours**), gated by `lastBackupHour`.
+- **Daily** — once per UTC day into `auto:state:backup:<0-6>` (the **last 7 days**), gated by `lastBackupDay`.
+
+So you can roll back to within **an hour** over the last day, or within **a day** over the last week.
+The cost is fixed and tiny: **24 + 1 = 25 extra KV writes/day** on top of the cron's 96 → **~121/day**,
+against the free tier's **1,000/day**. (Storage: ~32 copies of a small record — trivial vs the 1 GB free allowance.)
+
+- **List them:** `…workers.dev/?backups` → `hourly` and `daily` arrays; each slot's timestamp, coin count and model size (`modelN`), plus the live model size to compare against.
+- **Restore one:** `…workers.dev/?restore=hourly:<0-23>` or `?restore=daily:<0-6>` → copies that slot back over the live state (find the slot with `?backups` first). **This overwrites the current record** — recovery only.
+- **Lock them down:** both honor `ACCESS_TOKEN` exactly like `?reset` — set that secret and pass `&token=…`, especially for `?restore`.
 - Purely protective: the backup path only ever **copies** the record — it never reads into, tunes, or touches a pick. (`maybeBackup` in `worker.js`.)
 
 ## Phone alerts on a high-confidence pick (optional, free)

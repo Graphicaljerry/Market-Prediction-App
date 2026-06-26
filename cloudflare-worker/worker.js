@@ -109,28 +109,34 @@ export default {
         await saveState(env, st);
         return json({ ok: true, coin, reset: true, modelKept: keepModel, clearedGraded: cleared });
       }
-      // List the rolling daily backups of the learned state (read-only; token-gated like ?reset).
+      // List both rolling backup rings of the learned state (read-only; token-gated like ?reset).
       if (u.searchParams.has("backups")) {
         if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
-        const slots = [];
-        for (let i = 0; i < BACKUP_SLOTS; i++) {
-          const b = await kvGetRaw(env, "auto:state:backup:" + i);
-          slots.push(b && b.state
-            ? { slot: i, backupAt: b.backupAt, day: b.day, coins: b.state.coins ? Object.keys(b.state.coins).length : 0, modelN: b.state.global ? b.state.global.n : null }
-            : { slot: i, empty: true });
-        }
+        const readRing = async (prefix, n) => {
+          const out = [];
+          for (let i = 0; i < n; i++) {
+            const b = await kvGetRaw(env, prefix + i);
+            out.push(b && b.state
+              ? { slot: i, backupAt: b.backupAt, day: b.day, hour: b.hour, coins: b.state.coins ? Object.keys(b.state.coins).length : 0, modelN: b.state.global ? b.state.global.n : null }
+              : { slot: i, empty: true });
+          }
+          return out;
+        };
         const live = await loadState(env);
-        return json({ ok: true, liveModelN: live.global ? live.global.n : null, slots });
+        return json({ ok: true, liveModelN: live.global ? live.global.n : null, hourly: await readRing("auto:state:hourly:", HOURLY_SLOTS), daily: await readRing("auto:state:backup:", BACKUP_SLOTS) });
       }
       // Restore the live state from a backup slot — OVERWRITES current (token-gated like ?reset).
+      // Format: ?restore=hourly:<0-23> or ?restore=daily:<0-6> (find the slot via ?backups first).
       if (u.searchParams.has("restore")) {
         if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
-        const slot = parseInt(u.searchParams.get("restore"), 10);
-        if (!(slot >= 0 && slot < BACKUP_SLOTS)) return json({ error: "specify a slot 0-" + (BACKUP_SLOTS - 1) + ", e.g. ?restore=3 (see ?backups)" }, 400);
-        const b = await kvGetRaw(env, "auto:state:backup:" + slot);
-        if (!b || !b.state) return json({ error: "backup slot " + slot + " is empty" }, 404);
+        const m = /^(daily|hourly):(\d+)$/.exec(u.searchParams.get("restore") || "");
+        if (!m) return json({ error: "use ?restore=hourly:<0-23> or ?restore=daily:<0-6> (see ?backups)" }, 400);
+        const kind = m[1], slot = parseInt(m[2], 10), max = kind === "hourly" ? HOURLY_SLOTS : BACKUP_SLOTS;
+        if (!(slot >= 0 && slot < max)) return json({ error: "slot out of range — " + kind + " is 0-" + (max - 1) }, 400);
+        const b = await kvGetRaw(env, (kind === "hourly" ? "auto:state:hourly:" : "auto:state:backup:") + slot);
+        if (!b || !b.state) return json({ error: kind + " slot " + slot + " is empty" }, 404);
         await kvPutRaw(env, STATE_KEY, b.state);
-        return json({ ok: true, restored: true, slot, backupAt: b.backupAt, day: b.day, coins: b.state.coins ? Object.keys(b.state.coins).length : 0 });
+        return json({ ok: true, restored: true, kind, slot, backupAt: b.backupAt, day: b.day, hour: b.hour, coins: b.state.coins ? Object.keys(b.state.coins).length : 0 });
       }
       // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
@@ -954,13 +960,26 @@ async function saveState(env, st) { st.updated = Date.now(); await kvPutRaw(env,
 // learning. Gated by st.lastBackupDay, so it's exactly ONE extra KV write per day (well inside the
 // free tier). Purely protective: it only ever COPIES the record — it never reads, changes, or touches
 // a pick. Restore a slot with ?restore=<0-6>; list slots with ?backups.
-const BACKUP_SLOTS = 7;
+const BACKUP_SLOTS = 7;      // daily ring — a rolling week
+const HOURLY_SLOTS = 24;     // hourly ring — a rolling day (finer recovery)
+// Snapshot the WHOLE learned state on two rolling rings: one per HOUR (24 slots = the last day) and
+// one per DAY (7 slots = the last week). Each ring writes at most once per period (gated by
+// lastBackupHour / lastBackupDay), so the extra load is fixed: 24 hourly + 1 daily = 25 extra KV
+// writes/day on top of the cron's 96 → ~121/day total, well inside the free tier's 1,000/day. Purely
+// protective: it only COPIES the record, never touches a pick. Restore via
+// ?restore=hourly:<0-23> or ?restore=daily:<0-6>.
 async function maybeBackup(env, st) {
-  const today = Math.floor(Date.now() / 86400000);
-  if (st.lastBackupDay === today) return;                 // already snapshotted today
-  st.lastBackupDay = today;                               // persisted by the saveState that follows
-  const slot = today % BACKUP_SLOTS;
-  await kvPutRaw(env, "auto:state:backup:" + slot, { backupAt: Date.now(), day: today, slot, state: st });
+  const now = Date.now();
+  const hour = Math.floor(now / 3600000);
+  if (st.lastBackupHour !== hour) {                        // at most one hourly snapshot per clock hour
+    st.lastBackupHour = hour;
+    await kvPutRaw(env, "auto:state:hourly:" + (hour % HOURLY_SLOTS), { backupAt: now, hour, kind: "hourly", state: st });
+  }
+  const today = Math.floor(now / 86400000);
+  if (st.lastBackupDay !== today) {                        // at most one daily snapshot per UTC day
+    st.lastBackupDay = today;
+    await kvPutRaw(env, "auto:state:backup:" + (today % BACKUP_SLOTS), { backupAt: now, day: today, kind: "daily", state: st });
+  }
 }
 
 // --- Online learning model (per-coin + pooled global) --------------------
