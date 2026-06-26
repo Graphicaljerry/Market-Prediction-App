@@ -235,7 +235,7 @@
   .card.orb { background: rgba(43,43,43,0.20); border-color: rgba(255,255,255,0.09); box-shadow: 0 8px 30px rgba(0,0,0,0.30); }
   /* Timer card stays clean like the mockup — hide the next-round preview line in the timer. The
      next-round pick is NOT lost: it still surfaces in the Auto Pick panel's "Next round" column
-     when it locks in the final 2 min. One-line revert. (id selector so it wins over .nextPick below.) */
+     when it locks in the final 90 sec. One-line revert. (id selector so it wins over .nextPick below.) */
   #nextPick { display: none; }
   /* crypto icons in the switcher + hero badge */
   .cico { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; display: inline-block; vertical-align: middle; flex: 0 0 auto; }
@@ -747,7 +747,7 @@
         <div class="dpCol dpNextCol dormant" id="dpNextCol" data-side="wait">
           <div class="dpLbl">Next Round</div>
           <div class="dpDir wait" id="dpNextDir">—</div>
-          <div class="dpSub" id="dpNextSub">appears in the final 2 min</div>
+          <div class="dpSub" id="dpNextSub">appears in the final 90 sec</div>
         </div>
       </div>
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
@@ -800,6 +800,7 @@
   <summary class="sec secToggle">AI Co-Pilot <span class="tiny">· the read</span><span class="secChevron" aria-hidden="true">▸</span></summary>
   <div class="card orb collapseCard">
     <div id="blend" class="blend"></div>
+    <label class="hiConvToggle" style="margin:2px 0 12px"><input type="checkbox" id="aiBoost" /><span>Weight this AI read more in the pick</span></label>
     <details id="aiWhy" class="aiWhy aiSetup aiSummary hidden">
       <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span></summary>
       <div class="aiWhyBody"></div>
@@ -887,7 +888,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r6 · recent-form stat</span>
+    <span style="opacity:.45">UI build · 2026-06-25 · figma-pass r7 · AI-weight toggle + 1:30 lock</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -933,7 +934,8 @@
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, committed: null, leanDir: null, leanFlips: 0, obi: null,
     chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false, stoch: false, ema: false, bb: false }, vp: { a: 0, b: 1 },
     chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
-    hiConvOnly: (function () { try { return localStorage.getItem("hiConvOnly_v1") === "1"; } catch (e) { return false; } })() };
+    hiConvOnly: (function () { try { return localStorage.getItem("hiConvOnly_v1") === "1"; } catch (e) { return false; } })(),
+    aiBoost: (function () { try { return localStorage.getItem("aiBoost_v1") === "1"; } catch (e) { return false; } })() };
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -1289,7 +1291,7 @@
     var parts = [];
     var b = barrierOver(); if (b != null) { var info = Math.abs(b - 0.5) * 2; parts.push({ p: b, w: 0.12 + 0.5 * info }); }
     var c = crowdOver(activeCrowd()); if (c != null) parts.push({ p: c, w: 0.42 });   // the market — efficient prior
-    var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: 0.30 });        // AI reasoning
+    var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: state.aiBoost ? 0.55 : 0.30 });   // AI reasoning — "Weight this AI read more" bumps 0.30 -> 0.55 (AI becomes the heaviest voice)
     parts.push({ p: indOver(reco), w: 0.22 });                                         // TA indicators (correlated → modest)
     var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.07 });                // order-book nudge
     var pf = panicFadeOver();                                                          // EXTREME move → fade the over-reaction
@@ -1698,9 +1700,9 @@
       var pcls = pd === "OVER" ? "over" : pd === "UNDER" ? "under" : "skip";
       var body = pd === "SKIP" ? "Leaning flat — no clear side yet" : ("Leaning " + pd + (pd === "OVER" ? " ↑ " : " ↓ ") + pctFor(o.pOver, pd) + "%");
       var rrp = roundRange(), rtail = rrp ? " · price " + rangePhrase(rrp.pos) : "";
-      html = lbl + '<span class="npPick ' + pcls + '">' + body + '<span class="npHint">a heads-up on the round <b>after</b> this one — not the bet you\'re in now · locks in the final 2 min' + rtail + '</span></span>';
+      html = lbl + '<span class="npPick ' + pcls + '">' + body + '<span class="npHint">a heads-up on the round <b>after</b> this one — not the bet you\'re in now · locks in the final 90 sec' + rtail + '</span></span>';
     } else {
-      html = lbl + '<span class="npPick skip">Reading signals…<span class="npHint">a preview of the round after this one — locks in the final 2 min</span></span>';
+      html = lbl + '<span class="npPick skip">Reading signals…<span class="npHint">a preview of the round after this one — locks in the final 90 sec</span></span>';
     }
     if (el._html === html) return;   // no layout work unless the line actually changed
     el._html = html; el.innerHTML = html;
@@ -1755,7 +1757,7 @@
       setDPCol(nDirEl, nCol, nSub, "…", "wait", "locking your next-round bet");
     } else {
       nCol.classList.add("dormant");
-      setDPCol(nDirEl, nCol, nSub, "locks in " + mmssShort(remaining - BET_WINDOW), "wait", "best next-round bet appears in the final 2 min");
+      setDPCol(nDirEl, nCol, nSub, "locks in " + mmssShort(remaining - BET_WINDOW), "wait", "best next-round bet appears in the final 90 sec");
     }
   }
 
@@ -2461,7 +2463,7 @@
   }
 
   // In the final BET_WINDOW seconds, surface the freshest call for the NEXT round.
-  var BET_WINDOW = 120;
+  var BET_WINDOW = 90;   // next-round pick locks/shows with 1:30 left (was 120 = 2:00). Lower = locks later on fresher data, less heads-up. One-line revert.
   function crowdDirOf(crowd) {
     if (!crowd || typeof crowd.overPct !== "number") return null;
     return crowd.overPct > 55 ? "OVER" : crowd.overPct < 45 ? "UNDER" : null;
@@ -2859,6 +2861,15 @@
     });
   })();
   (function () {
+    var t = $("aiBoost"); if (!t) return;
+    t.checked = state.aiBoost;
+    t.addEventListener("change", function () {
+      state.aiBoost = t.checked;
+      try { localStorage.setItem("aiBoost_v1", t.checked ? "1" : "0"); } catch (e) {}
+      renderPickCard();   // re-blend the headline immediately with the new AI weight
+    });
+  })();
+  (function () {
     var t = $("notifyToggle"); if (!t) return;
     t.checked = notifyEnabled() && ("Notification" in window) && Notification.permission === "granted";
     t.addEventListener("change", function () {
@@ -2873,7 +2884,7 @@
   })();
   // ---------- Help sheet ----------
   var EXPLAIN = {
-    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final 2 minutes it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine. The 'Which to follow' line right under the call reconciles it with the always-on 24/7 auto-tracker: agree → higher conviction (this is your call); split → coin-flip territory, sitting out is the safe play. Follow this Co-Pilot pick as the headline; use the tracker to gauge how much to trust it." },
+    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final ~90 seconds it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine. The 'Which to follow' line right under the call reconciles it with the always-on 24/7 auto-tracker: agree → higher conviction (this is your call); split → coin-flip territory, sitting out is the safe play. Follow this Co-Pilot pick as the headline; use the tracker to gauge how much to trust it." },
     indicators: { t: "Live Indicators", d: "Classic technical indicators recomputed live from 15-minute candles. Each shows its current value and a bull / bear / neutral tag. Tap any indicator row to learn what it means." },
     accuracy: { t: "Pick Accuracy & how rounds settle", d: "When a 15-minute round closes, the app grades the pick against the DEFINITIVE close — the finalized Coinbase 15-minute candle for that round (the same close/arrow you see on Coinbase), not a stray live tick — so the logged direction stays accurate even if the tab was in the background. OVER / UNDER is measured against the round's line to beat (the real Kalshi strike when the Co-Pilot is connected, otherwise the round's opening price). Heads up: Kalshi officially settles on a 60-second average of the CF Benchmarks index in the final minute before expiry, which can differ from a single Coinbase price on razor-thin rounds — so treat this grade as a close, honest proxy, not the official settlement. Hit rate, streak, and the last ~7 days are saved on this device." },
     autotracker: { t: "24/7 Auto-Tracker", d: "A second, simpler picker that runs on the server every 15 minutes — even when this app is closed. It uses only free data (the Kalshi market price, short-term momentum, and the order book) with no AI, so it costs nothing. Every round it makes a pick and grades the last one, building an always-on track record. It's a reality check on the market: where this honest, no-frills system keeps winning, the market is efficient; where it slips, there may be an edge. The AI Co-Pilot reads this record when it makes your live call, and the tracker's learned model now also feeds the Co-Pilot's blended % directly — so the two genuinely talk. Don't pick between them: follow the Co-Pilot's headline call, and let this tracker (via the 'Which to follow' line) tell you how confident to be." },
