@@ -507,8 +507,27 @@
   @keyframes badgeIn { from { opacity: 0; transform: translateY(-5px) scale(.9); } to { opacity: 1; transform: none; } }
   .liveTag:not(.next) { animation: livePulse 2s ease-in-out infinite; }
   @keyframes livePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(13,224,89,0); } 50% { box-shadow: 0 0 10px 0 rgba(13,224,89,.55); } }
+  /* round rollover: the pick "deals in" */
+  #dualPick.dealIn { animation: dealIn .55s cubic-bezier(.2,.8,.2,1) both; }
+  @keyframes dealIn { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
+  /* next-round lock: the Next Round column snaps to life */
+  .dpNextCol.lockSnap { animation: lockSnap .6s ease-out; }
+  @keyframes lockSnap { 0% { transform: scale(.9); filter: brightness(1.9); } 40% { transform: scale(1.06); } 100% { transform: scale(1); filter: brightness(1); } }
+  /* win: the stat number flashes green as it ticks up */
+  .scoreGrid .v.statUp { animation: statUp 1.1s ease-out; }
+  @keyframes statUp { 0% { color: var(--green); text-shadow: 0 0 14px rgba(13,224,89,.8); transform: scale(1.18); } 100% { text-shadow: 0 0 0 transparent; transform: scale(1); } }
+  /* "reading…" shimmer while the AI thinks */
+  .shimmerText { background: linear-gradient(90deg, var(--label-3) 30%, #fff 50%, var(--label-3) 70%); background-size: 200% 100%;
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; animation: shimmer 1.3s linear infinite; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  /* high-conviction pick: the card gets a slow glowing border */
+  .card.orb.highConv { animation: convGlow 2.2s ease-in-out infinite; }
+  @keyframes convGlow { 0%,100% { box-shadow: 0 0 0 1px rgba(var(--accent-rgb,10,132,255),.06), 0 0 16px rgba(var(--accent-rgb,10,132,255),0); }
+    50% { box-shadow: 0 0 0 1px rgba(var(--accent-rgb,10,132,255),.55), 0 0 26px rgba(var(--accent-rgb,10,132,255),.4); } }
   @media (prefers-reduced-motion: reduce) {
-    .aiBadge, .aiBadgeDot, .aiBadge::after, .liveTag:not(.next) { animation: none; }
+    .aiBadge, .aiBadgeDot, .aiBadge::after, .liveTag:not(.next),
+    #dualPick.dealIn, .dpNextCol.lockSnap, .scoreGrid .v.statUp, .shimmerText, .card.orb.highConv { animation: none; }
+    .shimmerText { -webkit-text-fill-color: var(--label-3); color: var(--label-3); }
   }
   .tally { font-size: 13px; margin-top: 11px; color: var(--label-2); }
   .lean { font-size: 12px; margin-top: 9px; color: var(--label-3); }
@@ -929,7 +948,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r15 · glowing AI badge + ambient animations</span>
+    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r16 · top-picks animations (deal-in · lock-snap · win-flash · glow)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1553,6 +1572,7 @@
     state.lockingNext = false;
     saveLockedNext(); abRecord("two", state.lockedNext.dir);   // persist across reloads + log the 2-min pick for the lock-timing A/B
     renderPickCard(); renderNextPick(); updateBetWindow(state.remaining == null ? 999 : state.remaining);
+    var nc = $("dpNextCol"); if (nc) { nc.classList.remove("lockSnap"); void nc.offsetWidth; nc.classList.add("lockSnap"); }   // snap the Next Round column to life
   }
   function clearLocks() { if (state.lockTimer) { clearTimeout(state.lockTimer); state.lockTimer = null; } state.lockingNext = false; }
 
@@ -1684,6 +1704,7 @@
     var nextMode = remaining <= BET_WINDOW;
     var el = $("reco"), scopeEl = $("recoScope"), buyEl = $("buyLine"), hintEl = $("buyHint"),
         pctEl = $("oddsPct"), lblEl = $("oddsLbl"), leanEl = $("liveLean");
+    var pcard = el && el.parentNode; if (pcard) pcard.classList.remove("highConv");   // default off; the strong-committed branch below turns it on
     var nsH = hma(currentRoundEnd);
     var ne = new Date(currentRoundEnd.getTime() + 15 * 60000), neH = hma(ne);
 
@@ -1738,6 +1759,7 @@
       return;
     }
     var behind = !nextMode && call.pct < 50;   // committed side is currently losing — we're deliberately holding it
+    if (pcard && hiConv) pcard.classList.add("highConv");   // strong/edge committed pick → glowing card
     var cls = call.dir === "OVER" ? "over" : "under";
     el.className = "reco " + cls;
     buyEl.className = "buyLine " + cls;
@@ -2532,6 +2554,7 @@
       resetChart();                                                // fresh price track for the new round
       if (state.lastRecoObj) renderRoundCall(state.lastRecoObj);   // lock the call (consumes the locked next-round pick)
       else { state.lockedNext = null; clearLocks(); }
+      var dp = $("dualPick"); if (dp) { dp.classList.remove("dealIn"); void dp.offsetWidth; dp.classList.add("dealIn"); }   // deal the fresh round in
       saveLockedNext();   // lockedNext is now consumed/null — drop the persisted copy for the closed round
       refresh();
       // Round open: just refresh the free market price/strike. The paid AI read happens once
@@ -2546,7 +2569,7 @@
     var warn = remaining <= 120;
     elTimer.classList.toggle("warn", warn);
     elTimerBar.classList.toggle("warn", warn);
-    elTimerBar.classList.toggle("urgent", remaining <= 30 && remaining > 0);     // final 30s → pulse faster
+    elTimerBar.classList.toggle("urgent", remaining <= BET_WINDOW && remaining > 0);   // bet window (final 40s) → pulse faster = "decision time"
     var critical = remaining <= 10 && remaining > 0;                              // final 10s → most intense + the digits throb
     elTimerBar.classList.toggle("critical", critical);
     elTimer.classList.toggle("critical", critical);
@@ -3180,6 +3203,24 @@
     if (m.indexOf("llama") >= 0) return "groq";
     return "free";
   }
+  // Tween a stat number to its new value and flash green when it ticks up — only animates on a real change.
+  function animateStat(el, to, suffix) {
+    if (!el) return;
+    suffix = suffix || "";
+    if (to == null) { el.textContent = "—"; return; }
+    var from = parseInt((el.textContent || "").replace(/[^0-9-]/g, ""), 10);
+    if (isNaN(from) || from === to) { el.textContent = to + suffix; return; }
+    if (to > from) { el.classList.remove("statUp"); void el.offsetWidth; el.classList.add("statUp"); }
+    var start = null;
+    function step(t) {
+      if (start === null) start = t;
+      var p = Math.min(1, (t - start) / 500);
+      var e = p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;   // easeInOutQuad
+      el.textContent = Math.round(from + (to - from) * e) + suffix;
+      if (p < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
   function renderAIBadge() {
     var el = $("aiBadge"); if (!el) return;
     if (!getWorkerUrl()) { el.hidden = true; return; }     // no AI wired up → no badge
@@ -3382,12 +3423,12 @@
         '<span class="hres ' + w + '">' + (correct ? "✓" : "✗") + pctTxt + '</span></div>';
     }).join("");
     $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet — rebuilding as new rounds settle.</div>';
-    $("aGraded").textContent = graded;
-    $("aCorrect").textContent = correctN;
-    $("aHit").textContent = graded ? Math.round(correctN / graded * 100) + "%" : "—";
-    $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");
+    animateStat($("aGraded"), graded, "");
+    animateStat($("aCorrect"), correctN, "");
+    $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");   // set class BEFORE animating so the flash (statUp) isn't overwritten
     $("aHit").title = confirmedN < graded ? (confirmedN + " of " + graded + " confirmed vs Kalshi; the rest still settling") : "all confirmed vs Kalshi";
-    $("aStreak").textContent = streak;   // current win streak shown in the stats row (replaces the old "Now" pick, which the Auto Pick panel already shows)
+    animateStat($("aHit"), graded ? Math.round(correctN / graded * 100) : null, "%");
+    animateStat($("aStreak"), streak, "");   // current win streak shown in the stats row (replaces the old "Now" pick, which the Auto Pick panel already shows)
     // Recent form — rolling hit-rate over the last 50 BETS (not rounds): steadier than the streak and
     // not diluted by ancient history. Until there are 50 bets it shows however many there are, with a
     // "small sample" tag under ~30 so the number isn't over-trusted early.
@@ -3499,7 +3540,7 @@
     if (ai && ai.verdict) {
       aiVal = ai.verdict + (ai.confidence ? " · " + ai.confidence : "") + (aging ? ' <span style="color:var(--orange);font-weight:600;font-size:11px">· read aging</span>' : "");
       aiCls = ai.verdict === "OVER" ? "o" : ai.verdict === "UNDER" ? "u" : "";
-    } else aiVal = aiAvailable() ? "reading…" : "not connected";
+    } else aiVal = aiAvailable() ? '<span class="shimmerText">reading…</span>' : "not connected";
     var edge = aging ? '<span class="aiEdge" style="color:var(--label-3);background:none;border:1px solid var(--separator)">read predates the move</span>'
       : (aiDir && crowdDir) ? (aiDir === crowdDir ? '<span class="aiEdge with">agrees w/ crowd</span>' : '<span class="aiEdge against">EDGE vs crowd</span>') : "";
     var rcM = state.aiRecord && state.aiRecord[getModel()], rcN = rcM ? rcM.graded : 0, wPct = Math.round(aiWeight() * 100);
