@@ -451,6 +451,11 @@ Recent (pick->result [signals]): ${recent}.`
     ? `LEARNED MODEL for ${body.coin} (online logistic regression, ${lr.n} graded rounds, pooled across coins): current read P(OVER) ≈ ${ap.pending && typeof ap.pending.modelOver === "number" ? ap.pending.modelOver + "%" : "n/a"}.${lr.tendencies && lr.tendencies.length ? " Learned tendencies: " + lr.tendencies.join("; ") + "." : ""}${lr.afterUpOverPct != null ? ` Round-to-round: after an UP round it finishes OVER ${lr.afterUpOverPct}% of the time; after a DOWN round ${lr.afterDownOverPct}%.` : ""}${streakBit}${marginBit}${techBit} (15-min direction is near-random, so weight this as a faint tilt, not gospel.)`
     : "";
 
+  const cm = ap && ap.pending && ap.pending.caseMem;
+  const caseLine = cm && typeof cm.overPct === "number"
+    ? `CASE MEMORY ("have we seen this setup before?"): of the ${cm.n} past rounds whose open looked most like this one (nearest-neighbour over the same features the model uses), ${cm.overPct}% finished OVER${(cm.side === "OVER" || cm.side === "UNDER") ? " → a faint " + cm.side + " lean" : " — no clear lean"}. It complements the learned model (which fits one global rule) by catching LOCAL patterns; treat it as a faint tilt.${typeof ap.caseHitPct === "number" && ap.caseGraded >= 10 ? " When this memory has actually leaned, it's been right " + ap.caseHitPct + "% of the time so far — calibrate your trust accordingly." : ""}`
+    : "";
+
   const scopeLine = nextRound
     ? `Only ~${secs}s remain in THIS round, so treat it as settled — do NOT advise on it. Judge the NEXT 15-minute round, which opens in ~${secs}s at ≈ the current price (${body.price}). At that open the line resets to ~the live price, so the position model is ~50% by design — your ONLY edge for the next round is which way it drifts from here.`
     : `Judge THIS round: will ${body.coin} be ABOVE the line (${body.strike}) at the close, ~${secs ?? "?"}s from now? The position model already reflects how far you are from the line and how little time is left — respect it.`;
@@ -470,7 +475,7 @@ ${indicators}
 
 YOUR TRACK RECORD ON THIS DEVICE:
 ${historyLine}
-${autoLine ? "\n" + autoLine + "\n" : ""}${learnedLine ? "\n" + learnedLine + "\n" : ""}
+${autoLine ? "\n" + autoLine + "\n" : ""}${learnedLine ? "\n" + learnedLine + "\n" : ""}${caseLine ? "\n" + caseLine + "\n" : ""}
 HOW TO DECIDE — your one goal is a HIGH HIT-RATE on the bets you place, NOT betting every round.
 15-min direction is close to a coin-flip, so most rounds have no edge and the winning move is to
 SKIP. Reason in this order, then output only JSON:
@@ -1046,6 +1051,32 @@ function trainModel(model, f, y) {
   model.b += LR * g;
   model.n++;
 }
+// ---- Case memory ("have we seen this setup before?") -------------------------------------------
+// Episodic / nearest-neighbour memory: find the K past rounds (pooled across ALL coins) whose
+// open-time features are closest to the current setup, and report which way they actually settled.
+// Complements the logistic model — that fits ONE global rule; this is non-parametric and can surface
+// a LOCAL pattern the line misses. MEASUREMENT-ONLY: it's handed to the AI's prompt and scored against
+// outcomes, but it does NOT move the freePick blend until its tracked hit-rate proves it helps.
+// 15-min direction is near-random, so expect a faint tilt, not an oracle.
+function caseMemory(st, feat, k) {
+  if (!Array.isArray(feat) || !st || !st.coins) return null;
+  const near = [];
+  for (const cn in st.coins) {
+    const h = (st.coins[cn] && st.coins[cn].history) || [];
+    for (const e of h) {
+      if (!Array.isArray(e.feat) || e.feat.length !== feat.length) continue;
+      if (e.actual !== "OVER" && e.actual !== "UNDER") continue;
+      let d = 0; for (let i = 0; i < feat.length; i++) { const x = feat[i] - e.feat[i]; d += x * x; }
+      near.push({ d, over: e.actual === "OVER" ? 1 : 0 });
+    }
+  }
+  if (near.length < 12) return null;                       // too little memory to mean anything yet
+  near.sort((a, b) => a.d - b.d);
+  const K = Math.min(k || 20, near.length);
+  let over = 0; for (let i = 0; i < K; i++) over += near[i].over;
+  const overPct = Math.round(over / K * 100);
+  return { n: K, overPct, side: overPct >= 60 ? "OVER" : overPct <= 40 ? "UNDER" : "SKIP", pool: near.length };
+}
 // Train each graded round EXACTLY ONCE, on the most accurate label available: open-time features →
 // did the round finish OVER (1) or UNDER (0). Kalshi-ticketed rounds are trained from reconcileKalshi
 // once Kalshi confirms the DEFINITIVE settled result (so the model learns Kalshi's truth, not a
@@ -1172,7 +1203,7 @@ async function runCoinPick(env, coin, st) {
       const correct = bet ? (actual === p.side) : null;
       const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
       const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
-      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, feat: Array.isArray(p.feat) ? p.feat : null, trained: false, src: p.self ? "self" : "candle" });
+      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, feat: Array.isArray(p.feat) ? p.feat : null, caseMem: p.caseMem || null, trained: false, src: p.self ? "self" : "candle" });
       if (rec.history.length > 300) rec.history.pop();
       rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
       rec.lastActual = actual;
@@ -1228,6 +1259,7 @@ async function runCoinPick(env, coin, st) {
       const feat = featuresFor(coinModel, sigVals, rec.lastActual, nowTs);
       if (micro && typeof micro.sig === "number" && micro.sig > 0) coinModel.avgSig = coinModel.avgSig == null ? micro.sig : 0.97 * coinModel.avgSig + 0.03 * micro.sig;
       const modelOver = predictBlend(coinModel, global, feat);      // learned P(OVER) for this round
+      const cmem = caseMemory(st, feat, 20);                        // case memory: nearest past setups → outcome (measurement-only, NOT in the blend below)
       const fp = freePick(mkt.overPct, micro && micro.mom, obi, modelOver, micro && micro.sig, rec.calib);
       if (fp) {
         const d = new Date(nowTs);
@@ -1238,6 +1270,7 @@ async function runCoinPick(env, coin, st) {
           prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),
           conf: fp.conf, agree: fp.agree,                            // confluence: share of reads (0–1) + count agreeing
           modelOver: Math.round(modelOver * 100),
+          caseMem: cmem,                                            // "similar past setups" memory — scored, fed to the AI, not yet in the pick
           closeMs: new Date(mkt.closeTime).getTime(),                // grade exactly when THIS round closes
           ts: nowTs,                                                 // client formats this to 12-hour local time
           label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",   // fallback for older clients
@@ -1254,18 +1287,20 @@ async function runCoinPick(env, coin, st) {
   // Recompute ALL scoreboard stats from history — one source of truth, no counter drift through
   // reconcile or shadow-grading. bet = committed OVER/UNDER; shadow = EVERY round by the side it
   // leaned (so we can show "if it bet every round" + how often it actually bets / coverage).
-  let g = 0, c = 0, sg = 0, sc = 0;
+  let g = 0, c = 0, sg = 0, sc = 0, cmg = 0, cmc = 0;
   for (const e of rec.history) {
     if (e.actual !== "OVER" && e.actual !== "UNDER") continue;
     const ln = e.lean || e.side;
     if (ln === "OVER" || ln === "UNDER") { sg++; if (ln === e.actual) sc++; }
     if (e.side === "OVER" || e.side === "UNDER") { g++; if (e.side === e.actual) c++; }
+    if (e.caseMem && (e.caseMem.side === "OVER" || e.caseMem.side === "UNDER")) { cmg++; if (e.caseMem.side === e.actual) cmc++; }   // case memory, measure-first
   }
   rec.graded = g; rec.correct = c;
   rec.shadowGraded = sg; rec.shadowCorrect = sc; rec.seen = sg;     // seen = every round it evaluated (bet or skip)
   rec.hitRatePct = g ? Math.round(c / g * 100) : null;
   rec.shadowHitPct = sg ? Math.round(sc / sg * 100) : null;        // if it had bet every round
   rec.betRatePct = sg ? Math.round(g / sg * 100) : null;           // coverage — how often it actually commits
+  rec.caseGraded = cmg; rec.caseCorrect = cmc; rec.caseHitPct = cmg ? Math.round(cmc / cmg * 100) : null;   // case-memory hit-rate when it leaned (measure-first; not in the pick)
   // The DEFINITIVE hit-rate: only rounds Kalshi has actually settled (src==="kalshi"). reconcileKalshi
   // upgrades every round to this within a cron or two, so it converges to exactly what Robinhood paid.
   let cg = 0, cc = 0;

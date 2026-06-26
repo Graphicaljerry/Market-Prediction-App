@@ -895,7 +895,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r11 · AI Co-Pilot panel cleanup · uniform controls</span>
+    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r12 · case memory + commit survives refresh</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1494,7 +1494,7 @@
       c = (L && (L.dir === "OVER" || L.dir === "UNDER")) ? L.dir : (pOver >= 0.5 ? "OVER" : "UNDER");
     } else if (c === "UNDER" && pOver >= 0.80) c = "OVER";  // flip ONLY when near-certain the other way
     else if (c === "OVER" && pOver <= 0.20) c = "UNDER";
-    state.committed = c;
+    if (state.committed !== c) { state.committed = c; saveCommitted(); }   // remember it so a refresh holds the same side
     return { dir: c, pct: pctFor(pOver, c), conv: convictionFor(reco), atLabel: null, pOver: pOver };
   }
 
@@ -1541,6 +1541,23 @@
       if (d.coin === state.coin && d.bucket === lockBucket() && rem > 0 && rem <= BET_WINDOW) {
         state.lockedNext = d.lock; state.betWindowFired = true;   // restore the committed pick; don't re-roll or re-pull a fresh read
       } else localStorage.removeItem("lockedNext_v1");
+    } catch (e) {}
+  }
+  // Persist THIS round's committed side (coin + round bucket) so a refresh shows the SAME pick instead
+  // of re-rolling from the noisy ~50/50 round-open signals — the "it changed its mind when I refreshed" fix.
+  function saveCommitted() {
+    try {
+      if (state.committed === "OVER" || state.committed === "UNDER")
+        localStorage.setItem("committed_v1", JSON.stringify({ coin: state.coin, bucket: lockBucket(), side: state.committed }));
+      else localStorage.removeItem("committed_v1");
+    } catch (e) {}
+  }
+  function loadCommitted() {
+    try {
+      var s = localStorage.getItem("committed_v1"); if (!s) return;
+      var d = JSON.parse(s); if (!d) return;
+      if (d.coin === state.coin && d.bucket === lockBucket() && (d.side === "OVER" || d.side === "UNDER")) state.committed = d.side;
+      else if (d.bucket !== lockBucket()) localStorage.removeItem("committed_v1");   // a past round — drop the stale commit
     } catch (e) {}
   }
 
@@ -3339,6 +3356,13 @@
       if (lr && lr.afterUpOverPct != null) items.push("after an UP round → OVER " + lr.afterUpOverPct + "%; after a DOWN round → OVER " + lr.afterDownOverPct + "%");
       if (lr && lr.streak) items.push(lr.streak.len + " " + lr.streak.dir + " rounds in a row right now");
       if (lr && typeof lr.avgMarginAbsPct === "number") items.push("rounds lately settle " + (lr.avgMarginAbsPct < 0.05 ? "razor-thin" : "±" + lr.avgMarginAbsPct + "%") + " past the line" + (typeof lr.thinSharePct === "number" && lr.thinSharePct >= 25 ? " (" + lr.thinSharePct + "% within a hair — fragile)" : ""));
+      var cmem = p && p.caseMem;   // case memory: similar past setups (measured, not in the pick yet)
+      if (cmem && typeof cmem.overPct === "number") {
+        var cmTxt = "🧩 case memory: the " + cmem.n + " setups most like now → OVER " + cmem.overPct + "%" + (cmem.side === "OVER" || cmem.side === "UNDER" ? " (leans " + cmem.side + ")" : " (no lean)");
+        if (typeof d.caseHitPct === "number" && d.caseGraded >= 10) cmTxt += " · right " + d.caseHitPct + "% of " + d.caseGraded + " so far";
+        cmTxt += " — measured, not in the pick yet";
+        items.push(cmTxt);
+      }
       var modelNow = (p && typeof p.modelOver === "number") ? p.modelOver : null;
       if (lr && items.length) {
         le.innerHTML = '<div class="lh">What it\'s learned · ' + (lr.confidence || "warming up") + '</div>' +
@@ -3458,7 +3482,7 @@
   (function () { var s = $("aiBudget"); if (s) s.addEventListener("change", function () { try { localStorage.setItem(AI_BUDGET_KEY, s.value); } catch (e) {} }); })();
   document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshCrowd(true); });   // returning to the tab: free market refresh
 
-  loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog(); loadLockAB(); loadLockedNext();
+  loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog(); loadLockAB(); loadLockedNext(); loadCommitted();
   renderAccuracy(); renderRounds(); renderLateRecord(); tickTimer(); refresh(); connectWS();
   (function initAI() { $("aiModel").value = getModel(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
   setInterval(function () { fetchBest(false); }, 60000);   // keep the best-coin ticker fresh between rounds
