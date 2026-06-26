@@ -800,7 +800,7 @@
   <summary class="sec secToggle">AI Co-Pilot <span class="tiny">· the read</span><span class="secChevron" aria-hidden="true">▸</span></summary>
   <div class="card orb collapseCard">
     <div id="blend" class="blend"></div>
-    <label class="hiConvToggle" style="margin:2px 0 12px"><input type="checkbox" id="aiBoost" /><span>Weight this AI read more in the pick</span></label>
+    <label class="hiConvToggle" style="margin:2px 0 12px"><input type="checkbox" id="aiBoost" /><span>Trust the AI more — let its weight climb higher as it earns it</span></label>
     <details id="aiWhy" class="aiWhy aiSetup aiSummary hidden">
       <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span></summary>
       <div class="aiWhyBody"></div>
@@ -888,7 +888,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r9 · "log more often" experiment readout (measured)</span>
+    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r10 · AI report card + earned (dynamic) weight</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -935,7 +935,9 @@
     chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false, stoch: false, ema: false, bb: false }, vp: { a: 0, b: 1 },
     chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
     hiConvOnly: (function () { try { return localStorage.getItem("hiConvOnly_v1") === "1"; } catch (e) { return false; } })(),
-    aiBoost: (function () { try { return localStorage.getItem("aiBoost_v1") === "1"; } catch (e) { return false; } })() };
+    aiBoost: (function () { try { return localStorage.getItem("aiBoost_v1") === "1"; } catch (e) { return false; } })(),
+    aiRecord: (function () { try { return JSON.parse(localStorage.getItem("aiRecord_v1") || "{}") || {}; } catch (e) { return {}; } })(),   // per-model report card: { "<model>": {graded, correct} }
+    aiPending: (function () { try { return JSON.parse(localStorage.getItem("aiPending_v1") || "{}") || {}; } catch (e) { return {}; } })() };  // AI calls awaiting their round's outcome, keyed "coin:bucket"
 
   var $ = function (id) { return document.getElementById(id); };
   function pad(n){ return n < 10 ? "0" + n : "" + n; }
@@ -1163,6 +1165,53 @@
     var base = ai.confidence === "High" ? 0.80 : ai.confidence === "Medium" ? 0.68 : 0.58;
     return ai.verdict === "OVER" ? base : 1 - base;
   }
+
+  // ---- AI report card: grade each Claude call against the real outcome, per MODEL, and let its weight
+  // in the blend be EARNED. The scorekeeping is measurement-only; aiWeight() (the earned weight) is the
+  // single pick-affecting piece — flagged per the standing rule. The AI-free 24/7 tracker is untouched.
+  function saveAIRecord() { try { localStorage.setItem("aiRecord_v1", JSON.stringify(state.aiRecord || {})); } catch (e) {} }
+  function saveAIPending() { try { localStorage.setItem("aiPending_v1", JSON.stringify(state.aiPending || {})); } catch (e) {} }
+  // Remember the directional AI call for the round it's about (bucket = the round's OPEN, to match the
+  // moveLog), so we can grade it once that round settles. Latest read for a round wins; skips aren't logged.
+  function recordAIRead(ai, scope) {
+    if (!ai || !scope || typeof scope.openMs !== "number" || !state.aiPending) return;
+    var p = aiOver(ai); if (p == null) return;                              // SKIP / no directional call → nothing to grade
+    var bucket = Math.floor(scope.openMs / 900000);
+    var log = state.moveLog && state.moveLog[state.coin];
+    if (log && log[bucket]) return;                                         // that round already settled — don't (re)grade
+    state.aiPending[state.coin + ":" + bucket] = { model: getModel(), side: p >= 0.5 ? "OVER" : "UNDER", pOver: Math.round(p * 100), ts: Date.now() };
+    saveAIPending(); gradeAIReadsFromLog();
+  }
+  // Grade any pending AI calls whose round has now settled — using the SAME Kalshi-priority moveLog the
+  // arrows + record trust (so the AI is graded on exactly what Robinhood paid). Returns true if anything graded.
+  function gradeAIReadsFromLog() {
+    if (!state.aiPending || !state.moveLog) return false;
+    var changed = false;
+    for (var key in state.aiPending) {
+      var ci = key.indexOf(":"), coin = key.slice(0, ci), bucket = key.slice(ci + 1);
+      var log = state.moveLog[coin], o = log && log[bucket];
+      if (!o || typeof o.d !== "number") continue;                         // round not settled yet
+      var actual = o.d > 0 ? "OVER" : "UNDER", p = state.aiPending[key];
+      var rc = state.aiRecord[p.model] || (state.aiRecord[p.model] = { graded: 0, correct: 0 });
+      rc.graded++; if (p.side === actual) rc.correct++;
+      delete state.aiPending[key]; changed = true;
+    }
+    if (changed) { saveAIRecord(); saveAIPending(); }
+    return changed;
+  }
+  // The AI's EARNED weight in the in-app blend. Starts at the proven 0.30 and, as the current model's
+  // report card fills in, glides toward a value set by how far above/below a coin-flip it has been:
+  // higher when it's right, lower when it's wrong, SHRUNK toward 0.30 until the sample means something
+  // (so nothing swings on 2-3 reads). "Trust the AI more" (the toggle) raises the ceiling + trusts the
+  // card sooner. THIS is the one pick-affecting piece of the report-card feature.
+  function aiWeight() {
+    var W0 = 0.30, rc = state.aiRecord && state.aiRecord[getModel()], n = rc ? rc.graded : 0;
+    if (!n) return W0;                                                      // no track record yet → today's proven default
+    var h = rc.correct / n, aggressive = state.aiBoost;
+    var cap = aggressive ? 0.60 : 0.45, K = aggressive ? 5 : 9;            // ceiling + how fast it trusts the card
+    var earned = Math.max(0.05, Math.min(cap, 0.15 + 2.0 * (h - 0.5)));    // coin-flip→0.15; ~65%→cap; <50%→toward floor
+    return (K * W0 + n * earned) / (K + n);                               // sample-size shrinkage toward 0.30
+  }
   // Favorite-longshot bias — the most replicated finding in prediction markets: favorites (>50%) are
   // systematically UNDER-priced (they win more often than their price implies) while cheap longshots
   // are over-priced. On Kalshi specifically, across 300k+ contracts, high-price contracts earn a small
@@ -1291,7 +1340,7 @@
     var parts = [];
     var b = barrierOver(); if (b != null) { var info = Math.abs(b - 0.5) * 2; parts.push({ p: b, w: 0.12 + 0.5 * info }); }
     var c = crowdOver(activeCrowd()); if (c != null) parts.push({ p: c, w: 0.42 });   // the market — efficient prior
-    var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: state.aiBoost ? 0.55 : 0.30 });   // AI reasoning — "Weight this AI read more" bumps 0.30 -> 0.55 (AI becomes the heaviest voice)
+    var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: aiWeight() });   // AI reasoning — weight is now EARNED from its per-model report card (aiWeight): up when it's been right, down when wrong, shrunk to 0.30 until it has a record. "Trust the AI more" raises the ceiling.
     parts.push({ p: indOver(reco), w: 0.22 });                                         // TA indicators (correlated → modest)
     var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.07 });                // order-book nudge
     var pf = panicFadeOver();                                                          // EXTREME move → fade the over-reaction
@@ -3168,6 +3217,7 @@
     state.lastAuto = d || null; renderConsensus();   // keep the "which to follow" line in sync with the tracker
     renderModelChip(); renderLockAB();               // compact model-lean/learned chip + lock-timing A/B readout
     renderMoveStrip();                                // refresh the "Recent 15-min" arrows from the freshly graded history
+    if (gradeAIReadsFromLog()) renderBlend();         // grade any pending AI calls whose round just settled, then refresh the report card
     // Live-pick-only coins (no Kalshi 15-min market) are never logged by the cron — say so plainly
     // instead of an endless "warming up", and clear any stats left over from the previous coin.
     if (!isCoinTracked(state.coin)) {
@@ -3322,6 +3372,7 @@
     return {
       nextRound: nextRound,
       asOf: hma(new Date()),
+      openMs: rs.getTime(), closeMs: re.getTime(),                 // the round this read is ABOUT — used to grade the read once it settles
       label: (nextRound ? "Next round " : "This round ") + rangeHM(rs, re)
     };
   }
@@ -3332,6 +3383,7 @@
     if (d.crowd && typeof d.crowd.strike === "number") setRoundStrike(d.crowd.strike);   // real line to beat (active phase only)
     if (state.lockingNext && !state.lockedNext) commitLockedNext();   // settle the locked next-round pick on this fresh read
     state.aiScope = scope || null;
+    recordAIRead(state.lastAI, scope);   // log this directional call so it can be graded once its round settles
     renderPickCard(); updateRoundStatus(); drawMiniChart();
     renderBlend(); renderWhy();
     $("aiIntro").classList.add("hidden");
@@ -3360,9 +3412,14 @@
     } else aiVal = aiAvailable() ? "reading…" : "not connected";
     var edge = aging ? '<span class="aiEdge" style="color:var(--label-3);background:none;border:1px solid var(--separator)">read predates the move</span>'
       : (aiDir && crowdDir) ? (aiDir === crowdDir ? '<span class="aiEdge with">agrees w/ crowd</span>' : '<span class="aiEdge against">EDGE vs crowd</span>') : "";
+    var rcM = state.aiRecord && state.aiRecord[getModel()], rcN = rcM ? rcM.graded : 0, wPct = Math.round(aiWeight() * 100);
+    var cardV = rcN >= 1
+      ? rcM.correct + '/' + rcN + ' right · ' + Math.round(rcM.correct / rcN * 100) + '% → weight <b>' + wPct + '%</b>' + (rcN < 8 ? ' · small sample' : '')
+      : 'no graded calls yet → weight <b>' + wPct + '%</b> (default)';
     el.innerHTML =
       '<div class="aiRow"><span class="k">Crowd · Kalshi</span><span class="v">' + crowdVal + '</span></div>' +
       '<div class="aiRow"><span class="k">AI · ' + providerNice(state.lastProvider) + '</span><span class="v ' + aiCls + '">' + aiVal + '</span></div>' +
+      '<div class="aiRow"><span class="k">AI track record</span><span class="v">' + cardV + '</span></div>' +
       (edge ? '<div class="aiRow"><span class="k">Edge</span>' + edge + '</div>' : '');
   }
   // The AI's reasoning + which round the read applies to.
