@@ -482,6 +482,34 @@
   .meter { height: 6px; border-radius: 4px; background: rgba(118,118,128,0.24); margin-top: 18px; overflow: hidden; display: flex; }
   .meter .mbull { background: var(--green); height: 100%; transition: width .45s; }
   .meter .mbear { background: var(--red); height: 100%; transition: width .45s; margin-left: auto; }
+  /* ---------- Glowing "powered by AI" badge + ambient animations ---------- */
+  .aiBadgeRow { display: flex; justify-content: center; margin: -2px 0 14px; }
+  .aiBadge { --c: 10,132,255; position: relative; display: inline-flex; align-items: center; gap: 7px; overflow: hidden;
+    font-size: 11px; font-weight: 800; letter-spacing: .03em; color: #fff; white-space: nowrap;
+    padding: 6px 13px 6px 11px; border-radius: 999px;
+    background: linear-gradient(180deg, rgba(var(--c),.30), rgba(var(--c),.15));
+    border: 1px solid rgba(var(--c),.55);
+    animation: badgeBreathe 2.6s ease-in-out infinite, badgeIn .5s ease-out both; }
+  .aiBadge[hidden] { display: none; }
+  .aiBadge.claude { --c: 217,119,87; }
+  .aiBadge.gemini { --c: 66,133,244; }
+  .aiBadge.groq   { --c: 240,110,70; }
+  .aiBadge.free   { --c: 122,122,130; }
+  .aiBadgeDot { width: 7px; height: 7px; border-radius: 50%; background: #fff;
+    box-shadow: 0 0 8px 1px rgba(255,255,255,.85); animation: badgeDot 1.5s ease-in-out infinite; }
+  .aiBadge::after { content: ""; position: absolute; top: 0; left: -65%; width: 48%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.38), transparent); transform: skewX(-18deg);
+    animation: badgeShine 3.6s ease-in-out infinite; }
+  @keyframes badgeBreathe { 0%,100% { box-shadow: 0 0 9px rgba(var(--c),.35), inset 0 0 8px rgba(var(--c),.14); }
+    50% { box-shadow: 0 0 20px rgba(var(--c),.62), inset 0 0 12px rgba(var(--c),.26); } }
+  @keyframes badgeDot { 0%,100% { opacity: .55; transform: scale(.82); } 50% { opacity: 1; transform: scale(1.12); } }
+  @keyframes badgeShine { 0% { left: -65%; } 55%,100% { left: 135%; } }
+  @keyframes badgeIn { from { opacity: 0; transform: translateY(-5px) scale(.9); } to { opacity: 1; transform: none; } }
+  .liveTag:not(.next) { animation: livePulse 2s ease-in-out infinite; }
+  @keyframes livePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(13,224,89,0); } 50% { box-shadow: 0 0 10px 0 rgba(13,224,89,.55); } }
+  @media (prefers-reduced-motion: reduce) {
+    .aiBadge, .aiBadgeDot, .aiBadge::after, .liveTag:not(.next) { animation: none; }
+  }
   .tally { font-size: 13px; margin-top: 11px; color: var(--label-2); }
   .lean { font-size: 12px; margin-top: 9px; color: var(--label-3); }
   .lean.over { color: var(--green); } .lean.under { color: var(--red); } .lean.skip { color: var(--orange); }
@@ -745,6 +773,7 @@
     <label class="hiConvToggle"><input type="checkbox" id="hiConvOnly" /><span>High-conviction only</span></label>
   </div>
   <div class="card orb">
+    <div class="aiBadgeRow"><span class="aiBadge" id="aiBadge" hidden></span></div>
     <div id="reco" class="reco skip">
       <div id="dualPick" class="dualPick">
         <div class="dpCol" id="dpThisCol" data-side="wait">
@@ -900,7 +929,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r14 · Model &amp; Accuracy tiled — hierarchy + backgrounds</span>
+    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r15 · glowing AI badge + ambient animations</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3134,6 +3163,31 @@
   }
   // The AI label reflects whichever provider actually answered (set by the app's model dropdown).
   function providerNice(p) { return p === "gemini" ? "Gemini" : p === "groq" ? "Groq" : p === "anthropic" ? "Claude" : "AI"; }
+  // Friendly name + provider class for the glowing "which AI is helping" badge near the top of the picker.
+  function modelNice(m) {
+    m = m || "";
+    if (m.indexOf("sonnet") >= 0) return "Claude Sonnet 4.6";
+    if (m.indexOf("opus") >= 0) return "Claude Opus 4.8";
+    if (m.indexOf("haiku") >= 0) return "Claude Haiku 4.5";
+    if (m.indexOf("gemini") >= 0) return "Gemini 2.0 Flash";
+    if (m.indexOf("llama") >= 0) return "Groq Llama 3.3";
+    return "AI";
+  }
+  function modelProvider(m) {
+    m = m || "";
+    if (m.indexOf("claude") >= 0) return "claude";
+    if (m.indexOf("gemini") >= 0) return "gemini";
+    if (m.indexOf("llama") >= 0) return "groq";
+    return "free";
+  }
+  function renderAIBadge() {
+    var el = $("aiBadge"); if (!el) return;
+    if (!getWorkerUrl()) { el.hidden = true; return; }     // no AI wired up → no badge
+    var m = getModel();
+    el.className = "aiBadge " + modelProvider(m);
+    el.innerHTML = '<span class="aiBadgeDot"></span>' + modelNice(m);
+    el.hidden = false;
+  }
 
   // ---------- 24/7 auto-tracker (server-side, free) ----------
   function workerGet(params) {
@@ -3483,13 +3537,13 @@
     try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {}
     callWorker(true);
   });
-  $("aiModel").addEventListener("change", function () { try { localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {} if (getWorkerUrl()) refreshCrowd(true); });   // free refresh so the "AI · …" label flips to the picked provider right away
+  $("aiModel").addEventListener("change", function () { try { localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {} renderAIBadge(); if (getWorkerUrl()) refreshCrowd(true); });   // free refresh so the "AI · …" label flips to the picked provider right away
   (function () { var s = $("aiBudget"); if (s) s.addEventListener("change", function () { try { localStorage.setItem(AI_BUDGET_KEY, s.value); } catch (e) {} }); })();
   document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshCrowd(true); });   // returning to the tab: free market refresh
 
   loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog(); loadLockAB(); loadLockedNext(); loadCommitted();
   renderAccuracy(); renderRounds(); renderLateRecord(); tickTimer(); refresh(); connectWS();
-  (function initAI() { $("aiModel").value = getModel(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
+  (function initAI() { $("aiModel").value = getModel(); renderAIBadge(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
   setInterval(function () { fetchBest(false); }, 60000);   // keep the best-coin ticker fresh between rounds
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { var im = b.querySelector(".cico"); if (im) im.src = COIN_ICONS[b.getAttribute("data-coin")] || ""; });
   $("coinBadge").innerHTML = COIN_ICONS[state.coin] ? '<img alt="" src="' + COIN_ICONS[state.coin] + '">' : "";
