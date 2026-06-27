@@ -19,6 +19,8 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Your AI-model choice now syncs across all your devices.** Picking a model (Gemini, Groq, or Claude Haiku/Sonnet/Opus) used to live only in the one browser you set it in; now the choice is saved on the shared Worker and every device picks it up — on app open and whenever you return to the tab. Change it on your phone and your laptop reflects it next time it loads. **What this means for picks/cost:** it only changes *which AI model answers* — the picking math and the AI-free 24/7 tracker are untouched — but a **paid** model chosen on one device now applies everywhere, so AI reads on the others use (and bill for) that same model. The **AI spend mode** (Smart / Every-round / Manual) stays per-device. (`syncSharedModel` / `pushSharedModel` in the app; `?aimodel` GET + `setModel` POST + a dedicated `cfg:aimodel` KV key in `worker.js`.)
+
 - **Body text switched to Inter for easier reading (numbers + the BUY headline stay Space Mono).** All the prose, labels and buttons now render in **Inter**, a clean sans-serif that's noticeably easier to read than the old all-monospace look. Every number — price, countdown timer, percentages, hit-rate, history — keeps **Space Mono** (they carry an explicit `.mono` class) so the digits still line up neatly, and the big **BUY/HOLDING** call-out was kept in Space Mono too for its trading-terminal feel (its smaller sub-line stays Inter). The live **"Beat $X · ▼ … · UNDER"** round-status line under the price was also moved to Inter on request (it keeps `tabular-nums`, so its ticking numbers still hold their width). **Display-only — no pick, commitment, or confidence logic touched** (build marker `r22`).
 
 - **Phone push notifications made reliable (+ a one-tap test).** Two notification fixes. **(1)** Added a `?testpush=<your NTFY_TOPIC>` Worker endpoint to confirm the whole alert chain (Worker → ntfy → your phone) works **without waiting for a rare strong pick** — open the URL and it fires one push straight to your device; it's locked behind the topic name itself, so it leaks no new secret. **(2) Gotcha we found:** anonymous pushes from a Cloudflare Worker to the free ntfy.sh server get **HTTP 429 (rate-limited)** because Workers share outbound IPs and ntfy limits by IP — so the worker now sends an optional **`NTFY_TOKEN`** (`Authorization: Bearer …`) which moves the limit to your free ntfy account and makes pushes go through. Set `NTFY_TOKEN` as a Worker secret (see `cloudflare-worker/README.md`). **Measurement/plumbing only — no pick, commitment, or confidence logic touched.** (`testpush` + `notifyHotPicks` in `worker.js`.)
@@ -668,7 +670,7 @@ Client-side, in `localStorage` (per device, no account):
 |---|---|
 | `pickTracker_v1` | graded round history + signal snapshots (~7 days) |
 | `workerUrl_v1` | saved AI Worker URL |
-| `aiModel_v1` | preferred AI model (defaults to Haiku) |
+| `aiModel_v1` | preferred AI model — **also synced across devices** via the Worker (`cfg:aimodel` KV); this local copy is just a cache. Defaults to Claude Sonnet 4.6. |
 | `aiBudget_v1` | AI spend mode (`smart` / `always` / `manual`) |
 
 Server-side, in Worker **KV** (`CROWD_KV`):

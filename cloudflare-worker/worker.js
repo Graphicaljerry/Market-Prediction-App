@@ -152,6 +152,12 @@ export default {
         await kvPutRaw(env, STATE_KEY, b.state);
         return json({ ok: true, restored: true, kind, slot, backupAt: b.backupAt, day: b.day, hour: b.hour, coins: b.state.coins ? Object.keys(b.state.coins).length : 0 });
       }
+      // The AI model is a SHARED setting (synced across devices): return the choice saved in KV.
+      // null = no shared choice yet, so each app keeps its own local default.
+      if (u.searchParams.has("aimodel")) {
+        const cfg = await kvGetRaw(env, AIMODEL_KEY);
+        return json({ model: cfg && cfg.model ? cfg.model : null, ts: cfg ? cfg.ts || null : null });
+      }
       // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
     }
@@ -164,6 +170,15 @@ export default {
 
     let body;
     try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
+
+    // Persist the SHARED AI-model choice so every device reflects it. A tiny separate KV key the cron
+    // never touches (no race with the auto-tracker state); stored without a TTL so the choice sticks.
+    if (body.setModel != null) {
+      const m = String(body.setModel);
+      if (!/^[a-z0-9.\-]{1,60}$/i.test(m)) return json({ error: "bad model" }, 400);
+      try { if (env.CROWD_KV) await env.CROWD_KV.put(AIMODEL_KEY, JSON.stringify({ model: m, ts: Date.now() })); } catch (_) {}
+      return json({ ok: true, model: m });
+    }
 
     const coin = String(body.coin || "ETH").toUpperCase();
     const aiProvider = resolveProvider(env, body.model);   // the app's chosen model can pick the provider
@@ -982,6 +997,7 @@ async function kvPutRaw(env, key, val) {
 // first read after upgrading seeds itself from the older per-key layout (picks:<COIN> +
 // model:global), so no history or learning is lost; the legacy keys then expire on their own.
 const STATE_KEY = "auto:state";
+const AIMODEL_KEY = "cfg:aimodel";   // shared AI-model choice, synced across devices (kept separate from the tracker state)
 async function loadState(env) {
   let st = await kvGetRaw(env, STATE_KEY);
   if (st && st.coins) { st.global = padModel(st.global || newModel()); return st; }

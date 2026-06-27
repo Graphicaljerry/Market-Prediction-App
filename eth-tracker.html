@@ -975,7 +975,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r22 · "Beat" round-status line moved to Inter</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r23 · AI model choice now syncs across devices</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3097,6 +3097,28 @@
   function getWorkerUrl() { try { return ((localStorage.getItem(WORKER_KEY) || "").trim()) || DEFAULT_WORKER; } catch (e) { return DEFAULT_WORKER; } }
   var DEFAULT_AI_MODEL = "claude-sonnet-4-6";   // sharpest read; the dropdown also picks the provider (Worker needs ANTHROPIC_API_KEY for Claude). No key → falls back gracefully to a free provider.
   function getModel() { try { return localStorage.getItem(AI_MODEL_KEY) || DEFAULT_AI_MODEL; } catch (e) { return DEFAULT_AI_MODEL; } }
+  // The AI model is a SHARED, cross-device setting. Pull the choice the Worker has saved and apply it
+  // here, so a model picked on one device shows up on the others. Ignores anything this build doesn't list.
+  function syncSharedModel() {
+    var url = getWorkerUrl(); if (!url) return;
+    fetch(url + (url.indexOf("?") < 0 ? "?" : "&") + "aimodel=1")
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.model || d.model === getModel()) return;          // nothing shared yet, or already in sync
+        var sel = $("aiModel");
+        if (sel && !Array.prototype.some.call(sel.options, function (o) { return o.value === d.model; })) return;
+        try { localStorage.setItem(AI_MODEL_KEY, d.model); } catch (e) {}
+        if (sel) sel.value = d.model;
+        renderAIBadge();
+        if (getWorkerUrl()) refreshCrowd(true);                        // flip the "AI · …" label to the synced provider
+      })
+      .catch(function () {});
+  }
+  // Push this device's choice up so the other devices reflect it on their next sync.
+  function pushSharedModel(m) {
+    var url = getWorkerUrl(); if (!url || !m) return;
+    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ setModel: m }) }).catch(function () {});
+  }
   function aiAvailable() { return !!getWorkerUrl(); }
 
   function historySummary() {
@@ -3653,15 +3675,16 @@
   }
   $("aiRun").addEventListener("click", function () {
     try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {}
+    pushSharedModel($("aiModel").value);
     callWorker(true);
   });
-  $("aiModel").addEventListener("change", function () { try { localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {} renderAIBadge(); if (getWorkerUrl()) refreshCrowd(true); });   // free refresh so the "AI · …" label flips to the picked provider right away
+  $("aiModel").addEventListener("change", function () { var m = $("aiModel").value; try { localStorage.setItem(AI_MODEL_KEY, m); } catch (e) {} pushSharedModel(m); renderAIBadge(); if (getWorkerUrl()) refreshCrowd(true); });   // saves locally, shares the choice to every device, and free-refreshes so the "AI · …" label flips right away
   (function () { var s = $("aiBudget"); if (s) s.addEventListener("change", function () { try { localStorage.setItem(AI_BUDGET_KEY, s.value); } catch (e) {} }); })();
-  document.addEventListener("visibilitychange", function () { if (!document.hidden) refreshCrowd(true); });   // returning to the tab: free market refresh
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) { syncSharedModel(); refreshCrowd(true); } });   // returning to the tab: re-sync the shared model + free market refresh
 
   loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog(); loadLockAB(); loadLockedNext(); loadCommitted();
   renderAccuracy(); renderRounds(); renderLateRecord(); tickTimer(); refresh(); connectWS();
-  (function initAI() { $("aiModel").value = getModel(); renderAIBadge(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
+  (function initAI() { $("aiModel").value = getModel(); renderAIBadge(); syncSharedModel(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
   setInterval(function () { fetchBest(false); }, 60000);   // keep the best-coin ticker fresh between rounds
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { var im = b.querySelector(".cico"); if (im) im.src = COIN_ICONS[b.getAttribute("data-coin")] || ""; });
   $("coinBadge").innerHTML = COIN_ICONS[state.coin] ? '<img alt="" src="' + COIN_ICONS[state.coin] + '">' : "";

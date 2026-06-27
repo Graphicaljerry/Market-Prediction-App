@@ -45,6 +45,12 @@ auto-detects which provider to use; or force it with a Text var `AI_PROVIDER`.
   (as long as that provider's key is set in the Worker). So with multiple keys you can switch
   brains right from the app, no dashboard trip. `AI_PROVIDER`, if set, is a **hard override** that
   always wins; leave it unset to let the app's dropdown decide. (`resolveProvider` in `worker.js`.)
+- **Synced across your devices:** the model you pick is saved on the Worker (a tiny `cfg:aimodel` KV
+  key) and every device pulls it on app-open and on tab-focus — pick a model on your phone and your
+  laptop follows next load. The app reads it with a GET `?aimodel` and saves it with a POST
+  `{ "setModel": "…" }`. Note a *paid* model picked anywhere applies everywhere (the other devices'
+  reads bill for it); the **spend mode** (Smart / Every-round / Manual) stays per-device.
+  (`syncSharedModel` / `pushSharedModel` in the app.)
 - **Keep options open:** add more than one key and flip between them by setting
   `AI_PROVIDER` = `gemini` | `groq` | `anthropic`. No redeploy of code needed — just save the var.
 - Override the model with `AI_MODEL` if you want (defaults: `claude-haiku-4-5`,
