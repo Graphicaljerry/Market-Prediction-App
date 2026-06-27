@@ -644,6 +644,15 @@
   .aiInflMeta b { color: var(--label); font-weight: 800; }
   .aiInflMode { white-space: nowrap; font-weight: 800; }
   .aiInflMode.on { color: var(--green); } .aiInflMode.off { color: var(--label-2); }
+  /* Pick-strength banner — at a glance: worth betting (strong), optional (lean), or a coin-flip to skip. */
+  .pickStrength:empty { display: none; }
+  .pickStrength { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; text-align: center;
+    margin: 0 0 14px; padding: 9px 13px; border-radius: 12px; font-weight: 800; font-size: 13px; letter-spacing: .02em; border: 1px solid transparent; }
+  .pickStrength .psSub { flex-basis: 100%; margin-top: 3px; font-weight: 600; font-size: 11px; letter-spacing: 0; opacity: .9; }
+  .pickStrength.strong { color: var(--green); background: rgba(13,224,89,.12); border-color: rgba(13,224,89,.45); box-shadow: 0 0 18px rgba(13,224,89,.22); }
+  .pickStrength.lean { color: var(--orange); background: rgba(255,159,10,.10); border-color: rgba(255,159,10,.4); }
+  .pickStrength.flip { color: var(--label-2); background: rgba(255,255,255,.05); border-color: var(--separator); }
+  .pickStrength.sit { color: var(--label-3); background: rgba(255,255,255,.03); border-color: var(--separator); }
   /* 24/7 auto-tracker latest pick banner */
   .autoLatest { text-align: center; font-size: 15px; font-weight: 800; margin-bottom: 14px; padding: 12px 10px; border-radius: 13px;
     background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); }
@@ -810,6 +819,7 @@
   <div class="card orb">
     <div class="aiBadgeRow"><span class="aiBadge" id="aiBadge" hidden></span></div>
     <div id="reco" class="reco skip">
+      <div id="pickStrength" class="pickStrength"></div>
       <div id="dualPick" class="dualPick">
         <div class="dpCol" id="dpThisCol" data-side="wait">
           <div class="dpLbl">This Round</div>
@@ -965,7 +975,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r18 · next-round lock back to 2:00 (more heads-up)</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r19 · strong-vs-coinflip pick banner</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1734,6 +1744,7 @@
     setGlow(locking ? "SKIP" : call ? call.dir : "SKIP");
     state.shownDir = locking ? "SKIP" : (call ? call.dir : "SKIP");
     renderConsensus();   // how the Co-Pilot pick lines up with the 24/7 auto-tracker
+    renderPickStrength();   // the at-a-glance "worth betting vs coin-flip" banner
 
     leanEl.textContent = liveLeanLine(call ? call.dir : "SKIP");
     leanEl.className = "lean mono " + leanClass();
@@ -1806,6 +1817,33 @@
   //    calibration) — this is the one you follow.
   //  • 24/7 auto-tracker = a free, always-on baseline (market + flow + a learned model, no AI).
   // When they AGREE, conviction is higher; when they SPLIT, it's coin-flip territory → skip.
+  // Is THIS pick worth betting, or a coin-flip to skip? Grounded in the proven discipline: the 24/7
+  // tracker only commits on ~8% of rounds (those run ~77–84%), so when it AGREES with the Co-Pilot it's
+  // STRONG; when it sits out / disagrees it's a COIN-FLIP. The next-round preview is a guess about a
+  // round that hasn't opened (~50/50 by design), so it's flagged a preview — never "strong".
+  function pickStrength() {
+    var my = state.shownDir || "SKIP";
+    if (my === "SKIP") return { tier: "sit", label: "— SIT OUT", sub: "no clear edge — best to pass this round" };
+    var reco = state.lastRecoObj, edge = reco ? Math.abs(combinedOdds(reco).pOver - 0.5) : 0;
+    var nextMode = (state.remaining == null ? 999 : state.remaining) <= BET_WINDOW;
+    var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
+    if (nextMode) {
+      if (auto && auto === my && edge >= 0.08) return { tier: "lean", label: "👀 NEXT-ROUND LEAN", sub: "heads-up for the next round (it opens ~50/50) — optional, not a sure thing" };
+      return { tier: "flip", label: "👀 NEXT-ROUND PREVIEW", sub: "the next round hasn't opened — ~coin-flip, don't bet it like a strong pick" };
+    }
+    if (auto && auto === my) return { tier: "strong", label: "✅ STRONG — worth betting", sub: "the disciplined 24/7 tracker agrees — its committed bets run ~77–84%" };
+    if (auto && auto !== "SKIP") return { tier: "flip", label: "🪙 COIN-FLIP — sit out", sub: "split: Co-Pilot says " + my + ", the tracker says " + auto + " — passing is safest" };
+    if (auto === "SKIP") return { tier: "flip", label: "🪙 COIN-FLIP — better to pass", sub: "the disciplined 24/7 tracker is sitting this round out (no clear edge)" };
+    if (edge >= 0.12) return { tier: "strong", label: "✅ STRONG — worth betting", sub: "strong edge across the signals" };   // tracker not loaded → fall back to the blend's edge
+    if (edge >= 0.06) return { tier: "lean", label: "⚠️ LEAN — optional", sub: "mild edge — your call" };
+    return { tier: "flip", label: "🪙 COIN-FLIP — better to pass", sub: "~50/50, no clear edge" };
+  }
+  function renderPickStrength() {
+    var el = $("pickStrength"); if (!el) return;
+    var s = pickStrength();
+    el.className = "pickStrength " + s.tier;
+    el.innerHTML = '<span>' + s.label + '</span><span class="psSub">' + s.sub + '</span>';
+  }
   function renderConsensus() {
     var el = $("consensus"); if (!el) return;
     var my = state.shownDir || "SKIP";
@@ -3359,7 +3397,7 @@
 
   function renderAutoTracker(d) {
     var mod = $("autoMod"); if (!mod) return;
-    state.lastAuto = d || null; renderConsensus();   // keep the "which to follow" line in sync with the tracker
+    state.lastAuto = d || null; renderConsensus(); renderPickStrength();   // keep the "which to follow" line + strength banner in sync with the tracker
     renderModelChip(); renderLockAB();               // compact model-lean/learned chip + lock-timing A/B readout
     renderMoveStrip();                                // refresh the "Recent 15-min" arrows from the freshly graded history
     if (gradeAIReadsFromLog()) renderBlend();         // grade any pending AI calls whose round just settled, then refresh the report card
