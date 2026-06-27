@@ -161,6 +161,12 @@ Get a push **on your phone even when the app is closed** the moment a coin opens
 2. In the Worker → **Settings → Variables and Secrets**, add a Text var **`NTFY_TOPIC`** = that
    topic name (or a full `https://ntfy.sh/<topic>` URL if you self-host). Optional **`NTFY_MIN_PROB`**
    (default `75`) to tune the bar.
+   - **Strongly recommended: also set `NTFY_TOKEN`.** Cloudflare Workers send from shared IPs, and the
+     free ntfy.sh server rate-limits by IP — so anonymous pushes from a Worker frequently get
+     **HTTP 429** and silently fail. Fix: create a free account at **ntfy.sh** → **Account → Access
+     tokens → Create token**, then add it as a **Secret** named `NTFY_TOKEN`. The Worker sends it as
+     `Authorization: Bearer …`, moving the rate limit to your account so pushes go through reliably.
+     (Subscribe to your topic in the app while signed in to that same account.)
 3. Save. On the next 15-min cron that produces a strong pick, you'll get a push like
    *"ETH OVER 78% · SOL UNDER 80% — bet this 15-min round"*. One push per coin per round; SKIPs never
    ping you. (`notifyHotPicks` in `worker.js`.) The app also has an in-app **🔔 alert toggle** in

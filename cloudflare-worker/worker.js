@@ -91,10 +91,10 @@ export default {
         const nurl = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
         const r = await fetch(nurl, {
           method: "POST",
-          headers: { Title: "Test ping - notifications are working", Priority: "high", Tags: "white_check_mark" },
+          headers: { Title: "Test ping - notifications are working", Priority: "high", Tags: "white_check_mark", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) },
           body: "If this buzzed your iPhone, the worker can reach you. Real pushes fire only on strong, non-skip picks.",
         }).catch(() => null);
-        return json({ sent: !!(r && r.ok), httpStatus: r ? r.status : 0, via: nurl });
+        return json({ sent: !!(r && r.ok), httpStatus: r ? r.status : 0, authed: !!env.NTFY_TOKEN, via: nurl });
       }
       // One-time cleanup: ?reset=ETH zeroes the auto-tracker's record for a coin (hit-rate
       // counters + history + pending) so it rebuilds on correctly-graded rounds only; ?reset=all does
@@ -829,7 +829,7 @@ async function notifyHotPicks(env, st) {
   const url = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
   await fetch(url, {
     method: "POST",
-    headers: { Title: "High-confidence pick — not a skip", Priority: "high", Tags: "dart" },
+    headers: { Title: "High-confidence pick — not a skip", Priority: "high", Tags: "dart", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) },
     body: hot.join("   ·   ") + "  — bet this 15-min round",
   }).catch(() => {});
 }
