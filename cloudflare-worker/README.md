@@ -165,6 +165,11 @@ Get a push **on your phone even when the app is closed** the moment a coin opens
    *"ETH OVER 78% · SOL UNDER 80% — bet this 15-min round"*. One push per coin per round; SKIPs never
    ping you. (`notifyHotPicks` in `worker.js`.) The app also has an in-app **🔔 alert toggle** in
    *AI Co-Pilot setup* for when a tab is open.
+4. **Test it without waiting for a real pick:** open
+   `https://<your-worker>/?testpush=<your exact NTFY_TOPIC>` in a browser. The Worker fires one ntfy
+   push straight to your phone and returns `{ "sent": true }`. It's gated by the topic itself (which
+   already lets anyone publish to the channel), so it adds no new secret. Strong picks are rare (~8% of
+   rounds), so this is the quick way to confirm the whole chain works end-to-end.
 
 ## Connect the app
 Open the live app → **AI Co-Pilot** → paste the Worker URL → **Save & Get AI Read**.

@@ -82,6 +82,20 @@ export default {
         const st = await loadState(env);
         return json({ best: rankBest(st), tracked: AUTO_COINS.filter((c) => CB_PRODUCT[c]), ts: Date.now() });
       }
+      // Phone-push self-test: ?testpush=<your exact NTFY_TOPIC> fires ONE ntfy push to your subscribed
+      // device, proving the whole chain (worker -> ntfy -> phone) without waiting for a real hot pick.
+      // Gated by the topic itself: knowing it already lets you publish to the channel, so no new secret.
+      if (u.searchParams.has("testpush")) {
+        if (!env.NTFY_TOPIC) return json({ sent: false, error: "NTFY_TOPIC not set", hint: "Add NTFY_TOPIC under Settings -> Variables and Secrets, then redeploy." });
+        if (u.searchParams.get("testpush") !== env.NTFY_TOPIC) return json({ sent: false, error: "unauthorized - pass ?testpush=<your exact NTFY_TOPIC>" }, 401);
+        const nurl = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
+        const r = await fetch(nurl, {
+          method: "POST",
+          headers: { Title: "Test ping - notifications are working", Priority: "high", Tags: "white_check_mark" },
+          body: "If this buzzed your iPhone, the worker can reach you. Real pushes fire only on strong, non-skip picks.",
+        }).catch(() => null);
+        return json({ sent: !!(r && r.ok), httpStatus: r ? r.status : 0, via: nurl });
+      }
       // One-time cleanup: ?reset=ETH zeroes the auto-tracker's record for a coin (hit-rate
       // counters + history + pending) so it rebuilds on correctly-graded rounds only; ?reset=all does
       // every coin ATOMICALLY in one state write (so the app's "Clear all" can't race per-coin resets
