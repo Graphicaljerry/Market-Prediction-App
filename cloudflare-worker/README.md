@@ -68,6 +68,12 @@ Spend is small by design, but cap it anyway:
   15-min round (the 2-min lock), **never while the tab is hidden**, and its **AI spend** setting
   (Smart / Every round / Manual) only pays when the call is close or contrarian. Refreshing the
   free **Kalshi crowd** between reads sends `noAI: true` and makes **no LLM call**.
+- **Shared per-round read cache:** the Worker stores each read keyed by
+  `airead:<coin>:<model>:<round-boundary>:<this|next>` (~30-min TTL) and serves it to every other
+  device — and every repeat tap — within that round, so it's **one paid read per round per coin no
+  matter how many devices are open**. The app's "read now contradicts the market" catch-up sends
+  `fresh: true` to bypass the cache and then overwrites the shared entry (so the one catch-up benefits
+  everyone). (POST handler in `worker.js`.)
 
 ## (Optional) Crowd odds — Kalshi series tickers
 Without these, the AI still works; the **Crowd** line just shows `n/a`.

@@ -196,10 +196,27 @@ export default {
     let autopicks = null;
     try { const st = await loadState(env); autopicks = st.coins[coin] || null; } catch (_) {}
 
-    let ai;
-    try { ai = await getAIRead(env, aiProvider, body, crowd, autopicks); }
-    catch (e) { ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", probOver: 50, rationale: "AI error: " + e.message }; }
+    // Shared per-round read cache: the FIRST AI read for a (coin, model, 15-min round, this/next-phase)
+    // is stored, and every other device — or repeat tap — within that round reuses it instead of paying
+    // for a new LLM call. So it's ONE paid read per round per coin no matter how many devices are open
+    // or how many times you tap. Keyed by the absolute 15-min boundary so keys never collide across
+    // rounds (~30-min TTL). The app sends fresh:true ONLY for its "the read now contradicts the market,
+    // catch it up" refresh — that bypasses the cache and then REPLACES the shared entry, so the one
+    // catch-up read benefits every device.
+    const nowMs = Date.now();
+    const boundaryMs = Math.ceil(nowMs / 9e5) * 9e5;                                    // end of the current 15-min round
+    const isNext = typeof body.secondsLeft === "number" && body.secondsLeft <= 120;     // final 2 min → the read judges the NEXT round
+    const readKey = `airead:${coin}:${body.model || aiProvider}:${boundaryMs}:${isNext ? "n" : "t"}`;
+    if (!body.fresh) {
+      const hit = await kvGetRaw(env, readKey);
+      if (hit && hit.ai) return json({ crowd, ai: hit.ai, provider: hit.provider || aiProvider, cached: true });
+    }
 
+    let ai, ok = true;
+    try { ai = await getAIRead(env, aiProvider, body, crowd, autopicks); }
+    catch (e) { ok = false; ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", probOver: 50, rationale: "AI error: " + e.message }; }
+    // Cache only a SUCCESSFUL read (~30-min TTL) so a transient API error isn't frozen in for the round.
+    if (ok) { try { if (env.CROWD_KV) await env.CROWD_KV.put(readKey, JSON.stringify({ ai, provider: aiProvider, ts: nowMs }), { expirationTtl: 1800 }); } catch (_) {} }
     return json({ crowd, ai, provider: aiProvider });
   },
 

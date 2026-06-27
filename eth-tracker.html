@@ -975,7 +975,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r23 · AI model choice now syncs across devices</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r24 · one shared AI read per round (no per-device cost)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3230,7 +3230,7 @@
     callWorker(false, true);
   }
 
-  function callWorker(manual, crowdOnly) {
+  function callWorker(manual, crowdOnly, fresh) {
     var url = getWorkerUrl();
     if (!url) return;
     if (!aiDataReady()) { if (manual && !crowdOnly) renderAIError("Still loading market data — try again in a moment."); return; }
@@ -3249,6 +3249,7 @@
       history: historySummary()
     };
     if (crowdOnly) payload.noAI = true;     // free path: refresh Kalshi crowd + strike, no LLM call
+    if (fresh) payload.fresh = true;        // bypass the shared per-round read cache (only to catch up a stale read)
     var btn = $("aiRun"); if (!crowdOnly && btn) { btn.disabled = true; btn.textContent = "Analyzing…"; }
     var scope = scopeAt(secondsLeft);
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
@@ -3590,7 +3591,7 @@
   }
 
   function renderAI(d, scope) {
-    state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null;   // feed the blend + combined odds
+    state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null; state._aiCached = !!d.cached;   // feed the blend + combined odds; note if this read was the round's shared one
     if (d.provider) state.lastProvider = d.provider;   // which AI actually answered, so the label reflects it
     if (d.crowd && typeof d.crowd.strike === "number") setRoundStrike(d.crowd.strike);   // real line to beat (active phase only)
     if (state.lockingNext && !state.lockedNext) commitLockedNext();   // settle the locked next-round pick on this fresh read
@@ -3616,10 +3617,10 @@
     var live = state.lastRecoObj ? combinedOdds(state.lastRecoObj).pOver : null;
     var liveDir = live != null ? (live >= 0.5 ? "OVER" : "UNDER") : null;
     var aging = !!(aiDir && crowdDir && liveDir && aiDir !== crowdDir && aiDir !== liveDir);
-    if (aging && aiAvailable() && !state._staleRefresh) { state._staleRefresh = true; callWorker(false); }   // catch the read up (self-gates on budget)
+    if (aging && aiAvailable() && !state._staleRefresh) { state._staleRefresh = true; callWorker(false, false, true); }   // catch the read up with a FRESH read (bypasses the per-round cache); self-gates on budget
     var aiVal, aiCls = "";
     if (ai && ai.verdict) {
-      aiVal = ai.verdict + (ai.confidence ? " · " + ai.confidence : "") + (aging ? ' <span style="color:var(--orange);font-weight:600;font-size:11px">· read aging</span>' : "");
+      aiVal = ai.verdict + (ai.confidence ? " · " + ai.confidence : "") + (aging ? ' <span style="color:var(--orange);font-weight:600;font-size:11px">· read aging</span>' : (state._aiCached ? ' <span style="color:var(--label-3);font-weight:600;font-size:11px">· shared this round</span>' : ""));
       aiCls = ai.verdict === "OVER" ? "o" : ai.verdict === "UNDER" ? "u" : "";
     } else aiVal = aiAvailable() ? '<span class="shimmerText">reading…</span>' : "not connected";
     var edge = aging ? '<span class="aiEdge" style="color:var(--label-3);background:none;border:1px solid var(--separator)">read predates the move</span>'
