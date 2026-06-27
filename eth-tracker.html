@@ -628,6 +628,22 @@
   .hrow .hpct { color: var(--label-3); font-weight: 500; min-width: 54px; text-align: right; font-variant-numeric: tabular-nums; }
   .empty { text-align: center; color: var(--label-3); font-size: 14px; padding: 24px 0; }
   .accNote { font-size: 12px; color: var(--label-3); margin-top: 14px; text-align: center; }
+  /* "AI weight in the pick" gauge — see at a glance how much sway the AI has over the blended call. */
+  .aiInfluence:empty { display: none; }
+  .aiInfluence { margin: 8px 0 12px; }
+  .aiInflTop { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
+  .aiInflLbl { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--label-3); }
+  .aiInflPct { font-size: 19px; font-weight: 800; font-family: "Space Mono", monospace; color: var(--label); }
+  .aiInflBar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; }
+  .aiInflFill { height: 100%; border-radius: 999px; background: rgba(10,132,255,.85); box-shadow: 0 0 10px rgba(10,132,255,.5); transition: width .5s cubic-bezier(.2,.8,.2,1); }
+  .aiInflFill.claude { background: rgba(217,119,87,.92); box-shadow: 0 0 10px rgba(217,119,87,.5); }
+  .aiInflFill.gemini { background: rgba(66,133,244,.92); box-shadow: 0 0 10px rgba(66,133,244,.5); }
+  .aiInflFill.groq { background: rgba(240,110,70,.92); box-shadow: 0 0 10px rgba(240,110,70,.5); }
+  .aiInflFill.free { background: rgba(122,122,130,.9); box-shadow: none; }
+  .aiInflMeta { display: flex; justify-content: space-between; gap: 10px; margin-top: 7px; font-size: 11px; color: var(--label-3); line-height: 1.4; }
+  .aiInflMeta b { color: var(--label); font-weight: 800; }
+  .aiInflMode { white-space: nowrap; font-weight: 800; }
+  .aiInflMode.on { color: var(--green); } .aiInflMode.off { color: var(--label-2); }
   /* 24/7 auto-tracker latest pick banner */
   .autoLatest { text-align: center; font-size: 15px; font-weight: 800; margin-bottom: 14px; padding: 12px 10px; border-radius: 13px;
     background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); }
@@ -857,6 +873,7 @@
   <summary class="sec secToggle">AI Co-Pilot <span class="tiny">· the read</span><span class="secChevron" aria-hidden="true">▸</span></summary>
   <div class="card orb collapseCard">
     <div id="blend" class="blend"></div>
+    <div id="aiInfluence" class="aiInfluence"></div>
     <label class="hiConvToggle" style="margin:2px 0 12px"><input type="checkbox" id="aiBoost" /><span>Trust the AI more — let its weight climb higher as it earns it</span></label>
     <details id="aiWhy" class="aiWhy aiSetup aiSummary hidden">
       <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span></summary>
@@ -948,7 +965,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r16 · top-picks animations (deal-in · lock-snap · win-flash · glow)</span>
+    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r17 · AI influence gauge + manual-by-default (no auto-spend)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1400,7 +1417,7 @@
     var parts = [];
     var b = barrierOver(); if (b != null) { var info = Math.abs(b - 0.5) * 2; parts.push({ p: b, w: 0.12 + 0.5 * info }); }
     var c = crowdOver(activeCrowd()); if (c != null) parts.push({ p: c, w: 0.42 });   // the market — efficient prior
-    var a = aiOver(state.lastAI); if (a != null) parts.push({ p: a, w: aiWeight() });   // AI reasoning — weight is now EARNED from its per-model report card (aiWeight): up when it's been right, down when wrong, shrunk to 0.30 until it has a record. "Trust the AI more" raises the ceiling.
+    var a = aiOver(state.lastAI), aw = a != null ? aiWeight() : 0; if (a != null) parts.push({ p: a, w: aw });   // AI reasoning — weight is EARNED from its per-model report card (aiWeight): up when right, down when wrong, shrunk to 0.30 until it has a record. "Trust the AI more" raises the ceiling.
     parts.push({ p: indOver(reco), w: 0.22 });                                         // TA indicators (correlated → modest)
     var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.07 });                // order-book nudge
     var pf = panicFadeOver();                                                          // EXTREME move → fade the over-reaction
@@ -1410,6 +1427,7 @@
     var am = autoModelOver(); if (am != null) parts.push({ p: am, w: 0.10 });          // the 24/7 auto-tracker's learned read (the two systems talk)
     var wsum = 0, acc = 0;
     parts.forEach(function (x) { wsum += x.w; acc += x.p * x.w; });
+    state._aiShare = (a != null && wsum) ? aw / wsum : 0;   // the AI's slice of the live decision — drives the influence gauge
     return wsum ? acc / wsum : 0.5;
   }
   // Calibrate the model's probability against THIS device's realized outcomes: among past
@@ -3088,7 +3106,10 @@
   function aiDataReady() { return !!(state.lastList && state.lastList.length && state.lastPrice != null); }
   function tabHidden() { return typeof document !== "undefined" && document.hidden; }
   var AI_BUDGET_KEY = "aiBudget_v1";
-  function getAIBudget() { try { return localStorage.getItem(AI_BUDGET_KEY) || "smart"; } catch (e) { return "smart"; } }
+  // Default to MANUAL — the paid AI read never auto-fires unless you tap "Get AI Read" (saves money).
+  // One-time: flip any existing device off the old auto default too (you asked to stop auto-summaries).
+  (function () { try { if (localStorage.getItem("aiBudgetManual_v1") !== "1") { localStorage.setItem(AI_BUDGET_KEY, "manual"); localStorage.setItem("aiBudgetManual_v1", "1"); } } catch (e) {} })();
+  function getAIBudget() { try { return localStorage.getItem(AI_BUDGET_KEY) || "manual"; } catch (e) { return "manual"; } }
 
   function maybeAutoAI() {
     if (!aiAvailable() || !aiDataReady()) return;
@@ -3552,6 +3573,24 @@
       '<div class="aiRow"><span class="k">AI · ' + providerNice(state.lastProvider) + '</span><span class="v ' + aiCls + '">' + aiVal + '</span></div>' +
       '<div class="aiRow"><span class="k">AI record</span><span class="v">' + cardV + '</span></div>' +
       (edge ? '<div class="aiRow"><span class="k">Edge</span>' + edge + '</div>' : '');
+    renderAIInfluence();
+  }
+  // Visual "how much sway does the AI have over the pick" gauge + a clear auto-spend status.
+  function renderAIInfluence() {
+    var el = $("aiInfluence"); if (!el) return;
+    if (!aiAvailable()) { el.innerHTML = ""; return; }
+    var share = Math.round((state._aiShare || 0) * 100);
+    var mode = getAIBudget(), prov = modelProvider(getModel());
+    var auto = mode === "manual"
+      ? '<span class="aiInflMode off">auto-reads: off</span>'
+      : '<span class="aiInflMode on">auto: ' + (mode === "always" ? "every round" : "smart") + '</span>';
+    var note = share > 0
+      ? 'The AI is <b>' + share + '%</b> of this pick'
+      : (state.lastAI ? 'AI read present, not swaying this call' : 'No AI read folded in' + (mode === "manual" ? ' — tap “Get AI Read”' : ''));
+    el.innerHTML =
+      '<div class="aiInflTop"><span class="aiInflLbl">AI weight in the pick</span><span class="aiInflPct">' + share + '%</span></div>' +
+      '<div class="aiInflBar"><div class="aiInflFill ' + prov + '" style="width:' + share + '%"></div></div>' +
+      '<div class="aiInflMeta"><span>' + note + '</span>' + auto + '</div>';
   }
   // The AI's reasoning + which round the read applies to.
   function renderWhy() {
