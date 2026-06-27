@@ -382,10 +382,10 @@ const fnum = (v, d = 2) => (typeof v === "number" && isFinite(v)) ? (v >= 0 && d
 
 function buildPrompt(body, crowd, autopicks) {
   const secs = typeof body.secondsLeft === "number" ? body.secondsLeft : null;
-  const nextRound = secs != null && secs <= 40;   // matches the client BET_WINDOW: in the final ~40s this round is settled, judge the next
+  const nextRound = secs != null && secs <= 120;   // matches the client BET_WINDOW (2 min): in the final stretch this round is near-settled, judge the next
   const m = body.market || {};
 
-  // The right market prior: this round's price is near-settled in the final ~40 sec, so for the
+  // The right market prior: this round's price is near-settled in the final ~2 min, so for the
   // NEXT-round decision use the next market's price when we have it.
   const cur = crowd && typeof crowd.overPct === "number" ? crowd : null;
   const nxt = crowd && crowd.next && typeof crowd.next.overPct === "number" ? crowd.next : null;

@@ -235,7 +235,7 @@
   .card.orb { background: rgba(43,43,43,0.20); border-color: rgba(255,255,255,0.09); box-shadow: 0 8px 30px rgba(0,0,0,0.30); }
   /* Timer card stays clean like the mockup — hide the next-round preview line in the timer. The
      next-round pick is NOT lost: it still surfaces in the Auto Pick panel's "Next round" column
-     when it locks in the final 40 sec. One-line revert. (id selector so it wins over .nextPick below.) */
+     when it locks in the final 2 min. One-line revert. (id selector so it wins over .nextPick below.) */
   #nextPick { display: none; }
   /* crypto icons in the switcher + hero badge */
   .cico { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; display: inline-block; vertical-align: middle; flex: 0 0 auto; }
@@ -820,7 +820,7 @@
         <div class="dpCol dpNextCol dormant" id="dpNextCol" data-side="wait">
           <div class="dpLbl">Next Round</div>
           <div class="dpDir wait" id="dpNextDir">—</div>
-          <div class="dpSub" id="dpNextSub">appears in the final 40 sec</div>
+          <div class="dpSub" id="dpNextSub">appears in the final 2 min</div>
         </div>
       </div>
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
@@ -965,7 +965,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-26 · figma-pass r17 · AI influence gauge + manual-by-default (no auto-spend)</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r18 · next-round lock back to 2:00 (more heads-up)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1847,9 +1847,9 @@
       var pcls = pd === "OVER" ? "over" : pd === "UNDER" ? "under" : "skip";
       var body = pd === "SKIP" ? "Leaning flat — no clear side yet" : ("Leaning " + pd + (pd === "OVER" ? " ↑ " : " ↓ ") + pctFor(o.pOver, pd) + "%");
       var rrp = roundRange(), rtail = rrp ? " · price " + rangePhrase(rrp.pos) : "";
-      html = lbl + '<span class="npPick ' + pcls + '">' + body + '<span class="npHint">a heads-up on the round <b>after</b> this one — not the bet you\'re in now · locks in the final 40 sec' + rtail + '</span></span>';
+      html = lbl + '<span class="npPick ' + pcls + '">' + body + '<span class="npHint">a heads-up on the round <b>after</b> this one — not the bet you\'re in now · locks in the final 2 min' + rtail + '</span></span>';
     } else {
-      html = lbl + '<span class="npPick skip">Reading signals…<span class="npHint">a preview of the round after this one — locks in the final 40 sec</span></span>';
+      html = lbl + '<span class="npPick skip">Reading signals…<span class="npHint">a preview of the round after this one — locks in the final 2 min</span></span>';
     }
     if (el._html === html) return;   // no layout work unless the line actually changed
     el._html = html; el.innerHTML = html;
@@ -1904,7 +1904,7 @@
       setDPCol(nDirEl, nCol, nSub, "…", "wait", "locking your next-round bet");
     } else {
       nCol.classList.add("dormant");
-      setDPCol(nDirEl, nCol, nSub, "locks in " + mmssShort(remaining - BET_WINDOW), "wait", "best next-round bet appears in the final 40 sec");
+      setDPCol(nDirEl, nCol, nSub, "locks in " + mmssShort(remaining - BET_WINDOW), "wait", "best next-round bet appears in the final 2 min");
     }
   }
 
@@ -2611,7 +2611,7 @@
   }
 
   // In the final BET_WINDOW seconds, surface the freshest call for the NEXT round.
-  var BET_WINDOW = 40;   // next-round pick locks/shows with 0:40 left (was 90 = 1:30, 120 = 2:00). Lower = locks later on fresher data, less heads-up. One-line revert.
+  var BET_WINDOW = 120;   // next-round pick locks/shows with 2:00 left (the original, proven lead; tried 90/40 — reverted: more heads-up to place the bet, and the lock-timing A/B shows accuracy ~unchanged by timing). One-line tweak.
   function crowdDirOf(crowd) {
     if (!crowd || typeof crowd.overPct !== "number") return null;
     return crowd.overPct > 55 ? "OVER" : crowd.overPct < 45 ? "UNDER" : null;
