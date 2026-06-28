@@ -471,6 +471,12 @@
   .gamePlan { margin: 12px 0 2px; padding: 11px 14px; border-radius: 12px; background: rgba(108,127,255,.09); border: 1px solid rgba(108,127,255,.22); text-align: left; }
   .gamePlan .gpLbl { display: block; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #9da7ff; margin-bottom: 3px; }
   .gamePlan .gpText { display: block; font-size: 14px; font-weight: 600; line-height: 1.42; color: var(--label); }
+  .trustDial { margin: 0 0 14px; padding: 11px 14px; border-radius: 12px; background: rgba(255,255,255,.035); border: 1px solid var(--separator); }
+  .trustDial .tdHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 8px; }
+  .trustDial .tdLbl { font-size: 12px; font-weight: 800; color: var(--label-2); }
+  .trustDial .tdVal { font-size: 12px; font-weight: 700; color: #9da7ff; text-align: right; }
+  .trustDial .tdSlider { width: 100%; accent-color: #9da7ff; cursor: pointer; }
+  .trustDial .tdScale { display: flex; justify-content: space-between; font-size: 10px; color: var(--label-3); margin-top: 5px; }
   .buyLine.over { color: var(--green); }
   .buyLine.under { color: var(--red); }
   .buyLine.skip { color: var(--orange); font-size: 22px; }
@@ -888,7 +894,12 @@
   <div class="card orb collapseCard">
     <div id="blend" class="blend"></div>
     <div id="aiInfluence" class="aiInfluence"></div>
-    <label class="hiConvToggle" style="margin:2px 0 12px"><input type="checkbox" id="aiBoost" /><span>Trust the AI more — let its weight climb higher as it earns it</span></label>
+    <label class="hiConvToggle" style="margin:2px 0 10px"><input type="checkbox" id="aiBoost" /><span>Trust the AI more — let its weight climb higher as it earns it</span></label>
+    <div class="trustDial" id="trustDialWrap">
+      <div class="tdHead"><span class="tdLbl">AI trust dial</span><span class="tdVal" id="aiTrustVal">earned · unchanged</span></div>
+      <input type="range" id="aiTrust" class="tdSlider" min="-20" max="20" step="5" value="0" aria-label="AI trust dial" />
+      <div class="tdScale"><span>lean out −20%</span><span>earned</span><span>lean in +20%</span></div>
+    </div>
     <details id="aiWhy" class="aiWhy aiSetup aiSummary hidden">
       <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span></summary>
       <div class="aiWhyBody"></div>
@@ -979,7 +990,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r28 · AI "Game Plan" strip — tactical entry note under the pick</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r29 · AI trust dial (±20% nudge on the earned weight)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1295,13 +1306,19 @@
   // higher when it's right, lower when it's wrong, SHRUNK toward 0.30 until the sample means something
   // (so nothing swings on 2-3 reads). "Trust the AI more" (the toggle) raises the ceiling + trusts the
   // card sooner. THIS is the one pick-affecting piece of the report-card feature.
+  function getAITrust() {                                                   // user's manual ±20% nudge around the EARNED weight (0 = leave it alone)
+    try { var v = parseFloat(localStorage.getItem("aiTrust_v1")); return isFinite(v) ? Math.max(-0.20, Math.min(0.20, v)) : 0; } catch (e) { return 0; }
+  }
   function aiWeight() {
-    var W0 = 0.30, rc = state.aiRecord && state.aiRecord[getModel()], n = rc ? rc.graded : 0;
-    if (!n) return W0;                                                      // no track record yet → today's proven default
-    var h = rc.correct / n, aggressive = state.aiBoost;
-    var cap = aggressive ? 0.60 : 0.45, K = aggressive ? 5 : 9;            // ceiling + how fast it trusts the card
-    var earned = Math.max(0.05, Math.min(cap, 0.15 + 2.0 * (h - 0.5)));    // coin-flip→0.15; ~65%→cap; <50%→toward floor
-    return (K * W0 + n * earned) / (K + n);                               // sample-size shrinkage toward 0.30
+    var W0 = 0.30, rc = state.aiRecord && state.aiRecord[getModel()], n = rc ? rc.graded : 0, base;
+    if (!n) base = W0;                                                      // no track record yet → today's proven default
+    else {
+      var h = rc.correct / n, aggressive = state.aiBoost;
+      var cap = aggressive ? 0.60 : 0.45, K = aggressive ? 5 : 9;          // ceiling + how fast it trusts the card
+      var earned = Math.max(0.05, Math.min(cap, 0.15 + 2.0 * (h - 0.5)));  // coin-flip→0.15; ~65%→cap; <50%→toward floor
+      base = (K * W0 + n * earned) / (K + n);                              // sample-size shrinkage toward 0.30
+    }
+    return Math.max(0.05, Math.min(0.60, base * (1 + getAITrust())));      // apply the manual trust dial, then clamp to a sane band
   }
   // Favorite-longshot bias — the most replicated finding in prediction markets: favorites (>50%) are
   // systematically UNDER-priced (they win more often than their price implies) while cheap longshots
@@ -3102,6 +3119,14 @@
       renderPickCard();   // re-blend the headline immediately with the new AI weight
     });
   })();
+  (function () {   // AI trust dial — a manual ±20% nudge around the EARNED weight (per-device)
+    var s = $("aiTrust"); if (!s) return;
+    s.value = String(Math.round(getAITrust() * 100));
+    s.addEventListener("input", function () {
+      try { localStorage.setItem("aiTrust_v1", String((parseFloat(s.value) || 0) / 100)); } catch (e) {}
+      renderPickCard();   // re-blend the headline + readout immediately with the nudged AI weight
+    });
+  })();
   (function () {
     var t = $("notifyToggle"); if (!t) return;
     t.checked = notifyEnabled() && ("Notification" in window) && Notification.permission === "granted";
@@ -3683,6 +3708,7 @@
       (edge ? '<div class="aiRow"><span class="k">Edge</span>' + edge + '</div>' : '');
     renderAIInfluence();
     renderGamePlan();
+    renderTrustDial();
   }
   // The AI's one-line tactical "game plan" for how to play the round (entry/timing), shown as its own
   // strip under the pick. Rides on the existing (cached) AI read — no extra call, no extra cost.
@@ -3693,6 +3719,12 @@
     el.hidden = false;
     el.innerHTML = '<span class="gpLbl">🎯 Game plan · ' + providerNice(state.lastProvider) + '</span>';
     var t = document.createElement("span"); t.className = "gpText"; t.textContent = plan; el.appendChild(t);   // textContent = no injection from model text
+  }
+  // Trust-dial readout: the user's manual ±20% nudge + the resulting AI weight (kept in sync with the report card).
+  function renderTrustDial() {
+    var v = $("aiTrustVal"); if (!v) return;
+    var pct = Math.round(getAITrust() * 100);
+    v.textContent = (pct === 0 ? "earned · unchanged" : (pct > 0 ? "lean in +" + pct + "%" : "lean out " + pct + "%")) + " · AI weight " + Math.round(aiWeight() * 100) + "%";
   }
   // Visual "how much sway does the AI have over the pick" gauge + a clear auto-spend status.
   function renderAIInfluence() {
