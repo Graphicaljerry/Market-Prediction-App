@@ -1000,7 +1000,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r34 · Sure-Thing pings the BETTABLE window (~7 min out, before the side locks)</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r35 · Sure-Thing band tightened to a safer 75–92%</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1913,8 +1913,8 @@
     var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
     var style = getPlayStyle(), aggressive = style !== "disciplined", minEdge = style === "active" ? 0.04 : 0.06;
     if (style === "surething") {   // surface a clearly-favored side EARLY, while it's still bettable (it locks once near-certain)
-      if (!nextMode && edge >= 0.15 && edge < 0.45) return { tier: "strong", label: "BET " + my + " NOW", sub: my + " is clearly favored (~" + Math.round((0.5 + edge) * 100) + "%) and still bettable — place it now; it LOCKS as it nears certain" };
-      if (!nextMode && edge >= 0.45) return { tier: "flip", label: "LIKELY LOCKED", sub: my + " is now near-certain (~" + Math.round((0.5 + edge) * 100) + "%) — the platform has probably locked this side already; you'd need to have bet earlier" };
+      if (!nextMode && edge >= 0.25 && edge < 0.42) return { tier: "strong", label: "BET " + my + " NOW", sub: my + " is clearly favored (~" + Math.round((0.5 + edge) * 100) + "%) and still bettable — place it now; it LOCKS as it nears certain" };
+      if (!nextMode && edge >= 0.42) return { tier: "flip", label: "LIKELY LOCKED", sub: my + " is now near-certain (~" + Math.round((0.5 + edge) * 100) + "%) — the platform has probably locked this side already; you'd need to have bet earlier" };
       return { tier: "sit", label: "— WAIT FOR A LEAN", sub: "Sure-Thing waits for a clearly-favored, still-bettable side — nothing yet; you'll get a Discord ping the moment one forms" };
     }
     if (nextMode) {

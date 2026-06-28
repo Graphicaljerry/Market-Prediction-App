@@ -906,7 +906,7 @@ async function scanLateLocks(env) {
   if (!env.DISCORD_WEBHOOK && !env.NTFY_TOPIC) return;
   // BETTABLE band: clearly favored (>= LOCK_MIN_PROB) but NOT yet so certain the platform locks the
   // side (< LOCK_MAX_PROB). Scanned ~7 min before close so the ping reaches you while you can still bet.
-  const lo = Number(env.LOCK_MIN_PROB) || 70, hi = Number(env.LOCK_MAX_PROB) || 95;
+  const lo = Number(env.LOCK_MIN_PROB) || 75, hi = Number(env.LOCK_MAX_PROB) || 92;
   const hot = [];
   for (const c of AUTO_COINS) {
     const t = env["KALSHI_SERIES_" + c];
