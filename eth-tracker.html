@@ -478,8 +478,8 @@
   .trustDial .tdVal { font-size: 12px; font-weight: 700; color: #9da7ff; text-align: right; }
   .trustDial .tdSlider { width: 100%; accent-color: #9da7ff; cursor: pointer; }
   .trustDial .tdScale { display: flex; justify-content: space-between; font-size: 10px; color: var(--label-3); margin-top: 5px; }
-  .playStyle { display: inline-flex; flex-wrap: wrap; gap: 2px; background: var(--surface-2); border-radius: 9px; padding: 2px; }
-  .playStyle button { border: none; background: transparent; color: var(--label-3); font-family: inherit; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 7px; cursor: pointer; transition: background .15s, color .15s; }
+  .playStyle { display: flex; width: 100%; box-sizing: border-box; gap: 2px; background: var(--surface-2); border-radius: 9px; padding: 2px; }
+  .playStyle button { flex: 1 1 0; min-width: 0; border: none; background: transparent; color: var(--label-3); font-family: inherit; font-size: 11px; font-weight: 700; padding: 6px 4px; border-radius: 7px; cursor: pointer; white-space: nowrap; transition: background .15s, color .15s; }
   .playStyle button.active { background: rgba(108,127,255,.92); color: #fff; }
   .buyLine.over { color: var(--green); }
   .buyLine.under { color: var(--red); }
@@ -856,12 +856,12 @@
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
       <div class="buyLine skip" id="buyLine">Analyzing…</div>
       <div class="buyHint" id="buyHint">Loading live market data…</div>
-      <div class="payout" id="payout" hidden></div>
-      <div class="gamePlan" id="gamePlan" hidden></div>
       <div class="oddsRow"><span class="oddsPct mono" id="oddsPct">—</span><span class="oddsLbl" id="oddsLbl"></span></div>
       <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
       <div class="tally mono" id="recoTally">—</div>
       <div class="conf" id="recoConf">Loading live indicators</div>
+      <div class="payout" id="payout" hidden></div>
+      <div class="gamePlan" id="gamePlan" hidden></div>
       <div class="consensus" id="consensus"></div>
       <div class="lean mono" id="liveLean">—</div>
     </div>
@@ -1002,7 +1002,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r36 · payout multiplier + EV on the pick (shows when a bet actually profits)</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r37 · full-width Play-style tabs · % + bar + indicators moved up to join the pick headline</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
