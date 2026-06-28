@@ -975,7 +975,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r26 · decisive-break test gathers a fuller sample before judging</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r27 · the pick now HOLDS a locked skip (no live re-pick)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1570,8 +1570,10 @@
   function thisRoundCommitted() {
     var reco = state.roundCall || state.lastRecoObj; if (!reco) return null;
     var pOver = combinedOdds(reco).pOver, c = state.committed;
+    if (c === "SKIP") return { dir: "SKIP", held: true, pOver: pOver, conv: convictionFor(reco) };   // we decided to sit this round out — HOLD it, don't re-pick a live side
     if (c == null) {                                        // commit at the start to a definite side
       var L = state.thisRoundLock;
+      if (L && L.dir === "SKIP") { state.committed = "SKIP"; saveCommitted(); return { dir: "SKIP", held: true, pOver: pOver, conv: convictionFor(reco) }; }   // locked as a skip before it opened → hold the sit-out (matches what we actually grade)
       c = (L && (L.dir === "OVER" || L.dir === "UNDER")) ? L.dir : (pOver >= 0.5 ? "OVER" : "UNDER");
     } else if (c === "UNDER" && pOver >= 0.80) c = "OVER";  // flip ONLY when near-certain the other way
     else if (c === "OVER" && pOver <= 0.20) c = "UNDER";
@@ -1629,7 +1631,7 @@
   // of re-rolling from the noisy ~50/50 round-open signals — the "it changed its mind when I refreshed" fix.
   function saveCommitted() {
     try {
-      if (state.committed === "OVER" || state.committed === "UNDER")
+      if (state.committed === "OVER" || state.committed === "UNDER" || state.committed === "SKIP")
         localStorage.setItem("committed_v1", JSON.stringify({ coin: state.coin, bucket: lockBucket(), side: state.committed }));
       else localStorage.removeItem("committed_v1");
     } catch (e) {}
@@ -1638,7 +1640,7 @@
     try {
       var s = localStorage.getItem("committed_v1"); if (!s) return;
       var d = JSON.parse(s); if (!d) return;
-      if (d.coin === state.coin && d.bucket === lockBucket() && (d.side === "OVER" || d.side === "UNDER")) state.committed = d.side;
+      if (d.coin === state.coin && d.bucket === lockBucket() && (d.side === "OVER" || d.side === "UNDER" || d.side === "SKIP")) state.committed = d.side;
       else if (d.bucket !== lockBucket()) localStorage.removeItem("committed_v1");   // a past round — drop the stale commit
     } catch (e) {}
   }
@@ -1804,6 +1806,14 @@
 
     if (call.dir === "SKIP") {
       el.className = "reco skip";
+      if (call.held && !nextMode) {   // we LOCKED this round as a sit-out before it opened — hold that decision, don't chase the live move
+        var lph = Math.round((call.pOver >= 0.5 ? call.pOver : 1 - call.pOver) * 100);
+        scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
+        buyEl.className = "buyLine skip"; buyEl.innerHTML = "SITTING OUT" + '<span class="buySub">we called this round a coin-flip before it opened — holding that, not chasing the live move</span>';
+        hintEl.textContent = "This round was locked as a skip, so it stays a skip. The lean below is just live status, not a new bet.";
+        pctEl.textContent = lph + "%"; lblEl.textContent = (call.pOver >= 0.5 ? "leaning UP" : "leaning DOWN");
+        return;
+      }
       if (call.waiting) {
         var lp = Math.round((call.pOver >= 0.5 ? call.pOver : 1 - call.pOver) * 100);
         scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
@@ -1959,6 +1969,8 @@
       if (call && (call.dir === "OVER" || call.dir === "UNDER")) {
         setDPCol(tDirEl, tCol, tSub, call.dir, call.dir === "OVER" ? "over" : "under",
           (call.pct < 50 ? "holding · " : "") + call.pct + "% likely");
+      } else if (call && call.held) {
+        setDPCol(tDirEl, tCol, tSub, "—", "skip", "sitting out");   // locked as a skip — held, not re-picked live
       } else setDPCol(tDirEl, tCol, tSub, "—", "wait", "reading…");
     }
 
