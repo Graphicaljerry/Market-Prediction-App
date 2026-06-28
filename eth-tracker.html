@@ -477,7 +477,7 @@
   .trustDial .tdVal { font-size: 12px; font-weight: 700; color: #9da7ff; text-align: right; }
   .trustDial .tdSlider { width: 100%; accent-color: #9da7ff; cursor: pointer; }
   .trustDial .tdScale { display: flex; justify-content: space-between; font-size: 10px; color: var(--label-3); margin-top: 5px; }
-  .playStyle { display: inline-flex; gap: 2px; background: var(--surface-2); border-radius: 9px; padding: 2px; }
+  .playStyle { display: inline-flex; flex-wrap: wrap; gap: 2px; background: var(--surface-2); border-radius: 9px; padding: 2px; }
   .playStyle button { border: none; background: transparent; color: var(--label-3); font-family: inherit; font-size: 11px; font-weight: 700; padding: 4px 9px; border-radius: 7px; cursor: pointer; transition: background .15s, color .15s; }
   .playStyle button.active { background: rgba(108,127,255,.92); color: #fff; }
   .buyLine.over { color: var(--green); }
@@ -829,6 +829,7 @@
   <div class="module m-signal">
   <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span> <button class="ihelp" data-info="autopick">?</button>
     <div class="playStyle" id="playStyle" role="group" aria-label="Play style — how often to bet">
+      <button type="button" data-style="surething">Sure-Thing</button>
       <button type="button" data-style="disciplined">Disciplined</button>
       <button type="button" data-style="balanced">Balanced</button>
       <button type="button" data-style="active">Active</button>
@@ -999,7 +1000,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r32 · Play-style dial (Disciplined / Balanced / Active) · default Balanced surfaces small leans</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r33 · Sure-Thing mode + 24/7 near-lock scanner that pings Discord ~3 min before close</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1047,7 +1048,7 @@
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, committed: null, leanDir: null, leanFlips: 0, obi: null,
     chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false, stoch: false, ema: false, bb: false }, vp: { a: 0, b: 1 },
     chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
-    hiConvOnly: (function () { try { return getPlayStyle() === "disciplined"; } catch (e) { return false; } })(),
+    hiConvOnly: (function () { try { var ps = getPlayStyle(); return ps === "disciplined" || ps === "surething"; } catch (e) { return false; } })(),
     aiBoost: (function () { try { return localStorage.getItem("aiBoost_v1") === "1"; } catch (e) { return false; } })(),
     aiRecord: (function () { try { return JSON.parse(localStorage.getItem("aiRecord_v1") || "{}") || {}; } catch (e) { return {}; } })(),   // per-model report card: { "<model>": {graded, correct} }
     aiPending: (function () { try { return JSON.parse(localStorage.getItem("aiPending_v1") || "{}") || {}; } catch (e) { return {}; } })() };  // AI calls awaiting their round's outcome, keyed "coin:bucket"
@@ -1900,7 +1901,7 @@
   function getPlayStyle() {
     try {
       var ps = localStorage.getItem("playStyle_v1");
-      if (ps === "disciplined" || ps === "balanced" || ps === "active") return ps;
+      if (ps === "surething" || ps === "disciplined" || ps === "balanced" || ps === "active") return ps;
       return localStorage.getItem("hiConvOnly_v1") === "1" ? "disciplined" : "balanced";   // migrate the old "high-conviction only" toggle
     } catch (e) { return "balanced"; }
   }
@@ -1911,6 +1912,10 @@
     var nextMode = (state.remaining == null ? 999 : state.remaining) <= BET_WINDOW;
     var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
     var style = getPlayStyle(), aggressive = style !== "disciplined", minEdge = style === "active" ? 0.04 : 0.06;
+    if (style === "surething") {   // only ever surface a NEAR-LOCK late in the round; otherwise wait it out
+      if (!nextMode && edge >= 0.20) return { tier: "strong", label: "NEAR-LOCK — bet " + my, sub: "already decisively " + my + " with little time left (~" + Math.round((0.5 + edge) * 100) + "%) — high win rate, small payout" };
+      return { tier: "sit", label: "— WAIT FOR A LOCK", sub: "Sure-Thing only bets near-locks late in the round — nothing yet; you'll get a Discord ping the moment one forms" };
+    }
     if (nextMode) {
       if (auto && auto === my && edge >= 0.08) return { tier: "lean", label: "NEXT-ROUND LEAN", sub: "heads-up for the next round (it opens ~50/50) — optional, not a sure thing" };
       return { tier: "flip", label: "NEXT-ROUND PREVIEW", sub: "the next round hasn't opened — ~coin-flip, don't bet it like a strong pick" };
@@ -3134,7 +3139,7 @@
       var b = e.target.closest("button"); if (!b) return;
       var s = b.getAttribute("data-style");
       try { localStorage.setItem("playStyle_v1", s); } catch (er) {}
-      state.hiConvOnly = (s === "disciplined");   // Disciplined mutes anything that isn't a strong setup
+      state.hiConvOnly = (s === "disciplined" || s === "surething");   // Disciplined / Sure-Thing mute anything that isn't a strong setup
       paint(); renderPickCard();
     });
   })();

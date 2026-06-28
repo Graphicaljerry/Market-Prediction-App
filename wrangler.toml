@@ -9,7 +9,10 @@ compatibility_date = "2026-06-20"
 # (Kalshi price + Coinbase candles + order book — no LLM call, no AI spend) and grades
 # the previous round. Read it at  <worker-url>/?picks=ETH . Stays within the free tier.
 [triggers]
-crons = ["*/15 * * * *"]
+# */15        = the 24/7 pick / grade / learn loop (unchanged).
+# 12,27,42,57 = ~3 min before each close: the Sure-Thing near-lock scanner that pings you to bet
+#               (worker.js scanLateLocks). Read-only on Kalshi crowd odds; adds no KV writes.
+crons = ["*/15 * * * *", "12,27,42,57 * * * *"]
 
 # Public Kalshi 15-min series tickers (not secret). Kept here so Git deploys don't
 # wipe them — plain-text dashboard variables get reset on every Worker build.
@@ -17,6 +20,12 @@ crons = ["*/15 * * * *"]
 KALSHI_SERIES_ETH = "KXETH15M"
 KALSHI_SERIES_BTC = "KXBTC15M"
 KALSHI_SERIES_SOL = "KXSOL15M"
+# The four new coins. Best-guess tickers (Kalshi's KX<SYM>15M pattern). VERIFY each at
+# <worker-url>/?discover=DOGE  (then XRP / HYPE / BNB) and fix any whose crowd shows n/a.
+KALSHI_SERIES_DOGE = "KXDOGE15M"
+KALSHI_SERIES_XRP = "KXXRP15M"
+KALSHI_SERIES_HYPE = "KXHYPE15M"
+KALSHI_SERIES_BNB = "KXBNB15M"
 
 # Cross-isolate cache for Kalshi crowd odds. Kalshi rate-limits Cloudflare's shared
 # egress IPs (429s), so we persist each good fetch here and serve it (even when stale)

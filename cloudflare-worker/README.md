@@ -173,7 +173,13 @@ Get a push **on your phone even when the app is closed** the moment a coin opens
 Cloudflare Workers (shared IPs) *even with a token*, so Discord is the dependable path:
 1. In Discord: pick a channel → **Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL**.
 2. Worker → **Settings → Variables and Secrets** → add a **Secret** **`DISCORD_WEBHOOK`** = that URL → **Deploy**.
-3. Test: open `…workers.dev/?testpush=discord` — it posts to your channel and returns `{"discord":{"sent":true}}`. Real high-confidence pings then arrive automatically. (`pushDiscord` in `worker.js`.)
+3. Test: open `…workers.dev/?testpush=discord` — it posts to your channel and returns `{"discord":{"sent":true}}`. Real pings then arrive automatically. (`pushDiscord` in `worker.js`.)
+
+**Two kinds of ping fire automatically** once a channel is set:
+- **Near-lock "bet now"** — a cron at **:12/:27/:42/:57** (≈3 min before each close) scans every coin and pings when the **Kalshi market is already ≥ `LOCK_MIN_PROB` (default 78%)** on one side — a round it'd take a sharp reversal to flip. High win rate, small payout. (`scanLateLocks`.) **This is the one you'll actually get** — the old open-of-round check almost never qualified because the open is ~50/50.
+- **High-confidence open pick** — the regular 15-min cron still pings if a *new* round opens with a strong, non-SKIP pick (rare). (`notifyHotPicks`.)
+
+Make sure your Discord channel's **notifications are on** (and the Discord phone app can push) so these reach your phone.
 
 **Or use ntfy** (works only if the Worker's shared IP isn't rate-limited):
 1. Install the free **ntfy** app (iOS/Android) and pick a hard-to-guess **topic** name (e.g.
