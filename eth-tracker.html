@@ -468,6 +468,9 @@
   .reco.over .scopeTag { color: var(--green); } .reco.under .scopeTag { color: var(--red); }
   .buyLine { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; padding: 10px 6px 6px; }
   .buyLine .buySub { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; display: block; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; margin-top: 4px; opacity: .85; }
+  .gamePlan { margin: 12px 0 2px; padding: 11px 14px; border-radius: 12px; background: rgba(108,127,255,.09); border: 1px solid rgba(108,127,255,.22); text-align: left; }
+  .gamePlan .gpLbl { display: block; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: #9da7ff; margin-bottom: 3px; }
+  .gamePlan .gpText { display: block; font-size: 14px; font-weight: 600; line-height: 1.42; color: var(--label); }
   .buyLine.over { color: var(--green); }
   .buyLine.under { color: var(--red); }
   .buyLine.skip { color: var(--orange); font-size: 22px; }
@@ -836,6 +839,7 @@
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
       <div class="buyLine skip" id="buyLine">Analyzing…</div>
       <div class="buyHint" id="buyHint">Loading live market data…</div>
+      <div class="gamePlan" id="gamePlan" hidden></div>
       <div class="oddsRow"><span class="oddsPct mono" id="oddsPct">—</span><span class="oddsLbl" id="oddsLbl"></span></div>
       <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
       <div class="tally mono" id="recoTally">—</div>
@@ -975,7 +979,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r27 · the pick now HOLDS a locked skip (no live re-pick)</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r28 · AI "Game Plan" strip — tactical entry note under the pick</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3678,6 +3682,17 @@
       '<div class="aiRow"><span class="k">AI record</span><span class="v">' + cardV + '</span></div>' +
       (edge ? '<div class="aiRow"><span class="k">Edge</span>' + edge + '</div>' : '');
     renderAIInfluence();
+    renderGamePlan();
+  }
+  // The AI's one-line tactical "game plan" for how to play the round (entry/timing), shown as its own
+  // strip under the pick. Rides on the existing (cached) AI read — no extra call, no extra cost.
+  function renderGamePlan() {
+    var el = $("gamePlan"); if (!el) return;
+    var plan = state.lastAI && state.lastAI.plan ? String(state.lastAI.plan).trim() : "";
+    if (!plan) { el.hidden = true; el.textContent = ""; return; }
+    el.hidden = false;
+    el.innerHTML = '<span class="gpLbl">🎯 Game plan · ' + providerNice(state.lastProvider) + '</span>';
+    var t = document.createElement("span"); t.className = "gpText"; t.textContent = plan; el.appendChild(t);   // textContent = no injection from model text
   }
   // Visual "how much sway does the AI have over the pick" gauge + a clear auto-spend status.
   function renderAIInfluence() {

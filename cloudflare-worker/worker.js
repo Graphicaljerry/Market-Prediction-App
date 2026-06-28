@@ -539,8 +539,10 @@ SKIP. Reason in this order, then output only JSON:
 
 "rationale": plain, everyday English for a non-trader — ONE or two short sentences telling the story: what price just did, the ONE thing that decides it (friendly words, no jargon/acronyms/numbers), and how sure you are. e.g. "It jumped above the line and there's barely 3 minutes left, so it'd take a sharp drop to lose — I'm fairly confident it stays over."
 
+"plan": a SHORT one-sentence GAME PLAN for how to actually PLAY it — the round's character (choppy / trending hard / quiet and pinned to the line) plus an entry tactic, aimed at the NEXT round. Make it about TIMING, not just direction, because the user bets a fresh round that opens at ~50/50. e.g. "Choppy with wicks both ways — if you play it, wait for a dip back toward the line instead of chasing." / "It already ran hard, so the easy entry's gone — only worth it on a pullback." / "Quiet and stuck on the line — likely a coin-flip, save your money." Plain English, no jargon or numbers.
+
 Respond with ONLY this JSON, no markdown:
-{"probOver":<0-100 integer>,"verdict":"OVER|UNDER|SKIP","confidence":"Low|Medium|High","edge":"with-crowd|against-crowd|n/a","rationale":"plain-English, 1-2 sentences"}`;
+{"probOver":<0-100 integer>,"verdict":"OVER|UNDER|SKIP","confidence":"Low|Medium|High","edge":"with-crowd|against-crowd|n/a","rationale":"plain-English, 1-2 sentences","plan":"one-sentence tactical game plan"}`;
 }
 
 function normalize(o) {
@@ -559,6 +561,7 @@ function normalize(o) {
     confidence,
     edge: ["with-crowd", "against-crowd", "n/a"].includes(o.edge) ? o.edge : "n/a",
     rationale: String(o.rationale || "").slice(0, 320),
+    plan: String(o.plan || "").slice(0, 220),
   };
 }
 function extractJson(text) {
@@ -609,8 +612,9 @@ async function readAnthropic(key, model, prompt) {
               confidence: { type: "string", enum: ["Low", "Medium", "High"] },
               edge: { type: "string", enum: ["with-crowd", "against-crowd", "n/a"] },
               rationale: { type: "string" },
+              plan: { type: "string" },
             },
-            required: ["probOver", "verdict", "confidence", "edge", "rationale"],
+            required: ["probOver", "verdict", "confidence", "edge", "rationale", "plan"],
             additionalProperties: false,
           },
         },
