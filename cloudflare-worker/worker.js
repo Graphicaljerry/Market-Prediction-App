@@ -86,15 +86,24 @@ export default {
       // device, proving the whole chain (worker -> ntfy -> phone) without waiting for a real hot pick.
       // Gated by the topic itself: knowing it already lets you publish to the channel, so no new secret.
       if (u.searchParams.has("testpush")) {
-        if (!env.NTFY_TOPIC) return json({ sent: false, error: "NTFY_TOPIC not set", hint: "Add NTFY_TOPIC under Settings -> Variables and Secrets, then redeploy." });
-        if (u.searchParams.get("testpush") !== env.NTFY_TOPIC) return json({ sent: false, error: "unauthorized - pass ?testpush=<your exact NTFY_TOPIC>" }, 401);
-        const nurl = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
-        const r = await fetch(nurl, {
-          method: "POST",
-          headers: { Title: "Test ping - notifications are working", Priority: "high", Tags: "white_check_mark", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) },
-          body: "If this buzzed your iPhone, the worker can reach you. Real pushes fire only on strong, non-skip picks.",
-        }).catch(() => null);
-        return json({ sent: !!(r && r.ok), httpStatus: r ? r.status : 0, authed: !!env.NTFY_TOKEN, via: nurl });
+        const tp = u.searchParams.get("testpush");
+        const gate = (env.NTFY_TOPIC && tp === env.NTFY_TOPIC) || (env.DISCORD_WEBHOOK && tp === "discord");
+        if (!gate) return json({ sent: false, error: "pass ?testpush=<your exact NTFY_TOPIC>, or ?testpush=discord once DISCORD_WEBHOOK is set" }, 401);
+        const out = {};
+        if (env.NTFY_TOPIC) {
+          const nurl = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
+          const r = await fetch(nurl, {
+            method: "POST",
+            headers: { Title: "Test ping - notifications are working", Priority: "high", Tags: "white_check_mark", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) },
+            body: "Test ping from the tracker.",
+          }).catch(() => null);
+          out.ntfy = { sent: !!(r && r.ok), httpStatus: r ? r.status : 0, authed: !!env.NTFY_TOKEN };
+        }
+        if (env.DISCORD_WEBHOOK) {
+          const d = await pushDiscord(env, "Test ping from the 15-min tracker — Discord notifications are working. Real pings fire only on strong, non-skip picks.");
+          out.discord = { sent: !!(d && d.ok), httpStatus: d ? d.status : 0 };
+        }
+        return json(Object.keys(out).length ? out : { sent: false, error: "set NTFY_TOPIC and/or DISCORD_WEBHOOK first" });
       }
       // One-time cleanup: ?reset=ETH zeroes the auto-tracker's record for a coin (hit-rate
       // counters + history + pending) so it rebuilds on correctly-graded rounds only; ?reset=all does
@@ -675,9 +684,9 @@ async function readGroq(key, model, prompt) {
 // Runs on cron. Per coin: grade the previous round's pick, then make a fresh pick for the
 // round that just opened, using the Kalshi market price (anchor) nudged by short-term
 // momentum and order-book pressure. Stored in CROWD_KV and read back via ?picks=COIN.
-const AUTO_COINS = ["ETH", "BTC", "SOL", "DOGE", "SHIB", "XRP"];
+const AUTO_COINS = ["ETH", "BTC", "SOL", "DOGE", "XRP", "HYPE", "BNB"];
 const CB_BASE = "https://api.exchange.coinbase.com";
-const CB_PRODUCT = { ETH: "ETH-USD", BTC: "BTC-USD", SOL: "SOL-USD", DOGE: "DOGE-USD", SHIB: "SHIB-USD", XRP: "XRP-USD" };
+const CB_PRODUCT = { ETH: "ETH-USD", BTC: "BTC-USD", SOL: "SOL-USD", DOGE: "DOGE-USD", XRP: "XRP-USD", HYPE: "HYPE-USD", BNB: "BNB-USD" };
 const CB_HEADERS = { "User-Agent": "market-prediction-app-cron/1.0", Accept: "application/json" };
 const pad2 = (n) => (n < 10 ? "0" + n : "" + n);
 const round4 = (x) => Math.round(x * 1e4) / 1e4;
@@ -849,8 +858,18 @@ async function reconcileKalshi(rec, coinModel, global) {
 // rounds the tracker is willing to bet AND several independent reads agree. To enable: set a Worker
 // var NTFY_TOPIC (a hard-to-guess topic name, or a full https URL), install the free ntfy app, and
 // subscribe to that topic. Optional NTFY_MIN_PROB (default 75). One push per round per coin.
+// Post to a Discord channel via an incoming webhook (free + reliable from Workers — no shared-IP rate
+// limits like ntfy.sh). Set DISCORD_WEBHOOK to the webhook URL. 204 = delivered.
+async function pushDiscord(env, text) {
+  if (!env.DISCORD_WEBHOOK) return null;
+  return fetch(env.DISCORD_WEBHOOK, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content: text }),
+  }).catch(() => null);
+}
 async function notifyHotPicks(env, st) {
-  if (!env.NTFY_TOPIC) return;
+  if (!env.NTFY_TOPIC && !env.DISCORD_WEBHOOK) return;
   const minProb = Number(env.NTFY_MIN_PROB) || 75;
   const hot = [];
   for (const c of AUTO_COINS) {
@@ -862,12 +881,16 @@ async function notifyHotPicks(env, st) {
     }
   }
   if (!hot.length) return;
-  const url = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
-  await fetch(url, {
-    method: "POST",
-    headers: { Title: "High-confidence pick — not a skip", Priority: "high", Tags: "dart", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) },
-    body: hot.join("   ·   ") + "  — bet this 15-min round",
-  }).catch(() => {});
+  const msg = hot.join("   ·   ") + "  — bet this 15-min round";
+  if (env.NTFY_TOPIC) {
+    const url = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
+    await fetch(url, {
+      method: "POST",
+      headers: { Title: "High-confidence pick — not a skip", Priority: "high", Tags: "dart", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) },
+      body: msg,
+    }).catch(() => {});
+  }
+  if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 High-confidence pick (not a skip): " + msg);
 }
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
 async function cbObi(product) {

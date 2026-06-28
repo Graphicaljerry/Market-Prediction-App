@@ -760,8 +760,9 @@
     <button data-coin="BTC"><img class="cico" alt=""> BTC</button>
     <button data-coin="SOL"><img class="cico" alt=""> SOL</button>
     <button data-coin="DOGE"><img class="cico" alt=""> DOGE</button>
-    <button data-coin="SHIB"><img class="cico" alt=""> SHIB</button>
     <button data-coin="XRP"><img class="cico" alt=""> XRP</button>
+    <button data-coin="HYPE"><img class="cico" alt=""> HYPE</button>
+    <button data-coin="BNB"><img class="cico" alt=""> BNB</button>
   </div>
   <div class="coinSelectWrap" id="coinSelectWrap">
     <img class="csIcon" id="coinSelIcon" alt="">
@@ -770,8 +771,9 @@
       <option value="BTC">BTC</option>
       <option value="SOL">SOL</option>
       <option value="DOGE">DOGE</option>
-      <option value="SHIB">SHIB</option>
       <option value="XRP">XRP</option>
+      <option value="HYPE">HYPE</option>
+      <option value="BNB">BNB</option>
     </select>
   </div>
   <div class="navExch mono" aria-hidden="true"><span class="navExchDot"></span> Coinbase</div>
@@ -925,7 +927,7 @@
           <option value="manual">Manual only — never auto-call</option>
         </select>
         <div class="aiMuted" style="margin:12px 0">The crowd price refreshes free; the paid AI read runs at most once per round, only while this tab is open.</div>
-        <label class="hiConvToggle" style="margin:0 0 14px"><input type="checkbox" id="notifyToggle" /><span>🔔 Alert me on high-confidence picks (any coin, this device — fires while a tab is open)</span></label>
+        <label class="hiConvToggle" style="margin:0 0 14px"><input type="checkbox" id="notifyToggle" /><span>Alert me on high-confidence picks (any coin, this device — fires while a tab is open)</span></label>
         <button id="aiRun" class="aiBtn">Save &amp; Get AI Read</button>
       </div>
     </details>
@@ -990,7 +992,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r30 · honest AI status ("tap Get AI Read" in Manual, not endless "reading…")</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r31 · coins matched to platform (BTC/ETH/SOL/XRP/DOGE/HYPE/BNB) · emojis stripped · AI label follows the model</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1014,22 +1016,24 @@
     BTC:  { name: "Bitcoin",   pair: "BTC · USD",  sym: "₿",  cgId: "bitcoin",   cbProduct: "BTC-USD" },
     SOL:  { name: "Solana",    pair: "SOL · USD",  sym: "◎",  cgId: "solana",    cbProduct: "SOL-USD" },
     DOGE: { name: "Dogecoin",  pair: "DOGE · USD", sym: "Ð",  cgId: "dogecoin",  cbProduct: "DOGE-USD" },
-    SHIB: { name: "Shiba Inu", pair: "SHIB · USD", sym: "🐕", cgId: "shiba-inu", cbProduct: "SHIB-USD" },
-    XRP:  { name: "XRP",       pair: "XRP · USD",  sym: "✕",  cgId: "ripple",    cbProduct: "XRP-USD" }
+    XRP:  { name: "XRP",       pair: "XRP · USD",  sym: "✕",  cgId: "ripple",    cbProduct: "XRP-USD" },
+    HYPE: { name: "Hyperliquid", pair: "HYPE · USD", sym: "H", cgId: "hyperliquid",  cbProduct: "HYPE-USD" },
+    BNB:  { name: "BNB",       pair: "BNB · USD",  sym: "◆",  cgId: "binancecoin", cbProduct: "BNB-USD" }
   };
   // Coins the 24/7 tracker actually logs — i.e. the ones with a Kalshi 15-min market to grade against.
   // This is the immediate default; the Worker reports the LIVE set via ?best (state.trackedCoins), so if
   // you ever add/remove a KALSHI_SERIES_* the app auto-syncs after the next worker deploy. The rest stay
   // selectable for a live pick, but have no graded record (so we mark them "live only").
-  var DEFAULT_TRACKED = ["ETH", "BTC", "SOL", "DOGE", "SHIB", "XRP"];
+  var DEFAULT_TRACKED = ["ETH", "BTC", "SOL", "DOGE", "XRP", "HYPE", "BNB"];
   // Brand coin icons — crisp inline SVG (matching the Figma "Crypto Icons" set) for the switcher + hero badge.
   var COIN_ICONS = {
     ETH: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+IDxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjIwIiBmaWxsPSIjNjI3RUVBIi8+IDxnIGZpbGw9IiNmZmYiPiA8cGF0aCBkPSJNMjAgNS41IEwxMS42IDIxIEwyMCAxNi42IFoiIGZpbGwtb3BhY2l0eT0iLjg1Ii8+IDxwYXRoIGQ9Ik0yMCA1LjUgTDI4LjQgMjEgTDIwIDE2LjYgWiIgZmlsbC1vcGFjaXR5PSIuNTUiLz4gPHBhdGggZD0iTTIwIDM0LjUgTDExLjYgMjMgTDIwIDI3LjYgWiIgZmlsbC1vcGFjaXR5PSIuODUiLz4gPHBhdGggZD0iTTIwIDM0LjUgTDI4LjQgMjMgTDIwIDI3LjYgWiIgZmlsbC1vcGFjaXR5PSIuNTUiLz4gPC9nPjwvc3ZnPg==",
     BTC: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+IDxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjIwIiBmaWxsPSIjRjc5MzFBIi8+IDxnIGZpbGw9IiNmZmYiPjxyZWN0IHg9IjE3LjMiIHk9IjguNSIgd2lkdGg9IjEuOSIgaGVpZ2h0PSIyMyIgcng9Ii42Ii8+PHJlY3QgeD0iMjEuMiIgeT0iOC41IiB3aWR0aD0iMS45IiBoZWlnaHQ9IjIzIiByeD0iLjYiLz4gPHRleHQgeD0iMjAiIHk9IjI4LjQiIGZvbnQtZmFtaWx5PSJBcmlhbCxIZWx2ZXRpY2Esc2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMCIgZm9udC13ZWlnaHQ9IjcwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+QjwvdGV4dD48L2c+PC9zdmc+",
     SOL: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+IDxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0ic2ciIHgxPSIwIiB5MT0iMCIgeDI9IjQwIiB5Mj0iNDAiIGdyYWRpZW50VW5pdHM9InVzZXJTcGFjZU9uVXNlIj4gPHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjOTk0NUZGIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMTRGMTk1Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+IDxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjIwIiBmaWxsPSIjMTMxMzE2Ii8+IDxnIGZpbGw9InVybCgjc2cpIj4gPHBhdGggZD0iTTE0IDEzIEwzMCAxMyBMMjcgMTYgTDExIDE2IFoiLz4gPHBhdGggZD0iTTExIDE4LjUgTDI3IDE4LjUgTDMwIDIxLjUgTDE0IDIxLjUgWiIvPiA8cGF0aCBkPSJNMTQgMjQgTDMwIDI0IEwyNyAyNyBMMTEgMjcgWiIvPjwvZz48L3N2Zz4=",
     DOGE: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+IDxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjIwIiBmaWxsPSIjQzJBNjMzIi8+IDx0ZXh0IHg9IjIwLjUiIHk9IjI4LjUiIGZvbnQtZmFtaWx5PSJHZW9yZ2lhLCdUaW1lcyBOZXcgUm9tYW4nLHNlcmlmIiBmb250LXNpemU9IjIyIiBmb250LXdlaWdodD0iNzAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZmZmIj4mIzIwODs8L3RleHQ+PC9zdmc+",
-    SHIB: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+IDxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjIwIiBmaWxsPSIjRjAwNTAwIi8+IDx0ZXh0IHg9IjIwIiB5PSIyOC41IiBmb250LWZhbWlseT0iQXJpYWwsSGVsdmV0aWNhLHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjEiIGZvbnQtd2VpZ2h0PSI3MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiPlM8L3RleHQ+PC9zdmc+",
-    XRP: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+IDxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjIwIiBmaWxsPSIjMjMyOTJGIi8+IDxnIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzLjEiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+IDxwYXRoIGQ9Ik0xMS41IDEzLjUgTDIwIDIxLjUgTDI4LjUgMTMuNSIvPjxwYXRoIGQ9Ik0xMS41IDI2LjUgTDIwIDE4LjUgTDI4LjUgMjYuNSIvPjwvZz48L3N2Zz4="
+    XRP: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+IDxjaXJjbGUgY3g9IjIwIiBjeT0iMjAiIHI9IjIwIiBmaWxsPSIjMjMyOTJGIi8+IDxnIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIzLjEiIGZpbGw9Im5vbmUiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+IDxwYXRoIGQ9Ik0xMS41IDEzLjUgTDIwIDIxLjUgTDI4LjUgMTMuNSIvPjxwYXRoIGQ9Ik0xMS41IDI2LjUgTDIwIDE4LjUgTDI4LjUgMjYuNSIvPjwvZz48L3N2Zz4=",
+    HYPE: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiMwYjNiMzQiLz48dGV4dCB4PSIyMCIgeT0iMjguNSIgZm9udC1mYW1pbHk9IkFyaWFsLEhlbHZldGljYSxzYW5zLXNlcmlmIiBmb250LXNpemU9IjIxIiBmb250LXdlaWdodD0iNzAwIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjNGZlOWNmIj5IPC90ZXh0Pjwvc3ZnPg==",
+    BNB: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGM0JBMkYiLz48cmVjdCB4PSIxMy40IiB5PSIxMy40IiB3aWR0aD0iMTMuMiIgaGVpZ2h0PSIxMy4yIiByeD0iMiIgZmlsbD0iI2ZmZiIgdHJhbnNmb3JtPSJyb3RhdGUoNDUgMjAgMjApIi8+PC9zdmc+"
   };
 
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
@@ -1539,7 +1543,7 @@
     if (sig === _primeSig) return;                                       // no visible change → leave the DOM alone
     _primeSig = sig;
     el.className = "primeCue show " + (p.side === "OVER" ? "over" : "under");
-    el.innerHTML = '<span class="pcBolt">⚡ VALUE ENTRY</span> · BUY ' + p.side + (p.side === "OVER" ? " ↑" : " ↓") +
+    el.innerHTML = '<span class="pcBolt">VALUE ENTRY</span> · BUY ' + p.side + (p.side === "OVER" ? " ↑" : " ↓") +
       '<span class="pcSub">' + (p.side === "OVER" ? "below the line but climbing toward it" : "above the line but dropping toward it") + ' · pays ~' + multTxt + ' · ~' + mins + ' min to cross</span>';
   }
   function loadLateRounds() { try { var s = localStorage.getItem("lateTracker_v1"); state.lateRounds = s ? (JSON.parse(s) || []) : []; } catch (e) { state.lateRounds = []; } }
@@ -1890,15 +1894,15 @@
     var nextMode = (state.remaining == null ? 999 : state.remaining) <= BET_WINDOW;
     var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
     if (nextMode) {
-      if (auto && auto === my && edge >= 0.08) return { tier: "lean", label: "👀 NEXT-ROUND LEAN", sub: "heads-up for the next round (it opens ~50/50) — optional, not a sure thing" };
-      return { tier: "flip", label: "👀 NEXT-ROUND PREVIEW", sub: "the next round hasn't opened — ~coin-flip, don't bet it like a strong pick" };
+      if (auto && auto === my && edge >= 0.08) return { tier: "lean", label: "NEXT-ROUND LEAN", sub: "heads-up for the next round (it opens ~50/50) — optional, not a sure thing" };
+      return { tier: "flip", label: "NEXT-ROUND PREVIEW", sub: "the next round hasn't opened — ~coin-flip, don't bet it like a strong pick" };
     }
-    if (auto && auto === my) return { tier: "strong", label: "✅ STRONG — worth betting", sub: "the disciplined 24/7 tracker agrees — its committed bets run ~77–84%" };
-    if (auto && auto !== "SKIP") return { tier: "flip", label: "🪙 COIN-FLIP — sit out", sub: "split: Co-Pilot says " + my + ", the tracker says " + auto + " — passing is safest" };
-    if (auto === "SKIP") return { tier: "flip", label: "🪙 COIN-FLIP — better to pass", sub: "the disciplined 24/7 tracker is sitting this round out (no clear edge)" };
-    if (edge >= 0.12) return { tier: "strong", label: "✅ STRONG — worth betting", sub: "strong edge across the signals" };   // tracker not loaded → fall back to the blend's edge
-    if (edge >= 0.06) return { tier: "lean", label: "⚠️ LEAN — optional", sub: "mild edge — your call" };
-    return { tier: "flip", label: "🪙 COIN-FLIP — better to pass", sub: "~50/50, no clear edge" };
+    if (auto && auto === my) return { tier: "strong", label: "STRONG — worth betting", sub: "the disciplined 24/7 tracker agrees — its committed bets run ~77–84%" };
+    if (auto && auto !== "SKIP") return { tier: "flip", label: "COIN-FLIP — sit out", sub: "split: Co-Pilot says " + my + ", the tracker says " + auto + " — passing is safest" };
+    if (auto === "SKIP") return { tier: "flip", label: "COIN-FLIP — better to pass", sub: "the disciplined 24/7 tracker is sitting this round out (no clear edge)" };
+    if (edge >= 0.12) return { tier: "strong", label: "STRONG — worth betting", sub: "strong edge across the signals" };   // tracker not loaded → fall back to the blend's edge
+    if (edge >= 0.06) return { tier: "lean", label: "LEAN — optional", sub: "mild edge — your call" };
+    return { tier: "flip", label: "COIN-FLIP — better to pass", sub: "~50/50, no clear edge" };
   }
   function renderPickStrength() {
     var el = $("pickStrength"); if (!el) return;
@@ -3181,6 +3185,7 @@
         if (sel && !Array.prototype.some.call(sel.options, function (o) { return o.value === d.model; })) return;
         try { localStorage.setItem(AI_MODEL_KEY, d.model); } catch (e) {}
         if (sel) sel.value = d.model;
+        state.lastAI = null; state.lastProvider = null;   // a synced model change clears the old model's read too, so the label matches the new model
         renderAIBadge();
         if (getWorkerUrl()) refreshCrowd(true);                        // flip the "AI · …" label to the synced provider
       })
@@ -3771,7 +3776,7 @@
     pushSharedModel($("aiModel").value);
     callWorker(true);
   });
-  $("aiModel").addEventListener("change", function () { var m = $("aiModel").value; try { localStorage.setItem(AI_MODEL_KEY, m); } catch (e) {} pushSharedModel(m); renderAIBadge(); if (getWorkerUrl()) refreshCrowd(true); });   // saves locally, shares the choice to every device, and free-refreshes so the "AI · …" label flips right away
+  $("aiModel").addEventListener("change", function () { var m = $("aiModel").value; try { localStorage.setItem(AI_MODEL_KEY, m); } catch (e) {} state.lastAI = null; state.lastProvider = null; pushSharedModel(m); renderAIBadge(); renderBlend(); if (getWorkerUrl()) refreshCrowd(true); });   // switching models clears the previous model's read so the label can't show the wrong AI; shares the choice + free-refreshes
   (function () { var s = $("aiBudget"); if (s) s.addEventListener("change", function () { try { localStorage.setItem(AI_BUDGET_KEY, s.value); } catch (e) {} }); })();
   document.addEventListener("visibilitychange", function () { if (!document.hidden) { syncSharedModel(); refreshCrowd(true); } });   // returning to the tab: re-sync the shared model + free market refresh
 

@@ -167,7 +167,15 @@ against the free tier's **1,000/day**. (Storage: ~32 copies of a small record �
 
 ## Phone alerts on a high-confidence pick (optional, free)
 Get a push **on your phone even when the app is closed** the moment a coin opens a
-**high-confidence, non-SKIP** pick (≥75% and ≥3 independent reads agreeing):
+**high-confidence, non-SKIP** pick (≥75% and ≥3 independent reads agreeing).
+
+**Recommended — Discord webhook (most reliable).** ntfy.sh's free server often returns **429** from
+Cloudflare Workers (shared IPs) *even with a token*, so Discord is the dependable path:
+1. In Discord: pick a channel → **Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL**.
+2. Worker → **Settings → Variables and Secrets** → add a **Secret** **`DISCORD_WEBHOOK`** = that URL → **Deploy**.
+3. Test: open `…workers.dev/?testpush=discord` — it posts to your channel and returns `{"discord":{"sent":true}}`. Real high-confidence pings then arrive automatically. (`pushDiscord` in `worker.js`.)
+
+**Or use ntfy** (works only if the Worker's shared IP isn't rate-limited):
 1. Install the free **ntfy** app (iOS/Android) and pick a hard-to-guess **topic** name (e.g.
    `crypto-tracker-9f3k2`). Subscribe to it in the app.
 2. In the Worker → **Settings → Variables and Secrets**, add a Text var **`NTFY_TOPIC`** = that
