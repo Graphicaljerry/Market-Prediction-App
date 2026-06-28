@@ -975,7 +975,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r24 · one shared AI read per round (no per-device cost)</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r25 · decisive-break shadow test (does a stronger lean hold up?)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1658,6 +1658,8 @@
   function abLateSample() {   // the "1-min" pick — same rule as commitLockedNext, sampled near the bell
     var reco = state.lastRecoObj; if (!reco) return;
     var o = combinedOdds(reco); abRecord("late", o.pOver >= 0.55 ? "OVER" : o.pOver <= 0.45 ? "UNDER" : "SKIP");
+    var ab = lockABState(), e = ab.pending[state.coin + ":" + lockBucket()];   // also stash the RAW next-round lean so we can grade "how decisive was it" vs the real outcome (graded alongside "late")
+    if (e && e.lateP == null) { e.lateP = o.pOver; saveLockAB(); }
   }
   function gradeLockAB() {
     var ab = lockABState(), changed = false, nowB = Math.floor(Date.now() / 900000);
@@ -1671,20 +1673,46 @@
       var t = ab.tally[e.coin] || (ab.tally[e.coin] = { rounds: 0, two: { n: 0, c: 0, skip: 0 }, late: { n: 0, c: 0, skip: 0 } });
       t.rounds++;
       [["two", e.two], ["late", e.late]].forEach(function (pr) { if (pr[1] === "SKIP") t[pr[0]].skip++; else { t[pr[0]].n++; if (pr[1] === actual) t[pr[0]].c++; } });
+      if (typeof e.lateP === "number") {   // DECISIVE-BREAK calibration (pooled across coins): does a stronger lean actually survive to the close more often?
+        var dv = Math.abs(e.lateP - 0.5), dDir = e.lateP >= 0.5 ? "OVER" : "UNDER";
+        var bk = dv >= 0.10 ? "strong" : dv >= 0.05 ? "slight" : "flat";
+        var cf = ab.conf || (ab.conf = { strong: { n: 0, c: 0 }, slight: { n: 0, c: 0 }, flat: { n: 0, c: 0 } });
+        cf[bk].n++; if (dDir === actual) cf[bk].c++;
+      }
       delete ab.pending[key]; changed = true;
     });
     if (changed) { saveLockAB(); renderLockAB(); }
   }
   function renderLockAB() {
     var el = $("lockABStat"); if (!el) return;
-    var t = state.lockAB && state.lockAB.tally && state.lockAB.tally[state.coin];
-    if (!t || !t.rounds) { el.innerHTML = ""; return; }
     function pc(s) { return s.n ? Math.round(s.c / s.n * 100) + "% (" + s.c + "/" + s.n + ")" : "—"; }
-    var lead;
-    if (t.two.n >= 10 && t.late.n >= 10) { var a = t.two.c / t.two.n, b = t.late.c / t.late.n; lead = Math.abs(a - b) < 0.03 ? "too close to call so far" : (a > b ? "2-min is ahead" : "1-min is ahead"); }
-    else lead = "need ~50 graded rounds to judge";
-    el.innerHTML = '<div class="lh">Lock-timing test · ' + t.rounds + ' rounds</div>' +
-      '<div>2-min lock <b>' + pc(t.two) + '</b> · 1-min <b>' + pc(t.late) + '</b> <span style="color:var(--label-3)">— ' + lead + '</span></div>';
+    var html = "";
+    var t = state.lockAB && state.lockAB.tally && state.lockAB.tally[state.coin];
+    if (t && t.rounds) {
+      var lead;
+      if (t.two.n >= 10 && t.late.n >= 10) { var a = t.two.c / t.two.n, b = t.late.c / t.late.n; lead = Math.abs(a - b) < 0.03 ? "too close to call so far" : (a > b ? "2-min is ahead" : "1-min is ahead"); }
+      else lead = "need ~50 graded rounds to judge";
+      html += '<div class="lh">Lock-timing test · ' + t.rounds + ' rounds</div>' +
+        '<div>2-min lock <b>' + pc(t.two) + '</b> · 1-min <b>' + pc(t.late) + '</b> <span style="color:var(--label-3)">— ' + lead + '</span></div>';
+    }
+    // Decisive-break calibration: of the rounds we LOCKED, group by how strong the lean was and show
+    // how often each group actually won. If "strong" beats "coin-flip" by a lot, waiting for a clear
+    // break before committing is worth it. Pooled across coins so it answers in tens of rounds.
+    var cf = state.lockAB && state.lockAB.conf;
+    if (cf) {
+      var tot = cf.strong.n + cf.slight.n + cf.flat.n;
+      if (tot >= 6) {
+        var verdict;
+        if (cf.strong.n >= 12 && cf.flat.n >= 8) {
+          var hs = cf.strong.c / cf.strong.n, hf = cf.flat.c / cf.flat.n;
+          verdict = hs - hf >= 0.08 ? "a decisive lean holds up better — waiting for a clear break looks worth it" : hf - hs >= 0.08 ? "a decisive lean is NOT more reliable here" : "no clear edge from waiting yet";
+        } else verdict = "early — still building the sample";
+        html += '<div class="lh" style="margin-top:8px">Decisive-break test · ' + tot + ' rounds (all coins)</div>' +
+          '<div>strong lean ≥60/40 <b>' + pc(cf.strong) + '</b> · slight <b>' + pc(cf.slight) + '</b> · coin-flip <b>' + pc(cf.flat) + '</b></div>' +
+          '<div style="color:var(--label-3)">' + verdict + '</div>';
+      }
+    }
+    el.innerHTML = html;
   }
   // Compact "model lean + rounds learned" indicator, fed by the 24/7 tracker's learned read.
   function renderModelChip() {
