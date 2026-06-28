@@ -975,7 +975,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r25 · decisive-break shadow test (does a stronger lean hold up?)</span>
+    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r26 · decisive-break test gathers a fuller sample before judging</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1702,11 +1702,14 @@
     if (cf) {
       var tot = cf.strong.n + cf.slight.n + cf.flat.n;
       if (tot >= 6) {
-        var verdict;
-        if (cf.strong.n >= 12 && cf.flat.n >= 8) {
-          var hs = cf.strong.c / cf.strong.n, hf = cf.flat.c / cf.flat.n;
-          verdict = hs - hf >= 0.08 ? "a decisive lean holds up better — waiting for a clear break looks worth it" : hf - hs >= 0.08 ? "a decisive lean is NOT more reliable here" : "no clear edge from waiting yet";
-        } else verdict = "early — still building the sample";
+        var verdict, hf = cf.flat.n ? cf.flat.c / cf.flat.n : null;
+        if (cf.flat.n >= 20 && cf.strong.n >= 20) {
+          var hs = cf.strong.c / cf.strong.n;
+          verdict = hs - hf >= 0.08 ? "a decisive (≥60/40) lean clearly beats a coin-flip — waiting for a real break looks worth it" : hf - hs >= 0.08 ? "even a decisive lean isn't more reliable here" : "no clear edge from a decisive lean yet";
+        } else if (cf.flat.n >= 20 && cf.slight.n >= 25) {
+          var hl = cf.slight.c / cf.slight.n;
+          verdict = (hl - hf >= 0.06 ? "even a slight lean is beating a coin-flip so far" : "a slight lean is about as random as a coin-flip — these look like the ones to skip") + (cf.strong.n < 20 ? " · still building the decisive-lean sample" : "");
+        } else verdict = "still building the sample (decisive leans are uncommon, so a trustworthy read needs a few hundred rounds — that's fine, it keeps gathering)";
         html += '<div class="lh" style="margin-top:8px">Decisive-break test · ' + tot + ' rounds (all coins)</div>' +
           '<div>strong lean ≥60/40 <b>' + pc(cf.strong) + '</b> · slight <b>' + pc(cf.slight) + '</b> · coin-flip <b>' + pc(cf.flat) + '</b></div>' +
           '<div style="color:var(--label-3)">' + verdict + '</div>';
