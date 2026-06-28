@@ -9,10 +9,11 @@ compatibility_date = "2026-06-20"
 # (Kalshi price + Coinbase candles + order book — no LLM call, no AI spend) and grades
 # the previous round. Read it at  <worker-url>/?picks=ETH . Stays within the free tier.
 [triggers]
-# */15        = the 24/7 pick / grade / learn loop (unchanged).
-# 12,27,42,57 = ~3 min before each close: the Sure-Thing near-lock scanner that pings you to bet
-#               (worker.js scanLateLocks). Read-only on Kalshi crowd odds; adds no KV writes.
-crons = ["*/15 * * * *", "12,27,42,57 * * * *"]
+# */15       = the 24/7 pick / grade / learn loop (unchanged).
+# 8,23,38,53 = ~7 min before each close: the Sure-Thing scanner that pings you while a favorite is
+#              still BETTABLE (it locks once near-certain). worker.js scanLateLocks; read-only on
+#              Kalshi crowd, no KV writes.
+crons = ["*/15 * * * *", "8,23,38,53 * * * *"]
 
 # Public Kalshi 15-min series tickers (not secret). Kept here so Git deploys don't
 # wipe them — plain-text dashboard variables get reset on every Worker build.

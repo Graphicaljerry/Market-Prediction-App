@@ -233,10 +233,11 @@ export default {
   // grade the previous round, and update the online learning model. Keeps a 24/7 record even
   // when no tab is open. Coins run sequentially so the shared (pooled) model updates cleanly.
   async scheduled(event, env, ctx) {
-    // The :12/:27/:42/:57 trigger fires ~3 min before each 15-min close: scan EVERY coin for a
-    // NEAR-LOCK and ping you to bet (even with the app closed). This path ONLY reads crowd odds and
-    // sends a notification — it never touches the proven 15-min pick / grade / learn loop below.
-    if (event.cron === "12,27,42,57 * * * *") { ctx.waitUntil(scanLateLocks(env).catch(() => {})); return; }
+    // The :08/:23/:38/:53 trigger fires ~7 min before each 15-min close: scan EVERY coin for a side
+    // that's clearly leaning but STILL BETTABLE. (The platform LOCKS a side once it's near-certain, so
+    // a 3-min/99% ping is too late to act on — that was the old bug.) This pings you while you can still
+    // place it, and ONLY reads crowd odds + sends a notification — it never touches the proven loop.
+    if (event.cron === "8,23,38,53 * * * *") { ctx.waitUntil(scanLateLocks(env).catch(() => {})); return; }
     ctx.waitUntil((async () => {
       // One consolidated KV record for the whole auto-tracker (every coin + the pooled model),
       // so a cron run is a SINGLE KV write instead of ~7 — keeping us inside the free tier's
@@ -903,7 +904,9 @@ async function notifyHotPicks(env, st) {
 // Read-only (persist=false) so it adds no KV writes; one scan per round so it's one ping max per coin.
 async function scanLateLocks(env) {
   if (!env.DISCORD_WEBHOOK && !env.NTFY_TOPIC) return;
-  const lockProb = Number(env.LOCK_MIN_PROB) || 78;
+  // BETTABLE band: clearly favored (>= LOCK_MIN_PROB) but NOT yet so certain the platform locks the
+  // side (< LOCK_MAX_PROB). Scanned ~7 min before close so the ping reaches you while you can still bet.
+  const lo = Number(env.LOCK_MIN_PROB) || 70, hi = Number(env.LOCK_MAX_PROB) || 95;
   const hot = [];
   for (const c of AUTO_COINS) {
     const t = env["KALSHI_SERIES_" + c];
@@ -912,15 +915,15 @@ async function scanLateLocks(env) {
     try { crowd = await getKalshiCrowd(env, t, false); } catch (_) {}
     const op = crowd && !crowd.stale && typeof crowd.overPct === "number" ? crowd.overPct : null;
     if (op == null) continue;
-    if (op >= lockProb) hot.push(`${c} OVER ~${Math.round(op)}%`);
-    else if (op <= 100 - lockProb) hot.push(`${c} UNDER ~${Math.round(100 - op)}%`);
+    if (op >= lo && op < hi) hot.push(`${c} OVER ~${Math.round(op)}%`);
+    else if (op <= 100 - lo && op > 100 - hi) hot.push(`${c} UNDER ~${Math.round(100 - op)}%`);
   }
   if (!hot.length) return;
-  const msg = "NEAR-LOCK (~3 min to close): " + hot.join("   ·   ") + " — the market has these all but decided. Bet now: high win rate, small payout.";
+  const msg = "LEANING — bet while you can (~7 min to close): " + hot.join("   ·   ") + " — clearly favored but still bettable. The favorite LOCKS once it's near-certain, so place it now. High win rate, small payout.";
   if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 " + msg);
   if (env.NTFY_TOPIC) {
     const url = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
-    await fetch(url, { method: "POST", headers: { Title: "Near-lock — bet now", Priority: "high", Tags: "dart", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) }, body: msg }).catch(() => {});
+    await fetch(url, { method: "POST", headers: { Title: "Leaning — bet now before it locks", Priority: "high", Tags: "dart", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) }, body: msg }).catch(() => {});
   }
 }
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
