@@ -226,6 +226,10 @@
   }
   /* "clear" sections — no glass, content sits straight on the glow */
   .card.flat { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; border: none; box-shadow: none; padding: 4px 2px; }
+  /* The timer and the Live Indicators list are flat (no card bg), so by default their content runs almost
+     to the screen edge while the glass cards inset 18px. Give these two real left/right padding so the
+     timer bar and the indicator rows line up with the glass cards instead of touching the edges. */
+  .card.flat.timerCard, .card.flat.collapseCard { padding-left: 18px; padding-right: 18px; }
   /* glowing cards a touch more glassy so the orb reads through, like the Figma */
   .card.orb { background: rgba(28,28,30,0.26); }   /* glassier so the glow behind reads through */
   /* ---------- Flat, calm card treatment — match the clean mockup (no animated aurora/glow) ----------
@@ -1056,7 +1060,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r45 · STRONG — BET banner when the app pick, AI read &amp; momentum all line up · consensus AI (several free samples averaged, agreement = confidence) · AI now reads every round by default · Best-now bar shows the obvious side · liquid-glass theme (capability-detected)</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r46 · more left/right padding on the timer &amp; Live Indicators sections · STRONG — BET banner when the app pick, AI read &amp; momentum all line up · consensus AI (several free samples averaged, agreement = confidence) · AI now reads every round by default · liquid-glass theme (capability-detected)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
