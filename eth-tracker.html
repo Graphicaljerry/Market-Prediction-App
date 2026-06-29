@@ -328,10 +328,13 @@
     .layout { display: grid; grid-template-columns: 320px minmax(0,1fr) 340px; gap: 20px; align-items: start;
       grid-template-areas:
         "hero   chart  timer"
-        "hero   chart  read"
+        "signal chart  read"
         "signal chart  auto"
         "signal chart  auto"
         "ind    ind    ind"; }
+    /* Auto Pick (signal) spans from directly under the price card, so expanding the AI Co-Pilot grows its
+       OWN row on the right without pushing Auto Pick down — its top stays pinned beneath the price card. */
+    .m-signal { align-self: start; }
     /* fixed, stable chart height on desktop — no longer stretches to match the side columns */
     .m-chart { align-self: start; }
     /* drop the breadcrumb on desktop too (already hidden on phone/tablet) so the chart card's top
@@ -1129,7 +1132,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r51 · "Who's calling it better" meter — AI vs 24/7 tracker accuracy over time (skips excluded) · desktop timer back to natural size with the AI Co-Pilot tucked right under it · smoother easing (no bounce, per design skills) · AI summary folded into the playbook · bigger dropdown chevrons · fewer colors · installable PWA</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r52 · desktop: Auto Pick pinned under the price card again — expanding the AI Co-Pilot no longer shoves it off-screen · "Who's calling it better" meter (AI vs 24/7 tracker) · smoother easing (no bounce) · AI summary folded into the playbook · bigger dropdown chevrons · fewer colors · installable PWA</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
