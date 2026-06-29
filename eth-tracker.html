@@ -14,6 +14,7 @@
 <meta name="theme-color" content="#0a0a0b" />
 <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <link rel="icon" type="image/png" href="apple-touch-icon.png" />
+<link rel="manifest" href="manifest.webmanifest" />
 <meta name="apple-mobile-web-app-title" content="15-Min Tracker" />
 <title>15-Min Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -36,6 +37,10 @@
     /* live status accent — flips green↔red↔amber with the current pick (see body.glow-*) */
     --accent: var(--green);
     --accent-rgb: 13,224,89;
+    /* shared easing curves so motion across the app feels consistent and polished */
+    --ease: cubic-bezier(.22,.61,.36,1);          /* smooth ease-out for hovers/colour shifts */
+    --ease-soft: cubic-bezier(.4,0,.2,1);          /* gentle in-out for panels/larger moves */
+    --ease-spring: cubic-bezier(.34,1.56,.64,1);   /* slight overshoot for taps/pops */
   }
   /* the whole UI's accent follows the up/down status of the pick */
   body.glow-over  { --accent: var(--green);  --accent-rgb: 13,224,89; }
@@ -43,6 +48,21 @@
   body.glow-skip  { --accent: var(--orange); --accent-rgb: 255,159,10; }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+
+  /* ---- Motion polish: one consistent easing on interactive elements + subtle tactile feedback ----
+     Placed early so element-specific rules later still win; only runs when motion is welcome. */
+  @media (prefers-reduced-motion: no-preference) {
+    button, summary, select, input, a, .chip, .tfBtn, .seg,
+    .playStyle button, .seeMore, .clearBtn, .ihelp, .msMore, .closeBtn, .aiBtn {
+      transition: background-color .24s var(--ease), border-color .24s var(--ease), color .24s var(--ease),
+        box-shadow .24s var(--ease), transform .16s var(--ease-spring), opacity .24s var(--ease);
+    }
+    button:active, .tfBtn:active, .playStyle button:active, .seeMore:active,
+    .clearBtn:active, .ihelp:active, .closeBtn:active, .aiBtn:active, .msMore:active { transform: scale(.95); }
+    .tfBtn:hover, .playStyle button:hover, .seeMore:hover, .clearBtn:hover, .aiBtn:hover, .msMore:hover { transform: translateY(-1px); }
+    .card { transition: border-color .4s var(--ease), box-shadow .4s var(--ease), transform .25s var(--ease-soft); }
+    .secChevron { transition: transform .28s var(--ease-soft); }
+  }
 
   html { background: var(--bg); overflow-x: clip; overscroll-behavior: none; }
   html, body {
@@ -226,10 +246,11 @@
   }
   /* "clear" sections — no glass, content sits straight on the glow */
   .card.flat { background: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; border: none; box-shadow: none; padding: 4px 2px; }
-  /* The timer and the Live Indicators list are flat (no card bg), so by default their content runs almost
-     to the screen edge while the glass cards inset 18px. Give these two real left/right padding so the
-     timer bar and the indicator rows line up with the glass cards instead of touching the edges. */
-  .card.flat.timerCard, .card.flat.collapseCard { padding-left: 18px; padding-right: 18px; }
+  /* The flat (no-bg) sections — timer, Live Indicators, Track Record — run almost to the screen edge by
+     default while the glass cards inset 18px. Give them real left/right padding so their content (timer
+     bar, indicator rows, the score grid + Recent Rounds) lines up with the glass cards, not the edges. */
+  .card.flat.timerCard, .card.flat.collapseCard, #autoMod > .card.flat { padding-left: 18px; padding-right: 18px; }
+  #autoMod > .card.flat { padding-top: 14px; padding-bottom: 16px; }
   /* glowing cards a touch more glassy so the orb reads through, like the Figma */
   .card.orb { background: rgba(28,28,30,0.26); }   /* glassier so the glow behind reads through */
   /* ---------- Flat, calm card treatment — match the clean mockup (no animated aurora/glow) ----------
@@ -421,6 +442,15 @@
   .consensus.over { border-color: rgba(13,224,89,.4); background: rgba(13,224,89,.08); } .consensus.over b { color: var(--green); }
   .consensus.under { border-color: rgba(255,69,58,.4); background: rgba(255,69,58,.08); } .consensus.under b { color: var(--red); }
   .consensus.split { border-color: rgba(255,159,10,.45); background: rgba(255,159,10,.08); } .consensus.split b { color: var(--orange); }
+  /* Playbook — the "which to follow" verdict and the AI's game plan, consolidated into ONE panel.
+     The inner boxes go seamless (no own border/bg); a hairline divider appears only when both are shown.
+     Directional colour still reads through the consensus's coloured bold text. */
+  .playbook { margin: 12px 0 2px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--separator); background: rgba(255,255,255,0.035); text-align: left; }
+  .playbook[hidden] { display: none; }
+  .playbook .consensus, .playbook .gamePlan { margin: 0; padding: 0; border: none; background: none; border-radius: 0; }
+  .playbook .consensus:empty { display: none; }
+  .playbook .gamePlan:not([hidden]) { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--separator); }
+  .playbook .consensus:empty + .gamePlan:not([hidden]) { margin-top: 0; padding-top: 0; border-top: none; }
   /* recent 15-min market moves — the same up/down arrows Coinbase shows, from Coinbase candles */
   .moveStrip { display: flex; align-items: center; gap: 4px; margin-top: 14px; flex-wrap: nowrap; overflow: hidden; }
   .moveStrip.open { flex-wrap: wrap; overflow: visible; }
@@ -615,8 +645,8 @@
 
   /* ---------- History ---------- */
   /* lists are already capped to 10 rows in JS — show them in full so a row never half-clips */
-  /* Recent Rounds — flat text rows in one subtle card, matching the Figma "Past Performance". */
-  .history { overflow: visible; background: rgba(255,255,255,0.018); border: 1px solid var(--separator); border-radius: 16px; padding: 4px 8px; }
+  /* Recent Rounds — flat text rows, no enclosing stroke (the round rows speak for themselves). */
+  .history { overflow: visible; background: transparent; border: none; border-radius: 0; padding: 0; }
   /* collapse long logs to 5 rows behind a "See more" button (data stays intact) */
   .history.collapsed .hrow:nth-of-type(n+7) { display: none; }   /* show 6 rows like the Figma */
   .seeMore { display: block; width: 100%; margin-top: 10px; padding: 9px; background: transparent;
@@ -919,8 +949,10 @@
       <div class="tally mono" id="recoTally">—</div>
       <div class="conf" id="recoConf">Loading live indicators</div>
       <div class="payout" id="payout" hidden></div>
-      <div class="gamePlan" id="gamePlan" hidden></div>
-      <div class="consensus" id="consensus"></div>
+      <div class="playbook" id="playbook" hidden>
+        <div class="consensus" id="consensus"></div>
+        <div class="gamePlan" id="gamePlan" hidden></div>
+      </div>
       <div class="lean mono" id="liveLean">—</div>
     </div>
   </div>
@@ -1060,7 +1092,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r46 · more left/right padding on the timer &amp; Live Indicators sections · STRONG — BET banner when the app pick, AI read &amp; momentum all line up · consensus AI (several free samples averaged, agreement = confidence) · AI now reads every round by default · liquid-glass theme (capability-detected)</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r47 · STRONG — BET: banner on desktop (readable ~7s), native iOS/iPadOS notification on phones/tablets · consolidated "Game plan + Which to follow" panel · padding on the Track Record card &amp; stroke removed from Recent Rounds · app-wide easing polish · installable PWA (manifest + notifications-only service worker)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -2031,6 +2063,28 @@
   function renderPickStrength() {
     var el = $("pickStrength"); if (!el) return;
     var s = pickStrength();
+    var now = Date.now();
+    // STRONG — BET gets special handling. A new bet "event" = a new round+coin+side. On phones/tablets we
+    // fire a native notification ONCE per event (no banner). On desktop we keep the pulsing banner readable
+    // for ~7s (sticky — it survives tick-to-tick flicker), then settle to the calm "strong" line.
+    if (s.tier === "bet") {
+      var key = state.coin + ":" + state.shownDir + ":" + (currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0);
+      if (state._betKey !== key) {
+        state._betKey = key; state._betUntil = now + 7000; state._betLabel = s.label; state._betSub = s.sub;
+        if (isHandheld()) fireBetNotification(state.shownDir);   // phones/tablets → native notification instead of the banner
+      }
+    }
+    // Desktop banner: show BET while inside the 7s window (sticky, even if the live tier just flickered off).
+    var showBanner = !isHandheld() && state._betUntil && now < state._betUntil &&
+      state._betKey === state.coin + ":" + state.shownDir + ":" + (currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0);
+    if (showBanner) {
+      el.className = "pickStrength bet";
+      el.innerHTML = '<span>' + (state._betLabel || s.label) + '</span><span class="psSub">' + (state._betSub || s.sub) + '</span>';
+      return;
+    }
+    // Otherwise render the live tier — but a live "bet" never shows as a banner here (handhelds got the
+    // notification; desktop's 7s window is over), so downgrade it to the calm "strong" indicator.
+    if (s.tier === "bet") s = { tier: "strong", label: "STRONG — worth betting", sub: s.sub };
     el.className = "pickStrength " + s.tier;
     el.innerHTML = '<span>' + s.label + '</span><span class="psSub">' + s.sub + '</span>';
   }
@@ -2038,7 +2092,7 @@
     var el = $("consensus"); if (!el) return;
     var my = state.shownDir || "SKIP";
     var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
-    if (!auto) { el.className = "consensus"; el.innerHTML = ""; return; }   // tracker not connected → nothing to reconcile
+    if (!auto) { el.className = "consensus"; el.innerHTML = ""; syncPlaybook(); return; }   // tracker not connected → nothing to reconcile
     var cls, txt;
     if (my !== "SKIP" && my === auto) { cls = my === "OVER" ? "over" : "under"; txt = "Co-Pilot and the 24/7 tracker <b>both say " + my + "</b> — higher conviction, this is your call."; }
     else if (my === "SKIP" && auto === "SKIP") { cls = "skip"; txt = "Both are <b>sitting out — SKIP this round</b>. No clear edge, so the tracker won't even score it."; }
@@ -2055,6 +2109,14 @@
       else if (cls === "lean") confEl.textContent = "Lower confidence — only one system likes it";
       else if (state.baseConf) confEl.textContent = state.baseConf;
     }
+    syncPlaybook();
+  }
+  // Show the consolidated "playbook" panel only when there's something in it (a verdict and/or a plan).
+  function syncPlaybook() {
+    var pb = $("playbook"); if (!pb) return;
+    var c = $("consensus"), g = $("gamePlan");
+    var has = (c && c.innerHTML.trim() !== "") || (g && !g.hidden);
+    pb.hidden = !has;
   }
 
   // A compact, always-visible "what to bet the NEXT round" line in the timer card. Shows a
@@ -3583,6 +3645,38 @@
       try { new Notification("Predict (" + x.coin + " - " + (x.side === "OVER" ? "Over" : "Under") + (mp != null ? " " + (100 / mp).toFixed(1) + "x" : "") + ")", { body: "Strong pick · tap to open", tag: key }); } catch (e) {}
     });
   }
+  // Desktop vs phone/tablet (incl. iPadOS, which reports as "Macintosh" but exposes touch points).
+  function isHandheld() {
+    try {
+      if (window.matchMedia && matchMedia("(pointer: coarse)").matches) return true;
+      var ua = navigator.userAgent || "";
+      if (/iPhone|iPad|iPod|Android|Mobile/i.test(ua)) return true;
+      if ((navigator.maxTouchPoints || 0) > 1 && /Macintosh/.test(ua)) return true;   // iPadOS masquerades as a Mac
+      return false;
+    } catch (e) { return false; }
+  }
+  // STRONG — BET native notification: phones/tablets get THIS instead of the desktop banner. Uses the
+  // service worker's showNotification when present — the only way an installed iOS/iPadOS PWA can show a
+  // notification — and falls back to the Notification constructor on desktop/Android. Needs alerts enabled.
+  function fireBetNotification(dir) {
+    if (!notifyEnabled() || !("Notification" in window) || Notification.permission !== "granted") return;
+    var coin = state.coin;
+    var title = "🔥 STRONG — BET (" + coin + " - " + (dir === "OVER" ? "Over" : "Under") + ")";
+    var opts = { body: "App, AI and momentum all line up — the clearest setup to act on.",
+      tag: "bet:" + coin + ":" + dir + ":" + (currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0),
+      icon: "apple-touch-icon.png", badge: "apple-touch-icon.png", data: { url: "eth-tracker.html" } };
+    try {
+      if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+        navigator.serviceWorker.ready
+          .then(function (reg) { return reg.showNotification(title, opts); })
+          .catch(function () { try { new Notification(title, opts); } catch (e) {} });
+        return;
+      }
+    } catch (e) {}
+    try { new Notification(title, opts); } catch (e) {}
+  }
+  // Register the notifications-only service worker (what enables native notifications on installed PWAs).
+  (function () { try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {}); } catch (e) {} })();
   // Payout + EV for a ranked-coin row, from the live market price the worker now forwards (x.crowdOver = market OVER%).
   // payout = 1 / (price of the picked side); +EV when our model rates that side above the market's price. null = no live market.
   function rowPayout(x) {
@@ -3954,10 +4048,11 @@
   function renderGamePlan() {
     var el = $("gamePlan"); if (!el) return;
     var plan = state.lastAI && state.lastAI.plan ? String(state.lastAI.plan).trim() : "";
-    if (!plan) { el.hidden = true; el.textContent = ""; return; }
+    if (!plan) { el.hidden = true; el.textContent = ""; syncPlaybook(); return; }
     el.hidden = false;
     el.innerHTML = '<span class="gpLbl">🎯 Game plan · ' + providerNice(state.lastProvider) + '</span>';
     var t = document.createElement("span"); t.className = "gpText"; t.textContent = plan; el.appendChild(t);   // textContent = no injection from model text
+    syncPlaybook();
   }
   // Trust-dial readout: the user's manual ±20% nudge + the resulting AI weight (kept in sync with the report card).
   function renderTrustDial() {

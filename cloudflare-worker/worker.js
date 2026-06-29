@@ -902,7 +902,7 @@ async function notifyHotPicks(env, st) {
   if (!env.NTFY_TOPIC && !env.DISCORD_WEBHOOK) return;
   const minProb = Number(env.NTFY_MIN_PROB) || 75;
   const deadPct = Number(env.NTFY_DEAD_PCT) || 90;   // don't ping a side the market already prices >= this — it pays ~1.0x (no profit)
-  const hot = [];
+  const hot = [], strongBet = [];
   for (const c of AUTO_COINS) {
     const rec = st.coins && st.coins[c], p = rec && rec.pending;
     if (!p || p.notified) continue;
@@ -910,21 +910,27 @@ async function notifyHotPicks(env, st) {
       const mp = p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null;
       const sidePct = mp == null ? null : (p.side === "OVER" ? mp : 100 - mp);   // the market price of OUR side
       if (sidePct != null && sidePct >= deadPct) continue;   // dead money — skip the ping, don't even mark it (in case the price eases later)
-      hot.push(`${c} - ${p.side === "OVER" ? "Over" : "Under"}` + (sidePct != null ? ` ${(100 / sidePct).toFixed(1)}x` : ""));
+      const label = `${c} - ${p.side === "OVER" ? "Over" : "Under"}` + (sidePct != null ? ` ${(100 / sidePct).toFixed(1)}x` : "");
+      // STRONG — BET: the pick is strong AND short-term momentum is already heading its way — the server-side
+      // analog of the app's "app + AI + momentum all line up". These get the louder, distinct alert; this is
+      // the native notification phones get in place of the desktop banner.
+      const mom = p.signals && typeof p.signals.mom === "number" ? p.signals.mom : null;
+      const confirm = mom != null && ((p.side === "OVER" && mom > 0) || (p.side === "UNDER" && mom < 0));
+      (confirm ? strongBet : hot).push(label);
       p.notified = true;   // one push per round (persisted by the saveState that follows)
     }
   }
-  if (!hot.length) return;
-  const msg = "Predict (" + hot.join(", ") + ")";
-  if (env.NTFY_TOPIC) {
-    const url = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
-    await fetch(url, {
-      method: "POST",
-      headers: { Title: "Predict — strong pick", Priority: "high", Tags: "fire", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) },
-      body: msg,
-    }).catch(() => {});
+  if (!hot.length && !strongBet.length) return;
+  if (strongBet.length) {
+    const msg = "STRONG — BET (" + strongBet.join(", ") + ")";
+    if (env.NTFY_TOPIC) await ntfyPush(env, "🔥 STRONG — BET", "fire,rotating_light", msg);
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🔥🔥 " + msg);
   }
-  if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🔥 " + msg);
+  if (hot.length) {
+    const msg = "Predict (" + hot.join(", ") + ")";
+    if (env.NTFY_TOPIC) await ntfyPush(env, "Predict — strong pick", "fire", msg);
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🔥 " + msg);
+  }
 }
 // Small ntfy push helper (shared by the alert scanners).
 async function ntfyPush(env, title, tag, body) {
