@@ -73,6 +73,8 @@
   }
   /* Keyboard focus ring — visible for keyboard users only (not on mouse/touch), in the live accent colour. */
   :focus-visible { outline: 2px solid rgba(var(--accent-rgb), .9); outline-offset: 2px; border-radius: 5px; }
+  /* Inline line icons (replace decorative emoji — ultra-light strokes, inherit text colour) */
+  .ic { width: 1.05em; height: 1.05em; display: inline-block; vertical-align: -0.16em; margin-right: .3em; flex: none; }
   body {
     position: relative; background: transparent;
     max-width: 1120px; margin: 0 auto;
@@ -244,7 +246,7 @@
     background: rgba(28,28,30,0.55);
     -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
     border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 18px; margin-bottom: 28px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.35);
+    box-shadow: 0 10px 34px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.05);   /* softer, more diffused shadow + a 1px inner top highlight (machined edge) */
     transition: border-color .4s ease;
   }
   /* "clear" sections — no glass, content sits straight on the glow */
@@ -260,7 +262,7 @@
      Additive overrides only; the glow rules above are untouched, so reverting is a one-block delete. */
   .card.orb::before, .card.orb::after { display: none; }
   .pageGlow { display: none; }
-  .card.orb { background: rgba(43,43,43,0.20); border-color: rgba(255,255,255,0.09); box-shadow: 0 8px 30px rgba(0,0,0,0.30); }
+  .card.orb { background: rgba(43,43,43,0.20); border-color: rgba(255,255,255,0.09); box-shadow: 0 10px 34px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06); }
   /* Timer card stays clean like the mockup — hide the next-round preview line in the timer. The
      next-round pick is NOT lost: it still surfaces in the Auto Pick panel's "Next round" column
      when it locks in the final 2 min. One-line revert. (id selector so it wins over .nextPick below.) */
@@ -855,16 +857,24 @@
   .glassui body { background: radial-gradient(1100px 720px at 50% -12%, rgba(var(--accent-rgb),0.10), transparent 60%), #07090c; }
   .glassui .pageGlow { display: block; }
   .glassui .card.orb::before, .glassui .card.orb::after { display: block; }
+  /* Light-reactive glass RIM — the stroke is no longer one flat colour. A border-box gradient makes the
+     top-left edge catch light (bright white), fade through neutral, pick up the pick's accent, then darken
+     at the bottom — like a real glass plate lit from above. The padding-box layer keeps the frosted fill so
+     backdrop-filter still shows through. (Double-background trick — coexists with the orb glow pseudo-els.) */
   .glassui .card {
-    background: rgba(22,24,28,0.44);
+    border: 1px solid transparent;
+    background:
+      linear-gradient(rgba(22,24,28,0.44), rgba(22,24,28,0.44)) padding-box,
+      linear-gradient(158deg, rgba(255,255,255,0.78) 0%, rgba(255,255,255,0.22) 16%, rgba(255,255,255,0.05) 46%, rgba(var(--accent-rgb),0.28) 80%, rgba(0,0,0,0.42) 100%) border-box;
     -webkit-backdrop-filter: blur(28px) saturate(190%); backdrop-filter: blur(28px) saturate(190%);
-    border: 1px solid rgba(255,255,255,0.10);
-    box-shadow: 0 12px 36px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -18px 30px rgba(0,0,0,0.15);
+    box-shadow: 0 12px 36px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.30), inset 0 -18px 30px rgba(0,0,0,0.16);
   }
   .glassui .card.orb {
-    background: rgba(20,22,27,0.28);
-    border-color: rgba(var(--accent-rgb),0.32);
-    box-shadow: 0 16px 50px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), 0 0 40px rgba(var(--accent-rgb),0.12);
+    border: 1px solid transparent;
+    background:
+      linear-gradient(rgba(20,22,27,0.28), rgba(20,22,27,0.28)) padding-box,
+      linear-gradient(158deg, rgba(255,255,255,0.85) 0%, rgba(var(--accent-rgb),0.72) 26%, rgba(var(--accent-rgb),0.18) 62%, rgba(0,0,0,0.42) 100%) border-box;
+    box-shadow: 0 16px 50px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.34), 0 0 40px rgba(var(--accent-rgb),0.12);
   }
   /* real SVG refraction on the pick card's ambient glow (Safari-safe via filter:, not backdrop-filter) */
   .glassui:not(.reduce-motion) .card.orb::before { filter: blur(30px) url(#liquidGlass); }
@@ -1135,7 +1145,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r57 · design-engineering polish (Emil/high-end skills): killed "transition: all", punchier ease-out curve, 100dvh (no iOS viewport jump), crisper pick-strength morph · earlier value-based alerts · bigger touch targets · Geist typography · independent column stacks</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r58 · light-reactive glass rim (gradient stroke: bright top → accent → dark bottom, not a flat border) · machined card edges (inner top highlight) · emoji → ultra-light line icons (flame / target / sparkle) · design-engineering motion polish · earlier value-based alerts · Geist typography</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1179,6 +1189,12 @@
     BNB: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyMCIgcj0iMjAiIGZpbGw9IiNGM0JBMkYiLz48cmVjdCB4PSIxMy40IiB5PSIxMy40IiB3aWR0aD0iMTMuMiIgaGVpZ2h0PSIxMy4yIiByeD0iMiIgZmlsbD0iI2ZmZiIgdHJhbnNmb3JtPSJyb3RhdGUoNDUgMjAgMjApIi8+PC9zdmc+"
   };
 
+  // Ultra-light line icons (replace decorative emoji for a more premium feel). currentColor = inherits text colour.
+  var ICON = {
+    flame: '<svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2.5c1 3.5 3.5 4.8 3.5 8.5a3.5 3.5 0 0 1-7 0c0-1.2.4-2 1-2.7-2 .6-3.5 2.6-3.5 5.2a6 6 0 0 0 12 0c0-5-3.5-7.5-6-11Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+    target: '<svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.4"/><circle cx="12" cy="12" r="1.1" fill="currentColor"/></svg>',
+    sparkle: '<svg class="ic" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4c.5 5 1 7.5 8 8-7 .5-7.5 3-8 8-.5-5-1-7.5-8-8 7-.5 7.5-3 8-8Z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>'
+  };
   var state = { coin: "ETH", rounds: [], lastPrice: null, lastReco: "No recommendation", lastRecoDir: "SKIP", lastRecoObj: null, roundCall: null, pendingRound: null, reqId: 0, candles: null, wsLive: false, lastList: null, aiPrimed: false, lastAI: null, lastCrowd: null, betWindowFired: false, priceHist: [], remaining: null,
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, committed: null, leanDir: null, leanFlips: 0, obi: null,
     chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false, stoch: false, ema: false, bb: false }, vp: { a: 0, b: 1 },
@@ -2091,7 +2107,7 @@
     var mom = state.micro && typeof state.micro.mom === "number" ? state.micro.mom : null;
     var momConfirm = mom != null && ((my === "OVER" && mom > 0) || (my === "UNDER" && mom < 0));
     if (aiAgree && momConfirm && ((auto && auto === my) || edge >= 0.12)) {
-      return { tier: "bet", label: "🔥 STRONG — BET " + my, sub: "app, AI and momentum all line up — the clearest setup to act on" };
+      return { tier: "bet", label: ICON.flame + "STRONG — BET " + my, sub: "app, AI and momentum all line up — the clearest setup to act on" };
     }
     if (auto && auto === my) return { tier: "strong", label: "STRONG — worth betting", sub: "the disciplined 24/7 tracker agrees — its committed bets run ~77–84%" };
     if (auto && auto !== "SKIP") return { tier: "flip", label: "COIN-FLIP — sit out", sub: "split: Co-Pilot says " + my + ", the tracker says " + auto + " — passing is safest" };
@@ -3749,7 +3765,7 @@
     var bsub = (top.confirm ? "heading " + top.side + " · " : "") + ((top.hitRatePct != null && top.graded >= 5) ? top.hitRatePct + "% hit · " : "");
     var rpTop = rowPayout(top);
     if (rpTop) bsub += "~" + rpTop.mult.toFixed(2) + "x" + (rpTop.ev ? " +EV" : rpTop.dead ? " (dead money)" : "") + " · ";
-    $("bbTop").innerHTML = (strongConfirmed ? "🔥 <b>BET " + top.coin + "</b> " : "Best now: <b>" + top.coin + "</b> ") + "<span class=\"" + sideCls + "\">" + top.side + " " + arrow + "</span> · " + top.prob + "%";
+    $("bbTop").innerHTML = (strongConfirmed ? ICON.flame + "<b>BET " + top.coin + "</b> " : "Best now: <b>" + top.coin + "</b> ") + "<span class=\"" + sideCls + "\">" + top.side + " " + arrow + "</span> · " + top.prob + "%";
     $("bbSub").textContent = bsub + (strongConfirmed ? "strong, confirmed pick" : "strongest of " + list.length + " coins this round");
     var others = list.slice(1, 4);
     $("bbRank").textContent = others.length ? "then " + others.map(function (x) { return x.coin + (x.side === "OVER" ? "↑" : x.side === "UNDER" ? "↓" : "·"); }).join("  ") : "";
@@ -3847,7 +3863,7 @@
     el.hidden = false;
     el.innerHTML =
       '<div class="paBody">' +
-        '<div class="paTitle">🚀 Prime spot · ' + p.coin + ' ' + sideTxt + ' · ' + (p.projected ? "→ ~" : "pays ~") + p.mult.toFixed(1) + 'x</div>' +
+        '<div class="paTitle">' + ICON.sparkle + 'Prime spot · ' + p.coin + ' ' + sideTxt + ' · ' + (p.projected ? "→ ~" : "pays ~") + p.mult.toFixed(1) + 'x</div>' +
         '<div class="paSub">' + sub + '</div>' +
       '</div>' +
       '<button type="button" class="paView">View</button>' +
@@ -4139,7 +4155,7 @@
     var plan = state.lastAI && state.lastAI.plan ? String(state.lastAI.plan).trim() : "";
     if (!plan) { el.hidden = true; el.textContent = ""; syncPlaybook(); return; }
     el.hidden = false;
-    el.innerHTML = '<span class="gpLbl">🎯 Game plan · ' + providerNice(state.lastProvider) + '</span>';
+    el.innerHTML = '<span class="gpLbl">' + ICON.target + 'Game plan · ' + providerNice(state.lastProvider) + '</span>';
     var t = document.createElement("span"); t.className = "gpText"; t.textContent = plan; el.appendChild(t);   // textContent = no injection from model text
     syncPlaybook();
   }
