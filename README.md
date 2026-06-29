@@ -19,7 +19,11 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
-- **Layout polish: full-width Play-style tabs + the % moved up next to the call.** The Play-style dial (Sure-Thing/Disciplined/Balanced/Active) now **stretches across the whole card** with four equal, responsive tabs instead of clustering on the left. And the big **likelihood %, the green/red confidence bar, and the indicator count** moved **up to sit right under the directional headline** (HOLDING OVER ↑), so the call and its confidence read as one unit; the Payout and Game Plan strips now sit below them. Display-only. (`.playStyle` CSS + pick-card markup order in `eth-tracker.html`.)
+- **One source of truth: every % you see is now the live Kalshi market price.** The headline %, the This/Next round chips, and the payout line used to mix two different numbers — the app's *own blended estimate* (jiggly, our guess) for the headline, but the *market's price* for the payout. That's why the app could say "81%" while Robinhood showed "98% / 1.0x" for the same bet, and why it flickered and sometimes flagged dead-money buys. Now **the market's own number (the live Kalshi price) is the single figure shown everywhere** — so the app, the payout, and your exchange screen all agree, and the number stops twitching (market odds are stable). The blend still **picks the side** and now appears only as the small "Live:" lean and the **+EV "edge"** on the payout line. Also: when a side is **already near-certain (~90%+)** the card now says **"already nearly settled"** instead of **BUY**, because betting it pays ~1.0x (just your stake back) — directly fixing the "it told me to bet UNDER but it's 1.0x, so nothing" complaint. **Pick-impact: the directional picker is UNCHANGED (same proven blend chooses the side); what changed is the *number displayed* (now the market's, not ours) and the *buy/skip wording* for near-certain favorites (no longer shown as BUY). The AI-free 24/7 tracker is untouched.** (build marker `r38`; `marketPct` + `renderPickCard` / `renderDualPick` in `eth-tracker.html`.)
+
+- **Retired the in-app "Sure-Thing" play-style tab — back to three clean modes.** It was redundant with **Disciplined** and was built on the app's *jiggly* blended % (not the market price), so it flickered bet ↔ sit-out every few seconds, flagged dead-money 1.0x bets as "BET NOW", and could contradict the headline. The correct "bet a clear favorite while it's still bettable" job is already handled by the **Discord near-lock pings** (which read the stable *market* price ~7 min before close) and the **Payout +EV line**. Existing Sure-Thing users are migrated to Disciplined. **No pick-math change.** (`getPlayStyle` / `pickStrength` in `eth-tracker.html`.)
+
+- **Layout polish: full-width Play-style tabs + the % moved up next to the call.** The Play-style dial (Disciplined/Balanced/Active) now **stretches across the whole card** with equal, responsive tabs instead of clustering on the left. And the big **likelihood %, the green/red confidence bar, and the indicator count** moved **up to sit right under the directional headline** (HOLDING OVER ↑), so the call and its confidence read as one unit; the Payout and Game Plan strips now sit below them. Display-only. (`.playStyle` CSS + pick-card markup order in `eth-tracker.html`.)
 
 - **Payout multiplier + "is it actually profitable" on the pick.** The honest reason near-locks win but don't pay: on a prediction market the **payout is the inverse of the win chance** — a ~98% favorite pays ~1.0x ("dead money", just your stake back), a coin-flip ~2x, a longshot ~20x, so simply *following* the market is ~break-even. The only profit is **+EV**: betting a side the app rates **more likely than the market's price**. So the pick card now shows **"Payout ≈ N.NNx"** (estimated from the live Kalshi price, like Robinhood/Coinbase) plus a verdict — **+EV** (app % > market %), **≈ fair / break-even**, **overpriced**, or **dead money** at ~1.0x. Lets you skip the 1.0x dead-money bets and only take the ones with a real edge. Honest caveat: those edges are thin and rare on 15-min crypto — this finds *marginal* profit, not a money printer. (`renderPayout` in `eth-tracker.html`.)
 
@@ -376,6 +380,16 @@ The headline likelihood is one number — `combinedOdds()` → `P(OVER)` — bui
 `calibrate()` then nudges the raw blend toward your realized results: among past rounds whose
 model-confidence sat in the same band, how often did that side actually win? (Laplace-smoothed,
 weighted by sample size, gated until ≥8 samples.) `normCdf` is an Abramowitz-Stegun approximation.
+
+**What you see vs. what picks the side (as of r38).** The blend above is the **picker** —
+`combinedOdds()` chooses the direction and drives the commit/hold logic. But the **% displayed** on
+the pick card, the This/Next round chips, and the payout is the **market's own implied probability**
+(`marketPct()`, from the live Kalshi price) for the chosen side — the same number your exchange quotes
+and the one that sets the payout, so everything on screen agrees with where you actually place the bet
+(and it stops twitching, because the market price is stable where the blend jiggled). The blend's own
+estimate stays visible only as the **"Live:" lean** and the **+EV edge** on the payout line (app % vs
+market %). When the market already prices the chosen side **≥90%**, the card shows *"already nearly
+settled"* instead of **BUY**, since a bet there pays ~1.0x (just your stake back).
 
 These two edges are the most robust findings from a survey of what works on 15-min crypto
 prediction markets — the favorite-longshot bias (CEPR/Whelan, *Makers and Takers: The Economics of

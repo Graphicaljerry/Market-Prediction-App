@@ -830,7 +830,6 @@
   <div class="module m-signal">
   <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span> <button class="ihelp" data-info="autopick">?</button>
     <div class="playStyle" id="playStyle" role="group" aria-label="Play style — how often to bet">
-      <button type="button" data-style="surething">Sure-Thing</button>
       <button type="button" data-style="disciplined">Disciplined</button>
       <button type="button" data-style="balanced">Balanced</button>
       <button type="button" data-style="active">Active</button>
@@ -1002,7 +1001,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-27 · figma-pass r37 · full-width Play-style tabs · % + bar + indicators moved up to join the pick headline</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r38 · one source of truth: every % is the live Kalshi market price (matches your exchange) · dead-money favorites no longer shown as BUY · retired the Sure-Thing tab</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1050,7 +1049,7 @@
     lockedNext: null, lockingNext: false, lockTimer: null, thisRoundLock: null, committed: null, leanDir: null, leanFlips: 0, obi: null,
     chartTF: "live", tfData: null, tfCache: {}, tfReq: 0, micro: null, hoverX: null, chartPts: null, chartMeta: null, ind: { rsi: false, macd: false, stoch: false, ema: false, bb: false }, vp: { a: 0, b: 1 },
     chartType: (function () { try { return localStorage.getItem("chartType_v1") || "line"; } catch (e) { return "line"; } })(),
-    hiConvOnly: (function () { try { var ps = getPlayStyle(); return ps === "disciplined" || ps === "surething"; } catch (e) { return false; } })(),
+    hiConvOnly: (function () { try { return getPlayStyle() === "disciplined"; } catch (e) { return false; } })(),
     aiBoost: (function () { try { return localStorage.getItem("aiBoost_v1") === "1"; } catch (e) { return false; } })(),
     aiRecord: (function () { try { return JSON.parse(localStorage.getItem("aiRecord_v1") || "{}") || {}; } catch (e) { return {}; } })(),   // per-model report card: { "<model>": {graded, correct} }
     aiPending: (function () { try { return JSON.parse(localStorage.getItem("aiPending_v1") || "{}") || {}; } catch (e) { return {}; } })() };  // AI calls awaiting their round's outcome, keyed "coin:bucket"
@@ -1495,6 +1494,16 @@
     return { pOver: pOver, raw: pRaw, dir: pOver >= 0.5 ? "OVER" : "UNDER" };
   }
   function pctFor(pOver, dir) { return Math.round((dir === "OVER" ? pOver : 1 - pOver) * 100); }
+  // THE odds we put on screen = the market's own number (the live Kalshi price) for a given side, 0–100.
+  // This is the same figure your exchange quotes and the one that sets the payout, so the headline %, the
+  // round chips, the payout line, and your betting screen ALL agree. Our blended model still picks the side
+  // and stays visible as the "Live" lean + the +EV "edge" on the payout line — the market sets the odds.
+  // Uses activeCrowd(), so it tracks THIS round normally and the NEXT market in the final 2 min. null = no crowd yet.
+  function marketPct(dir) {
+    var c = activeCrowd();
+    if (!c || typeof c.overPct !== "number" || (dir !== "OVER" && dir !== "UNDER")) return null;
+    return Math.round(dir === "OVER" ? c.overPct : 100 - c.overPct);
+  }
 
   // ---------- Prime-entry cue + late-entry tracking ----------
   // The barrier probability for THIS round, valid even in the final 2 min (unlike barrierOver,
@@ -1863,18 +1872,37 @@
       }
       return;
     }
-    var behind = !nextMode && call.pct < 50;   // committed side is currently losing — we're deliberately holding it
+    // Anchor everything you SEE to the market's own number (Kalshi) for our side — the figure that
+    // sets the payout and matches your exchange. The blend still chose the side; the market sets the odds.
+    var mpct = marketPct(call.dir);
+    var behind = !nextMode && (mpct != null ? mpct < 50 : call.pct < 50);   // our committed side is currently the underdog — we're deliberately holding it
+    // Dead-money guard: when the market already prices our side near-certain it pays ~1.0x, so betting it
+    // just returns your stake. Don't dress that up as a "BUY" — show it honestly and point at the payout line.
+    if (mpct != null && mpct >= 90 && !nextMode) {
+      el.className = "reco skip"; setGlow("SKIP");
+      scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
+      buyEl.className = "buyLine skip";
+      buyEl.innerHTML = call.dir + " already nearly settled" +
+        '<span class="buySub">priced at ~' + mpct + '% — a bet pays about 1.0x, so there’s no real payout left to buy. Wait for the next round.</span>';
+      hintEl.textContent = "Nothing worth buying here: " + call.dir + " is near-certain, so it just returns your stake. Any value is the longshot side — see the payout line below.";
+      pctEl.textContent = mpct + "%"; lblEl.textContent = "already priced in";
+      return;
+    }
     if (pcard && hiConv) pcard.classList.add("highConv");   // strong/edge committed pick → glowing card
     var cls = call.dir === "OVER" ? "over" : "under";
     el.className = "reco " + cls;
     buyEl.className = "buyLine " + cls;
+    var subTxt = behind ? "staying on your side — the line crossed over, but not decisively"
+      : (mpct != null && mpct < 50)
+        ? "betting price goes " + (call.dir === "OVER" ? "UP" : "DOWN") + " — the underdog side, so a bigger payout"
+        : "betting the price goes " + (call.dir === "OVER" ? "UP" : "DOWN");
     buyEl.innerHTML = (behind ? "HOLDING " : "BUY ") + (call.dir === "OVER" ? "OVER ↑" : "UNDER ↓") +
-      '<span class="buySub">' + (behind ? "staying on your side — the line crossed over, but not decisively" : (call.dir === "OVER" ? "betting the price goes UP" : "betting the price goes DOWN")) + "</span>";
-    pctEl.textContent = call.pct + "%";
+      '<span class="buySub">' + subTxt + "</span>";
+    pctEl.textContent = (mpct != null ? mpct : call.pct) + "%";
     if (nextMode) {
       scopeEl.innerHTML = '<span class="liveTag next">◷ NEXT</span>round ' + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "");
       hintEl.textContent = "Locked for the round that opens next — buy " + call.dir + " when it starts.";
-      lblEl.textContent = "likely " + (call.dir === "OVER" ? "UP" : "DOWN");
+      lblEl.textContent = (mpct != null ? "market · " : "likely ") + (call.dir === "OVER" ? "UP" : "DOWN");
     } else {
       scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
       if (behind) {
@@ -1882,7 +1910,7 @@
         lblEl.textContent = "holding " + call.dir;
       } else {
         hintEl.textContent = "Committed " + call.dir + " for this round — held unless it becomes near-certain the other way, so it won't flip every time the line is crossed.";
-        lblEl.textContent = "chance " + (call.dir === "OVER" ? "UP" : "DOWN");
+        lblEl.textContent = (mpct != null ? "market · " : "chance ") + (call.dir === "OVER" ? "UP" : "DOWN");
       }
     }
     if (state.hiConvOnly && hiConv) scopeEl.innerHTML += " · " + (call.conv.level === "strong" ? "HIGH CONVICTION" : "EDGE vs CROWD");
@@ -1903,7 +1931,8 @@
   function getPlayStyle() {
     try {
       var ps = localStorage.getItem("playStyle_v1");
-      if (ps === "surething" || ps === "disciplined" || ps === "balanced" || ps === "active") return ps;
+      if (ps === "surething") return "disciplined";   // retired Sure-Thing → Disciplined (it was redundant + built on the jiggly blend %)
+      if (ps === "disciplined" || ps === "balanced" || ps === "active") return ps;
       return localStorage.getItem("hiConvOnly_v1") === "1" ? "disciplined" : "balanced";   // migrate the old "high-conviction only" toggle
     } catch (e) { return "balanced"; }
   }
@@ -1914,11 +1943,6 @@
     var nextMode = (state.remaining == null ? 999 : state.remaining) <= BET_WINDOW;
     var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
     var style = getPlayStyle(), aggressive = style !== "disciplined", minEdge = style === "active" ? 0.04 : 0.06;
-    if (style === "surething") {   // surface a clearly-favored side EARLY, while it's still bettable (it locks once near-certain)
-      if (!nextMode && edge >= 0.25 && edge < 0.42) return { tier: "strong", label: "BET " + my + " NOW", sub: my + " is clearly favored (~" + Math.round((0.5 + edge) * 100) + "%) and still bettable — place it now; it LOCKS as it nears certain" };
-      if (!nextMode && edge >= 0.42) return { tier: "flip", label: "LIKELY LOCKED", sub: my + " is now near-certain (~" + Math.round((0.5 + edge) * 100) + "%) — the platform has probably locked this side already; you'd need to have bet earlier" };
-      return { tier: "sit", label: "— WAIT FOR A LEAN", sub: "Sure-Thing waits for a clearly-favored, still-bettable side — nothing yet; you'll get a Discord ping the moment one forms" };
-    }
     if (nextMode) {
       if (auto && auto === my && edge >= 0.08) return { tier: "lean", label: "NEXT-ROUND LEAN", sub: "heads-up for the next round (it opens ~50/50) — optional, not a sure thing" };
       return { tier: "flip", label: "NEXT-ROUND PREVIEW", sub: "the next round hasn't opened — ~coin-flip, don't bet it like a strong pick" };
@@ -2021,8 +2045,9 @@
     } else {
       var call = thisRoundCommitted();
       if (call && (call.dir === "OVER" || call.dir === "UNDER")) {
+        var dmp = marketPct(call.dir), dpv = dmp != null ? dmp : call.pct;   // show the market's own odds, same as the headline
         setDPCol(tDirEl, tCol, tSub, call.dir, call.dir === "OVER" ? "over" : "under",
-          (call.pct < 50 ? "holding · " : "") + call.pct + "% likely");
+          (dpv < 50 ? "holding · " : "") + dpv + (dmp != null ? "% market" : "% likely"));
       } else if (call && call.held) {
         setDPCol(tDirEl, tCol, tSub, "—", "skip", "sitting out");   // locked as a skip — held, not re-picked live
       } else setDPCol(tDirEl, tCol, tSub, "—", "wait", "reading…");
@@ -2033,7 +2058,7 @@
     if (L && L.dir) {
       nCol.classList.remove("dormant");
       if (L.dir === "SKIP") setDPCol(nDirEl, nCol, nSub, "SKIP", "skip", "too close — sit out · locked " + L.atLabel);
-      else setDPCol(nDirEl, nCol, nSub, L.dir, L.dir === "OVER" ? "over" : "under", L.pct + "% likely · locked " + L.atLabel);
+      else { var lmp = nextModeNow() ? marketPct(L.dir) : null; setDPCol(nDirEl, nCol, nSub, L.dir, L.dir === "OVER" ? "over" : "under", (lmp != null ? lmp + "% market" : L.pct + "% likely") + " · locked " + L.atLabel); }
     } else if (inWindow) {
       nCol.classList.remove("dormant");
       setDPCol(nDirEl, nCol, nSub, "…", "wait", "locking your next-round bet");
@@ -3142,7 +3167,7 @@
       var b = e.target.closest("button"); if (!b) return;
       var s = b.getAttribute("data-style");
       try { localStorage.setItem("playStyle_v1", s); } catch (er) {}
-      state.hiConvOnly = (s === "disciplined" || s === "surething");   // Disciplined / Sure-Thing mute anything that isn't a strong setup
+      state.hiConvOnly = (s === "disciplined");   // Disciplined mutes anything that isn't a strong setup
       paint(); renderPickCard();
     });
   })();
@@ -3178,7 +3203,7 @@
   })();
   // ---------- Help sheet ----------
   var EXPLAIN = {
-    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the blended chance it's right — indicators + the AI Co-Pilot + the live Kalshi crowd in one number. The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final ~40 seconds it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine. The 'Which to follow' line right under the call reconciles it with the always-on 24/7 auto-tracker: agree → higher conviction (this is your call); split → coin-flip territory, sitting out is the safe play. Follow this Co-Pilot pick as the headline; use the tracker to gauge how much to trust it." },
+    autopick: { t: "Auto Pick — what & when to buy", d: "Your one clear instruction: BUY OVER (betting price goes UP) or BUY UNDER (betting it goes DOWN). The big % is the MARKET's own odds for that side — the live Kalshi price, the same number your exchange quotes and the one that sets the payout, so the app and your betting screen agree. Our blended model (indicators + AI Co-Pilot + the learned tracker) picks the SIDE; it shows up as the small 'Live:' lean and the +EV 'edge' on the payout line — the market sets the odds. If a side is already near-certain (~90%+) the card says 'already nearly settled' instead of BUY, because a bet there pays ~1.0x (just your stake back). The headline call is LOCKED so it doesn't twitch: most of the round it shows your locked pick for THIS round, and in the final ~40 seconds it locks one committed pick for the NEXT round (frozen at a timestamp — 'buy this when it opens'). The small 'Live:' line underneath just tells you whether the live signals still agree or have drifted, and how flippy they've been (steady vs choppy) — info only, it never rewrites the locked call. The little chart shows live price racing the line you must beat: green/above = OVER winning, red/below = UNDER winning; when the AI Co-Pilot is connected the line is the real Kalshi strike. Use the zoom buttons (1m–1d) to pull back and see how far price sits from that line over a minute, an hour, or a day. SKIP means there's no clear edge — sitting out is fine. The 'Which to follow' line right under the call reconciles it with the always-on 24/7 auto-tracker: agree → higher conviction (this is your call); split → coin-flip territory, sitting out is the safe play. Follow this Co-Pilot pick as the headline; use the tracker to gauge how much to trust it." },
     indicators: { t: "Live Indicators", d: "Classic technical indicators recomputed live from 15-minute candles. Each shows its current value and a bull / bear / neutral tag. Tap any indicator row to learn what it means." },
     accuracy: { t: "Pick Accuracy & how rounds settle", d: "When a 15-minute round closes, the app grades the pick against the DEFINITIVE close — the finalized Coinbase 15-minute candle for that round (the same close/arrow you see on Coinbase), not a stray live tick — so the logged direction stays accurate even if the tab was in the background. OVER / UNDER is measured against the round's line to beat (the real Kalshi strike when the Co-Pilot is connected, otherwise the round's opening price). Heads up: Kalshi officially settles on a 60-second average of the CF Benchmarks index in the final minute before expiry, which can differ from a single Coinbase price on razor-thin rounds — so treat this grade as a close, honest proxy, not the official settlement. Hit rate, streak, and the last ~7 days are saved on this device." },
     autotracker: { t: "24/7 Auto-Tracker", d: "A second, simpler picker that runs on the server every 15 minutes — even when this app is closed. It uses only free data (the Kalshi market price, short-term momentum, and the order book) with no AI, so it costs nothing. Every round it makes a pick and grades the last one, building an always-on track record. It's a reality check on the market: where this honest, no-frills system keeps winning, the market is efficient; where it slips, there may be an edge. The AI Co-Pilot reads this record when it makes your live call, and the tracker's learned model now also feeds the Co-Pilot's blended % directly — so the two genuinely talk. Don't pick between them: follow the Co-Pilot's headline call, and let this tracker (via the 'Which to follow' line) tell you how confident to be." },
