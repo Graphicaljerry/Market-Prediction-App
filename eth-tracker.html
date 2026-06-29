@@ -1013,7 +1013,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r41 · Prime-opportunity banner: pops up when a coin is a rare +EV spot to win AND pay big (≥2x) · skim-format notifications "Predict (ETH - Over 1.2x)"</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r42 · Prime-opportunity banner fires at ≥1.7x (or projected to reach it via momentum) · skim-format notifications "Predict (ETH - Over 1.2x)"</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1817,6 +1817,7 @@
   // or (final 2 min) the locked next-round bet — with the live blend only as an agree/drift note.
   function renderPickCard() {
     renderPrime();   // late-round "prime entry" cue — runs regardless of the early-return paths below
+    renderPrimeAlert();   // prime-opportunity banner — per-tick refresh so the live projected path stays current
     renderBlend();   // keep "The read" rows current alongside the call
     renderDualPick();   // This round | Next round header — also runs regardless of early returns below
     var remaining = state.remaining == null ? 999 : state.remaining;
@@ -3584,38 +3585,67 @@
   // clearly above the market's price (+EV) AND that side still pays a real multiple (>= ~2x). Display-only —
   // it reads the same ranking data (state.best + rowPayout) and NEVER changes a pick. Higher variance by
   // nature (a market underdog we think is mispriced), so the copy says "size smart", not "sure thing".
-  var PRIME_MIN_MULT = 2.0, PRIME_MIN_PROB = 60;
+  // Fires two ways: (A) a coin in the live ranking that's +EV and already pays >= PRIME_MIN_MULT, or
+  // (B) the coin you're viewing showing a live "value entry" — price being carried toward a side PROJECTED
+  // to pay >= PRIME_MIN_MULT once it crosses (momentum-based). 1.7x floor per request.
+  var PRIME_MIN_MULT = 1.7, PRIME_MIN_PROB = 55;
+  // (B) live projected value entry for the CURRENT coin — mirrors primeCheck's projection math at the 1.7x floor.
+  function currentValueProjection() {
+    var rem = state.remaining;
+    if (rem == null || rem > 480 || rem < 18) return null;        // only the back stretch of a round
+    var strike = roundStrike(), price = state.lastPrice;
+    if (strike == null || price == null || price <= 0 || strike <= 0) return null;
+    var m = state.micro && typeof state.micro.mom === "number" ? state.micro.mom : null;
+    if (m == null) return null;
+    var underdog = price < strike ? "OVER" : "UNDER";             // the side a flip would land on
+    var toward = (underdog === "OVER" && m > 0) || (underdog === "UNDER" && m < 0);
+    if (!toward) return null;                                      // momentum must carry price toward the line
+    var dist = Math.abs(Math.log(strike / price)), proj = Math.abs(m) * (rem / 60);
+    if (proj < dist * 0.8) return null;                           // must be on pace to actually reach it
+    var cw = activeCrowd();
+    var impU = cw && typeof cw.overPct === "number" ? (underdog === "OVER" ? cw.overPct / 100 : 1 - cw.overPct / 100) : null;
+    if (impU == null) return null;
+    var mult = 1 / Math.max(0.035, impU);
+    if (mult < PRIME_MIN_MULT) return null;
+    return { coin: state.coin, side: underdog, prob: null, mult: mult, sidePct: impU * 100, projected: true, score: 0.5 * mult };
+  }
   function primeOpportunity() {
-    var list = state.best || [], best = null;
+    var cands = [], list = state.best || [];
     for (var i = 0; i < list.length; i++) {
       var x = list[i], rp = rowPayout(x);
-      if (!rp || !rp.ev) continue;                  // must be +EV (our model rates it above the market price)
-      if (rp.mult < PRIME_MIN_MULT) continue;       // must multiply a lot
-      if ((x.prob || 0) < PRIME_MIN_PROB) continue; // must have a real chance to win
-      if ((x.agree || 0) < 2) continue;             // a little corroboration
-      var score = (x.prob / 100) * rp.mult;         // rank by rough expected value
-      if (!best || score > best.score) best = { x: x, rp: rp, score: score };
+      if (!rp || !rp.ev) continue;                          // +EV: our model rates it above the market price
+      if (rp.mult < PRIME_MIN_MULT) continue;               // pays at least 1.7x
+      if ((x.prob || 0) < PRIME_MIN_PROB) continue;         // a real chance to win
+      if ((x.agree || 0) < 2) continue;
+      cands.push({ coin: x.coin, side: x.side, prob: x.prob, mult: rp.mult, sidePct: rp.sidePct, projected: false, score: (x.prob / 100) * rp.mult });
     }
-    return best;
+    var vp = currentValueProjection();
+    if (vp) cands.push(vp);
+    if (!cands.length) return null;
+    cands.sort(function (a, b) { return b.score - a.score; });
+    return cands[0];
   }
   var _primeDismissed = {};
   function renderPrimeAlert() {
     var el = $("primeAlert"); if (!el) return;
     var p = getWorkerUrl() ? primeOpportunity() : null;
     if (!p) { el.hidden = true; el.innerHTML = ""; return; }
-    var bucket = currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0;   // one alert per coin/side per round
-    var key = p.x.coin + ":" + p.x.side + ":" + bucket;
+    var bucket = currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0;   // one alert per coin/side/kind per round
+    var key = p.coin + ":" + p.side + ":" + (p.projected ? "proj" : "ev") + ":" + bucket;
     if (_primeDismissed[key]) { el.hidden = true; return; }
-    var sideTxt = p.x.side === "OVER" ? "OVER ↑" : "UNDER ↓";
+    var sideTxt = p.side === "OVER" ? "OVER ↑" : "UNDER ↓";
+    var sub = p.projected
+      ? "Price is being carried toward the line — projected to pay <b>~" + p.mult.toFixed(1) + "x</b> if it crosses. Higher variance, so size smart."
+      : "We rate it <b>" + p.prob + "%</b> vs the market’s " + Math.round(p.sidePct) + "% — a rare chance to win AND pay big. Higher variance, so size smart.";
     el.hidden = false;
     el.innerHTML =
       '<div class="paBody">' +
-        '<div class="paTitle">🚀 Prime spot · ' + p.x.coin + ' ' + sideTxt + ' · pays ~' + p.rp.mult.toFixed(1) + 'x</div>' +
-        '<div class="paSub">We rate it <b>' + p.x.prob + '%</b> vs the market’s ' + Math.round(p.rp.sidePct) + '% — a rare chance to win AND pay big. Higher variance, so size smart.</div>' +
+        '<div class="paTitle">🚀 Prime spot · ' + p.coin + ' ' + sideTxt + ' · ' + (p.projected ? "→ ~" : "pays ~") + p.mult.toFixed(1) + 'x</div>' +
+        '<div class="paSub">' + sub + '</div>' +
       '</div>' +
       '<button type="button" class="paView">View</button>' +
       '<button type="button" class="paClose" aria-label="Dismiss">×</button>';
-    el.querySelector(".paView").onclick = function () { if (p.x.coin !== state.coin) setCoin(p.x.coin); el.hidden = true; };
+    el.querySelector(".paView").onclick = function () { if (p.coin !== state.coin) setCoin(p.coin); el.hidden = true; };
     el.querySelector(".paClose").onclick = function () { _primeDismissed[key] = 1; el.hidden = true; };
   }
 
