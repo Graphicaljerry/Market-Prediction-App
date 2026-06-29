@@ -29,7 +29,7 @@
     --separator: rgba(84,84,88,0.55);
     --label: #ffffff;
     --label-2: rgba(235,235,245,0.62);
-    --label-3: rgba(235,235,245,0.32);
+    --label-3: rgba(235,235,245,0.46);   /* lifted from .32 for legibility (closer to WCAG AA) while staying muted */
     --green: #30d158;
     --red: #ff453a;
     --orange: #ff9f0a;
@@ -71,6 +71,8 @@
     -webkit-font-smoothing: antialiased; letter-spacing: 0;
     font-kerning: normal; text-rendering: optimizeLegibility; font-feature-settings: "cv01", "ss01";
   }
+  /* Keyboard focus ring — visible for keyboard users only (not on mouse/touch), in the live accent colour. */
+  :focus-visible { outline: 2px solid rgba(var(--accent-rgb), .9); outline-offset: 2px; border-radius: 5px; }
   body {
     position: relative; background: transparent;
     max-width: 1120px; margin: 0 auto;
@@ -863,7 +865,7 @@
   /* real SVG refraction on the pick card's ambient glow (Safari-safe via filter:, not backdrop-filter) */
   .glassui:not(.reduce-motion) .card.orb::before { filter: blur(30px) url(#liquidGlass); }
   /* glossy gradient coin title */
-  .glassui .coinHero { background: linear-gradient(180deg,#fff 0%,#d2d8d4 55%,#a9b2ac 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 12px rgba(var(--accent-rgb),0.22)); }
+  .glassui .coinHero { color: #f3f5f7; filter: drop-shadow(0 2px 12px rgba(var(--accent-rgb),0.22)); }   /* solid (was gradient text — an AI-slop tell); keeps the soft accent glow */
   /* frost the segmented controls + the prime banner too */
   .glassui .seg, .glassui .playStyle { -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%); }
   .glassui .primeAlert { -webkit-backdrop-filter: blur(24px) saturate(200%); backdrop-filter: blur(24px) saturate(200%); }
@@ -1129,7 +1131,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r54 · typography upgrade — Geist + Geist Mono (was Inter + Space Mono), crisper SF-adjacent feel · AI Spend dropdown copy fixed (Every round is the default now) · independent column stacks · "Who's calling it better" meter · smoother easing · fewer colors · installable PWA</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r55 · audit pass: lifted muted-text contrast (toward WCAG AA), solid page title (removed gradient-text tell), keyboard focus ring, aria-labels on icon buttons · Geist + Geist Mono typography · independent column stacks · "Who's calling it better" meter · fewer colors · installable PWA</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3723,6 +3725,8 @@
   }
   // Register the notifications-only service worker (what enables native notifications on installed PWAs).
   (function () { try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(function () {}); } catch (e) {} })();
+  // A11y: give the icon-only "?" info buttons an accessible name (they show just a glyph).
+  (function () { try { Array.prototype.forEach.call(document.querySelectorAll(".ihelp"), function (b) { if (!b.getAttribute("aria-label")) b.setAttribute("aria-label", "What is this?"); }); } catch (e) {} })();
   // Payout + EV for a ranked-coin row, from the live market price the worker now forwards (x.crowdOver = market OVER%).
   // payout = 1 / (price of the picked side); +EV when our model rates that side above the market's price. null = no live market.
   function rowPayout(x) {
