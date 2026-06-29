@@ -876,12 +876,16 @@ async function pushDiscord(env, text) {
 async function notifyHotPicks(env, st) {
   if (!env.NTFY_TOPIC && !env.DISCORD_WEBHOOK) return;
   const minProb = Number(env.NTFY_MIN_PROB) || 75;
+  const deadPct = Number(env.NTFY_DEAD_PCT) || 90;   // don't ping a side the market already prices >= this — it pays ~1.0x (no profit)
   const hot = [];
   for (const c of AUTO_COINS) {
     const rec = st.coins && st.coins[c], p = rec && rec.pending;
     if (!p || p.notified) continue;
     if ((p.side === "OVER" || p.side === "UNDER") && (p.prob || 0) >= minProb && (p.agree || 0) >= 3) {
-      hot.push(`${c} ${p.side} ${p.prob}%`);
+      const mp = p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null;
+      const sidePct = mp == null ? null : (p.side === "OVER" ? mp : 100 - mp);   // the market price of OUR side
+      if (sidePct != null && sidePct >= deadPct) continue;   // dead money — skip the ping, don't even mark it (in case the price eases later)
+      hot.push(`${c} ${p.side} ${p.prob}%` + (sidePct != null ? ` (~${(100 / sidePct).toFixed(2)}x)` : ""));
       p.notified = true;   // one push per round (persisted by the saveState that follows)
     }
   }
@@ -897,34 +901,66 @@ async function notifyHotPicks(env, st) {
   }
   if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 High-confidence pick (not a skip): " + msg);
 }
-// SURE-THING scanner — runs ~7 min before each close (the 8,23,38,53 cron). For every coin with a Kalshi
-// series, it pings when the MARKET ITSELF is in the BETTABLE band: clearly favored (>= LOCK_MIN_PROB,
-// default 75%) but NOT yet so certain the platform locks the side (< LOCK_MAX_PROB, default 92%). The
-// earlier timing matters: a side locks once near-certain, so the ping aims for the still-bettable window.
-// Honest caveat: these are cheap to win (small payout), so it's "where it'll land", not a price edge.
-// Read-only (persist=false) so it adds no KV writes; one scan per round so it's one ping max per coin.
+// Small ntfy push helper (shared by the alert scanners).
+async function ntfyPush(env, title, tag, body) {
+  if (!env.NTFY_TOPIC) return;
+  const url = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
+  await fetch(url, { method: "POST", headers: { Title: title, Priority: "high", Tags: tag, ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) }, body }).catch(() => {});
+}
+// LATE-ROUND alert scanner — runs ~7 min before each close (the 8,23,38,53 cron). ONE read-only pass over
+// every coin's Kalshi crowd (persist=false → no KV writes), firing up to two kinds of ping:
+//   • NEAR-LOCK "bet while you can" — the market is clearly favored (>= LOCK_MIN_PROB, default 75%) but not
+//     yet locked (< LOCK_MAX_PROB, default 92%). High win rate, small payout — now shown WITH the multiplier.
+//   • VALUE ENTRY "longshot about to cross" — price is on one side, momentum is carrying it TOWARD the line,
+//     and the side it's heading to is still the big-multiplier underdog (>= 2.5x). Higher variance, real payout.
+//     (This is primeCheck's client-side cue, now pushed even with the app closed.)
+// Accepts a cached-but-stale crowd ONLY while it still belongs to an open round (closeTime in the future,
+// within one 15-min window) — so pings keep firing through Kalshi 429s without ever using last round's data.
 async function scanLateLocks(env) {
   if (!env.DISCORD_WEBHOOK && !env.NTFY_TOPIC) return;
-  // BETTABLE band: clearly favored (>= LOCK_MIN_PROB) but NOT yet so certain the platform locks the
-  // side (< LOCK_MAX_PROB). Scanned ~7 min before close so the ping reaches you while you can still bet.
   const lo = Number(env.LOCK_MIN_PROB) || 75, hi = Number(env.LOCK_MAX_PROB) || 92;
-  const hot = [];
+  const now = Date.now();
+  const lockHot = [], valueHot = [];
   for (const c of AUTO_COINS) {
     const t = env["KALSHI_SERIES_" + c];
     if (!t) continue;
     let crowd = null;
     try { crowd = await getKalshiCrowd(env, t, false); } catch (_) {}
-    const op = crowd && !crowd.stale && typeof crowd.overPct === "number" ? crowd.overPct : null;
-    if (op == null) continue;
-    if (op >= lo && op < hi) hot.push(`${c} OVER ~${Math.round(op)}%`);
-    else if (op <= 100 - lo && op > 100 - hi) hot.push(`${c} UNDER ~${Math.round(100 - op)}%`);
+    if (!crowd || typeof crowd.overPct !== "number") continue;
+    const closeMs = crowd.closeTime ? new Date(crowd.closeTime).getTime() : 0;
+    const stillThisRound = closeMs > now && (closeMs - now) <= 16.5 * 60000;   // an open, current 15-min round
+    if (crowd.stale && !stillThisRound) continue;   // fresh is always ok; stale only while it's still this round
+    const op = crowd.overPct;
+    // (1) NEAR-LOCK band — clearly favored but still bettable (shown with the payout multiplier).
+    if (op >= lo && op < hi) lockHot.push(`${c} OVER ~${Math.round(op)}% (~${(100 / op).toFixed(2)}x)`);
+    else if (op <= 100 - lo && op > 100 - hi) lockHot.push(`${c} UNDER ~${Math.round(100 - op)}% (~${(100 / (100 - op)).toFixed(2)}x)`);
+    // (2) VALUE ENTRY — the big-payout longshot the price is racing toward (needs live Coinbase momentum).
+    if (stillThisRound && op > 2 && op < 98 && crowd.strike > 0) {
+      let micro = null;
+      try { micro = await cbMicro(CB_PRODUCT[c]); } catch (_) {}
+      if (micro && typeof micro.price === "number" && micro.price > 0 && typeof micro.mom === "number") {
+        const rem = (closeMs - now) / 1000;
+        const underdog = micro.price < crowd.strike ? "OVER" : "UNDER";          // the side a flip would land on
+        const toward = (underdog === "OVER" && micro.mom > 0) || (underdog === "UNDER" && micro.mom < 0);
+        const dist = Math.abs(Math.log(crowd.strike / micro.price));             // gap to the line (log)
+        const proj = Math.abs(micro.mom) * (rem / 60);                           // projected move over time left
+        const impU = underdog === "OVER" ? op / 100 : 1 - op / 100;
+        const mult = 1 / Math.max(0.035, impU);
+        if (toward && rem >= 60 && rem <= 480 && proj >= dist * 0.8 && mult >= 2.5) {
+          valueHot.push(`${c} ${underdog} ~${mult.toFixed(1)}x (price heading for the line, ~${Math.round(rem / 60)} min left)`);
+        }
+      }
+    }
   }
-  if (!hot.length) return;
-  const msg = "LEANING — bet while you can (~7 min to close): " + hot.join("   ·   ") + " — clearly favored but still bettable. The favorite LOCKS once it's near-certain, so place it now. High win rate, small payout.";
-  if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 " + msg);
-  if (env.NTFY_TOPIC) {
-    const url = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
-    await fetch(url, { method: "POST", headers: { Title: "Leaning — bet now before it locks", Priority: "high", Tags: "dart", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) }, body: msg }).catch(() => {});
+  if (lockHot.length) {
+    const msg = "LEANING — bet while you can (~7 min to close): " + lockHot.join("   ·   ") + " — clearly favored but still bettable. The favorite LOCKS once near-certain, so place it now. High win rate, small payout.";
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 " + msg);
+    await ntfyPush(env, "Leaning — bet now before it locks", "dart", msg);
+  }
+  if (valueHot.length) {
+    const msg = "VALUE ENTRY — longshot about to cross: " + valueHot.join("   ·   ") + " — price is being carried toward the line and the side it's heading to still pays big. Higher variance; size small.";
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "⚡ " + msg);
+    await ntfyPush(env, "Value entry — longshot about to cross", "zap", msg);
   }
 }
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
@@ -1057,6 +1093,7 @@ function rankBest(st) {
       hitRatePct: typeof rec.hitRatePct === "number" ? rec.hitRatePct : null,
       betRatePct: typeof rec.betRatePct === "number" ? rec.betRatePct : null,     // coverage — how often it commits
       shadowHitPct: typeof rec.shadowHitPct === "number" ? rec.shadowHitPct : null, // if it bet every round
+      crowdOver: p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null,   // live Kalshi market OVER% (for the app's payout/+EV badge + dead-money alert gate); null on self-tracked coins. Display-only — does NOT affect the pick.
       graded: n, seen: rec.shadowGraded || rec.seen || 0, closeMs: p.closeMs || null, score: Math.round(score * 1000) / 1000,
     });
   }

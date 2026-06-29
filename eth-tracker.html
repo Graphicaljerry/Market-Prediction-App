@@ -1001,7 +1001,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r39 · audit fixes: payout reads the same market as the headline · one shared dead-money cutoff (90%) · est-labelled fallback when a coin has no live Kalshi crowd</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r40 · payout/+EV on the best-bet bar &amp; all-coins ranking · alerts skip dead-money &amp; show the multiplier · worker pushes near-lock + value-entry pings (with payout)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3507,9 +3507,19 @@
     var bucket = currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0;   // one alert per coin per round
     (state.best || []).forEach(function (x) {
       if ((x.side !== "OVER" && x.side !== "UNDER") || x.prob < 75 || (x.agree || 0) < 3) return;
+      var mp = (typeof x.crowdOver === "number") ? (x.side === "OVER" ? x.crowdOver : 100 - x.crowdOver) : null;   // market price of our side
+      if (mp != null && mp >= DEAD_MONEY_PCT) return;   // skip dead-money — a side the market prices >= 90% pays ~1.0x, no profit to ping
       var key = x.coin + ":" + bucket; if (_notifiedKey[key]) return; _notifiedKey[key] = 1;
-      try { new Notification("🎯 High-confidence: " + x.coin + " " + x.side + " " + x.prob + "%", { body: (x.agree) + " independent reads agree — bet this 15-min round", tag: key }); } catch (e) {}
+      try { new Notification("🎯 High-confidence: " + x.coin + " " + x.side + " " + x.prob + "%", { body: (x.agree) + " reads agree — bet this 15-min round" + (mp != null ? " · ~" + (100 / mp).toFixed(2) + "x" : ""), tag: key }); } catch (e) {}
     });
+  }
+  // Payout + EV for a ranked-coin row, from the live market price the worker now forwards (x.crowdOver = market OVER%).
+  // payout = 1 / (price of the picked side); +EV when our model rates that side above the market's price. null = no live market.
+  function rowPayout(x) {
+    if (!x || typeof x.crowdOver !== "number" || (x.side !== "OVER" && x.side !== "UNDER")) return null;
+    var sidePct = x.side === "OVER" ? x.crowdOver : 100 - x.crowdOver;
+    if (!(sidePct > 1 && sidePct < 99.5)) return null;
+    return { sidePct: sidePct, mult: 100 / sidePct, ev: typeof x.prob === "number" && x.prob > sidePct, dead: sidePct >= DEAD_MONEY_PCT };
   }
   function renderBestBar() {
     var el = $("bestBar"); if (!el) return;
@@ -3518,6 +3528,8 @@
     var top = list[0];
     var arrow = top.side === "OVER" ? "↑" : "↓", sideCls = top.side === "OVER" ? "o" : "u";
     var bsub = (top.hitRatePct != null && top.graded >= 5) ? top.hitRatePct + "% hit · " : "";
+    var rpTop = rowPayout(top);
+    if (rpTop) bsub += "~" + rpTop.mult.toFixed(2) + "x" + (rpTop.ev ? " +EV" : rpTop.dead ? " (dead money)" : "") + " · ";
     $("bbTop").innerHTML = "Best now: <b>" + top.coin + "</b> <span class=\"" + sideCls + "\">" + top.side + " " + arrow + "</span> · " + top.prob + "%";
     $("bbSub").textContent = bsub + "strongest of " + list.length + " coins this round";
     var others = list.slice(1, 4);
@@ -3541,6 +3553,8 @@
       var meta = [];
       if (x.hitRatePct != null && x.graded >= 5) meta.push("<b>" + x.hitRatePct + "%</b> hit");
       if (x.betRatePct != null && (x.seen || 0) >= 5) meta.push("bets " + x.betRatePct + "%");
+      var rp = rowPayout(x);
+      if (rp) meta.push((rp.ev ? '<b style="color:var(--green)">+EV</b> ' : "") + "~" + rp.mult.toFixed(2) + "x");
       var ico = (typeof COIN_ICONS !== "undefined" && COIN_ICONS[x.coin]) ? COIN_ICONS[x.coin] : "";
       html += '<div class="blRow' + (x.coin === state.coin ? " active" : "") + '" data-coin="' + x.coin + '">' +
         '<span class="blPos">' + (idx + 1) + '</span>' +

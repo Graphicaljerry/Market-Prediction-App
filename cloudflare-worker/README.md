@@ -177,9 +177,10 @@ Cloudflare Workers (shared IPs) *even with a token*, so Discord is the dependabl
 2. Worker → **Settings → Variables and Secrets** → add a **Secret** **`DISCORD_WEBHOOK`** = that URL → **Deploy**.
 3. Test: open `…workers.dev/?testpush=discord` — it posts to your channel and returns `{"discord":{"sent":true}}`. Real pings then arrive automatically. (`pushDiscord` in `worker.js`.)
 
-**Two kinds of ping fire automatically** once a channel is set:
-- **Near-lock "bet now"** — a cron at **:08/:23/:38/:53** (≈7 min before each close) scans every coin and pings when the **Kalshi market is in the bettable band — clearly favored (≥ `LOCK_MIN_PROB`, default 75%) but not yet locked (< `LOCK_MAX_PROB`, default 92%)** on one side. The earlier timing matters: a side **locks once it's near-certain**, so the ping aims for the window where you can still place it. High win rate, small payout. (`scanLateLocks`.) **This is the one you'll actually get** — the old open-of-round check almost never qualified because the open is ~50/50.
-- **High-confidence open pick** — the regular 15-min cron still pings if a *new* round opens with a strong, non-SKIP pick (rare). (`notifyHotPicks`.)
+**Three kinds of ping fire automatically** once a channel is set (all from one read-only `scanLateLocks` pass on the `:08/:23/:38/:53` cron, except the open-pick one):
+- **Near-lock "bet now"** — ≈7 min before each close, pings when the **Kalshi market is in the bettable band — clearly favored (≥ `LOCK_MIN_PROB`, default 75%) but not yet locked (< `LOCK_MAX_PROB`, default 92%)** on one side. The earlier timing matters: a side **locks once it's near-certain**, so the ping aims for the window where you can still place it. The message now includes the **payout multiplier** (e.g. *"ETH OVER ~82% (~1.22x)"*). High win rate, small payout. (`scanLateLocks`.) **This is the one you'll actually get** — the old open-of-round check almost never qualified because the open is ~50/50.
+- **Value entry "longshot about to cross"** — same scan: pings when price is on one side, **momentum is carrying it toward the line**, and the side it's heading to is still the **big-multiplier underdog (≥ 2.5x)**. This is the *profit* signal (unlike near-locks, which pay ~1.0x) — higher variance, so size small. (Mirrors the app's `primeCheck` cue, now pushed even with the app closed.)
+- **High-confidence open pick** — the regular 15-min cron pings if a *new* round opens with a strong, non-SKIP pick (rare). It now **skips dead-money** sides (market ≥ `NTFY_DEAD_PCT`, default 90% — they pay ~1.0x) and shows the multiplier. (`notifyHotPicks`.)
 
 Make sure your Discord channel's **notifications are on** (and the Discord phone app can push) so these reach your phone.
 
@@ -188,7 +189,8 @@ Make sure your Discord channel's **notifications are on** (and the Discord phone
    `crypto-tracker-9f3k2`). Subscribe to it in the app.
 2. In the Worker → **Settings → Variables and Secrets**, add a Text var **`NTFY_TOPIC`** = that
    topic name (or a full `https://ntfy.sh/<topic>` URL if you self-host). Optional **`NTFY_MIN_PROB`**
-   (default `75`) to tune the bar.
+   (default `75`) to tune the bar, and **`NTFY_DEAD_PCT`** (default `90`) — the open-pick ping skips any
+   side the market already prices at/above this (it pays ~1.0x, so there's no profit to alert on).
    - **Strongly recommended: also set `NTFY_TOKEN`.** Cloudflare Workers send from shared IPs, and the
      free ntfy.sh server rate-limits by IP — so anonymous pushes from a Worker frequently get
      **HTTP 429** and silently fail. Fix: create a free account at **ntfy.sh** → **Account → Access
