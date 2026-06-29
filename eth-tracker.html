@@ -38,7 +38,7 @@
     --accent: var(--green);
     --accent-rgb: 13,224,89;
     /* shared easing curves so motion across the app feels consistent and polished */
-    --ease: cubic-bezier(.22,.61,.36,1);          /* smooth ease-out for hovers/colour shifts */
+    --ease: cubic-bezier(.22,1,.36,1);            /* strong ease-out — punchier than the built-ins (per Emil's animation guidance) */
     --ease-soft: cubic-bezier(.4,0,.2,1);          /* gentle in-out for panels/larger moves */
     --ease-spring: cubic-bezier(.16,1,.3,1);       /* strong, smooth deceleration for taps/pops (no bounce) */
   }
@@ -77,7 +77,7 @@
     position: relative; background: transparent;
     max-width: 1120px; margin: 0 auto;
     padding: max(14px, env(safe-area-inset-top)) clamp(16px, 3.5vw, 44px) calc(40px + env(safe-area-inset-bottom));
-    min-height: 100vh; overflow-x: clip; overscroll-behavior-y: none;
+    min-height: 100vh; min-height: 100dvh; overflow-x: clip; overscroll-behavior-y: none;   /* dvh: no iOS Safari viewport jump as the toolbar shows/hides */
   }
   /* Best-bet ticker — a sticky footer that ranks all coins and surfaces the strongest bet now */
   body.has-bestbar { padding-bottom: calc(74px + env(safe-area-inset-bottom)); }
@@ -622,7 +622,7 @@
   .tfBar { display: flex; gap: 4px; margin-top: 16px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; touch-action: pan-x; }
   .tfBar::-webkit-scrollbar { display: none; }
   .tfBtn { flex: 0 0 auto; min-height: 28px; padding: 4px 11px; border-radius: 8px; background: transparent; color: var(--label-2);
-    border: 1px solid var(--separator); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .18s ease; }
+    border: 1px solid var(--separator); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease); }
   .tfBtn.active { background: var(--surface-3); color: var(--label); border-color: transparent; }
   .tfBtn:active { opacity: .6; }
   /* chart header row: timeframe bar (scrolls) + line/candles toggle (pinned right) */
@@ -630,7 +630,7 @@
   .chartHead .tfBar { margin-top: 0; flex: 1 1 auto; min-width: 0; }
   .chartType { display: flex; gap: 2px; flex: 0 0 auto; background: rgba(28,28,30,0.55); border: 1px solid rgba(255,255,255,0.07); border-radius: 9px; padding: 2px; }
   .chartType button { flex: 0 0 auto; min-height: 26px; padding: 3px 10px; border-radius: 7px; background: transparent; color: var(--label-2);
-    border: none; font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .18s ease; }
+    border: none; font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease); }
   .chartType button.active { background: var(--surface-3); color: var(--label); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
   .chartType button:active { opacity: .6; }
 
@@ -725,7 +725,7 @@
   .pickStrength:empty { display: none; }
   .pickStrength { position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; text-align: center;
     margin: 0 0 14px; padding: 9px 13px; border-radius: 12px; font-weight: 800; font-size: 13px; letter-spacing: .02em; border: 1px solid transparent;
-    transition: background .4s var(--ease), border-color .4s var(--ease), color .4s var(--ease), box-shadow .4s var(--ease); }
+    transition: background .28s var(--ease), border-color .28s var(--ease), color .28s var(--ease), box-shadow .28s var(--ease); }
   .pickStrength .psSub { flex-basis: 100%; margin-top: 3px; font-weight: 600; font-size: 11px; letter-spacing: 0; opacity: .9; }
   .pickStrength.strong { color: var(--green); background: rgba(13,224,89,.12); border-color: rgba(13,224,89,.45); box-shadow: 0 0 18px rgba(13,224,89,.22); }
   /* "bet" = the clearest setup (app + AI + momentum aligned). Picks up the side's accent color, eases in, then pulses. */
@@ -1135,7 +1135,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r56 · notifications fire EARLIER &amp; on real value (forming favorites ~1.5x + the open-round pick), not the too-late ~1.2x near-lock · bigger touch targets (the "?" buttons + phone chart/indicator buttons) · tighter copy · audit a11y fixes · Geist typography · independent column stacks</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r57 · design-engineering polish (Emil/high-end skills): killed "transition: all", punchier ease-out curve, 100dvh (no iOS viewport jump), crisper pick-strength morph · earlier value-based alerts · bigger touch targets · Geist typography · independent column stacks</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
