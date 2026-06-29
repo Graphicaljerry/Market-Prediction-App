@@ -19,7 +19,7 @@
 <title>15-Min Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
   :root {
     --bg: #0a0a0b;
@@ -67,8 +67,9 @@
   html { background: var(--bg); overflow-x: clip; overscroll-behavior: none; }
   html, body {
     color: var(--label);
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased; letter-spacing: 0;
+    font-kerning: normal; text-rendering: optimizeLegibility; font-feature-settings: "cv01", "ss01";
   }
   body {
     position: relative; background: transparent;
@@ -168,7 +169,7 @@
     .pageGlow { filter: blur(130px); }
   }
 
-  .mono { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
+  .mono { font-family: "Geist Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
   /* ---------- Header ---------- */
   .topbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 2px 18px; }
@@ -384,7 +385,7 @@
   @keyframes flashUpdate { 0%{opacity:1;} 40%{opacity:.45;} 100%{opacity:1;} }
   .updated { font-size: 12px; color: var(--label-3); margin-top: 14px; display: flex; justify-content: space-between; }
   .err { color: var(--red); }
-  .roundStatus { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; font-variant-numeric: tabular-nums; font-size: 14px; color: var(--label-2); margin-top: 9px; font-weight: 700; letter-spacing: 0; transition: color .35s ease; }
+  .roundStatus { font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; font-variant-numeric: tabular-nums; font-size: 14px; color: var(--label-2); margin-top: 9px; font-weight: 700; letter-spacing: 0; transition: color .35s ease; }
   .roundStatus.over { color: #2fe06a; } .roundStatus.under { color: #ff5b51; }
 
   /* ---------- Timer ---------- */
@@ -523,8 +524,8 @@
 
   .scopeTag { font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; color: var(--label-3); margin-bottom: 12px; }
   .reco.over .scopeTag { color: var(--green); } .reco.under .scopeTag { color: var(--red); }
-  .buyLine { font-family: "Space Mono", ui-monospace, "SF Mono", monospace; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; padding: 10px 6px 6px; }
-  .buyLine .buySub { font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; display: block; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; margin-top: 4px; opacity: .85; }
+  .buyLine { font-family: "Geist Mono", ui-monospace, "SF Mono", monospace; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; padding: 10px 6px 6px; }
+  .buyLine .buySub { font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; display: block; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none; margin-top: 4px; opacity: .85; }
   .payout { margin: 9px 0 2px; padding: 9px 13px; border-radius: 11px; background: rgba(255,255,255,.04); border: 1px solid var(--separator); font-size: 13px; font-weight: 600; color: var(--label-2); line-height: 1.4; }
   .gamePlan { margin: 12px 0 2px; padding: 11px 14px; border-radius: 12px; background: rgba(255,255,255,.04); border: 1px solid var(--separator); text-align: left; }
   .gamePlan .gpLbl { display: block; font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); margin-bottom: 3px; }
@@ -643,7 +644,7 @@
   .chip.info { background: rgba(118,118,128,0.2); color: var(--label-2); }
 
   /* ---------- Bet ---------- */
-  .betInput { width: 100%; min-height: 50px; background: var(--surface-2); color: var(--label); border: none; border-radius: 12px; padding: 0 16px; font-size: 22px; font-weight: 600; font-family: ui-monospace, "SF Mono", "Space Mono", monospace; font-variant-numeric: tabular-nums; margin-bottom: 12px; }
+  .betInput { width: 100%; min-height: 50px; background: var(--surface-2); color: var(--label); border: none; border-radius: 12px; padding: 0 16px; font-size: 22px; font-weight: 600; font-family: ui-monospace, "SF Mono", "Geist Mono", monospace; font-variant-numeric: tabular-nums; margin-bottom: 12px; }
   .betInput:focus { outline: 2px solid var(--blue); }
   .betBtns { display: flex; gap: 11px; }
   .btn { flex: 1; min-height: 54px; border: none; border-radius: 14px; font-size: 17px; font-weight: 600; font-family: inherit; color: #fff; cursor: pointer; transition: opacity .15s, transform .08s; letter-spacing: 0; }
@@ -703,7 +704,7 @@
   .aiInfluence { margin: 8px 0 12px; }
   .aiInflTop { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 7px; }
   .aiInflLbl { font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: var(--label-3); }
-  .aiInflPct { font-size: 19px; font-weight: 800; font-family: "Space Mono", monospace; color: var(--label); }
+  .aiInflPct { font-size: 19px; font-weight: 800; font-family: "Geist Mono", monospace; color: var(--label); }
   .aiInflBar { height: 8px; border-radius: 999px; background: rgba(255,255,255,.06); overflow: hidden; }
   .aiInflFill { height: 100%; border-radius: 999px; background: rgba(10,132,255,.85); box-shadow: 0 0 10px rgba(10,132,255,.5); transition: width .5s cubic-bezier(.2,.8,.2,1); }
   .aiInflFill.claude { background: rgba(217,119,87,.92); box-shadow: 0 0 10px rgba(217,119,87,.5); }
@@ -773,7 +774,7 @@
   .aiRow { display:flex; align-items:center; justify-content:space-between; padding:11px 0; border-bottom:.5px solid var(--separator); font-size:14px; }
   .aiRow:last-child { border-bottom:none; }
   .aiRow .k { color:var(--label-2); white-space:nowrap; flex:0 0 auto; }
-  .aiRow .v { font-weight:700; font-family:"Space Mono",monospace; text-align:right; padding-left:14px; line-height:1.45; min-width:0; }
+  .aiRow .v { font-weight:700; font-family:"Geist Mono",monospace; text-align:right; padding-left:14px; line-height:1.45; min-width:0; }
   .aiScope { font-size:11px; font-weight:600; text-align:center; color:var(--label-3); letter-spacing:.02em; text-transform:uppercase; margin-bottom:2px; }
   .aiScope.next { color:var(--blue); }
   .aiVerdict { font-size:24px; font-weight:800; text-align:center; padding:4px 0 2px; }
@@ -783,7 +784,7 @@
   .aiEdge.with { background:rgba(255,159,10,.15); color:var(--orange); }
   .aiEdge.against { background:rgba(48,209,88,.15); color:var(--green); }
   /* One control size for every field + button in this panel: 46px tall, 14px, 12px radius. */
-  .settingsInput { width:100%; height:46px; box-sizing:border-box; background:var(--surface-2); color:var(--label); border:1px solid var(--border-2); border-radius:12px; padding:0 14px; font-size:14px; font-family:"Space Mono",monospace; margin-bottom:10px; }
+  .settingsInput { width:100%; height:46px; box-sizing:border-box; background:var(--surface-2); color:var(--label); border:1px solid var(--border-2); border-radius:12px; padding:0 14px; font-size:14px; font-family:"Geist Mono",monospace; margin-bottom:10px; }
   select.settingsInput { -webkit-appearance:none; appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238a8a8e' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 14px center; padding-right:34px; text-overflow:ellipsis; }
   .fieldCap { display:block; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--label-3); margin:2px 0 6px; }
   .fieldCap:not(:first-child) { margin-top:12px; }
@@ -1066,9 +1067,9 @@
         </select>
         <span class="fieldCap">AI spend</span>
         <select id="aiBudget" class="settingsInput">
-          <option value="smart">Smart — close / contrarian only (default)</option>
-          <option value="always">Every round — more reads, costs more</option>
-          <option value="manual">Manual only — never auto-call</option>
+          <option value="always">Every round (default · free on Gemini)</option>
+          <option value="smart">Smart — only when close or contrarian</option>
+          <option value="manual">Manual — only when you tap Get AI Read</option>
         </select>
         <div class="aiMuted" style="margin:12px 0">The crowd price refreshes free; the paid AI read runs at most once per round, only while this tab is open.</div>
         <label class="hiConvToggle" style="margin:0 0 14px"><input type="checkbox" id="notifyToggle" /><span>Alert me on high-confidence picks (any coin, this device — fires while a tab is open)</span></label>
@@ -1128,7 +1129,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r53 · desktop layout rebuilt as independent column stacks — timer sits right above the AI Co-Pilot AND Auto Pick stays pinned under the price card, whatever's expanded · "Who's calling it better" meter (AI vs 24/7 tracker) · smoother easing · folded-in AI summary · bigger chevrons · fewer colors · installable PWA</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r54 · typography upgrade — Geist + Geist Mono (was Inter + Space Mono), crisper SF-adjacent feel · AI Spend dropdown copy fixed (Every round is the default now) · independent column stacks · "Who's calling it better" meter · smoother easing · fewer colors · installable PWA</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
