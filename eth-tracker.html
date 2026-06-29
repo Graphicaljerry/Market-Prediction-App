@@ -750,9 +750,47 @@
   .primeAlert .paClose { flex: 0 0 auto; border: none; background: transparent; color: var(--label-2); font-size: 18px; line-height: 1; padding: 4px 6px; cursor: pointer; }
   @keyframes primeGlow { 0%,100% { box-shadow: 0 10px 34px rgba(0,0,0,.5), 0 0 0 0 rgba(48,209,88,0); } 50% { box-shadow: 0 10px 34px rgba(0,0,0,.5), 0 0 0 4px rgba(48,209,88,.20); } }
   @media (prefers-reduced-motion: reduce) { .primeAlert { animation: none; } }
+
+  /* ============================================================
+     LIQUID-GLASS THEME — capability-gated via html.glassui (set by the probe after <body>).
+     Frosted glass that picks up the pick's accent colour (saturate), drifting ambient glows,
+     specular top edges, a glossy gradient title, and a real SVG-displaced glow on the pick card.
+     Applied ONLY where backdrop-filter is supported AND the user hasn't reduced transparency;
+     otherwise the clean flat theme above stays. 100% display — no logic/picker changes.
+     Apple's true Liquid Glass is native (Metal); the web-safe parts are blur+saturate+specular
+     + an SVG filter (kube.io / WebKit). The Chrome-only SVG-as-backdrop-filter trick is avoided. */
+  .glassui body { background: radial-gradient(1100px 720px at 50% -12%, rgba(var(--accent-rgb),0.10), transparent 60%), #07090c; }
+  .glassui .pageGlow { display: block; }
+  .glassui .card.orb::before, .glassui .card.orb::after { display: block; }
+  .glassui .card {
+    background: rgba(22,24,28,0.44);
+    -webkit-backdrop-filter: blur(28px) saturate(190%); backdrop-filter: blur(28px) saturate(190%);
+    border: 1px solid rgba(255,255,255,0.10);
+    box-shadow: 0 12px 36px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.20), inset 0 -18px 30px rgba(0,0,0,0.15);
+  }
+  .glassui .card.orb {
+    background: rgba(20,22,27,0.28);
+    border-color: rgba(var(--accent-rgb),0.32);
+    box-shadow: 0 16px 50px rgba(0,0,0,0.50), inset 0 1px 0 rgba(255,255,255,0.22), 0 0 40px rgba(var(--accent-rgb),0.12);
+  }
+  /* real SVG refraction on the pick card's ambient glow (Safari-safe via filter:, not backdrop-filter) */
+  .glassui:not(.reduce-motion) .card.orb::before { filter: blur(30px) url(#liquidGlass); }
+  /* glossy gradient coin title */
+  .glassui .coinHero { background: linear-gradient(180deg,#fff 0%,#d2d8d4 55%,#a9b2ac 100%); -webkit-background-clip: text; background-clip: text; color: transparent; filter: drop-shadow(0 2px 12px rgba(var(--accent-rgb),0.22)); }
+  /* frost the segmented controls + the prime banner too */
+  .glassui .seg, .glassui .playStyle { -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%); }
+  .glassui .primeAlert { -webkit-backdrop-filter: blur(24px) saturate(200%); backdrop-filter: blur(24px) saturate(200%); }
 </style>
 </head>
 <body>
+  <script>/* capability probe — only turn on effects the browser can actually render (no UA sniffing) */
+  (function(){try{var d=document.documentElement,S=window.CSS;
+    var blur=!!(S&&S.supports&&(S.supports('backdrop-filter','blur(2px)')||S.supports('-webkit-backdrop-filter','blur(2px)')));
+    var rt=window.matchMedia&&matchMedia('(prefers-reduced-transparency: reduce)').matches;
+    if(blur&&!rt)d.classList.add('glassui');   // frosted glass + ambient glow where supported
+    if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)d.classList.add('reduce-motion');
+  }catch(e){}})();</script>
+  <svg width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><filter id="liquidGlass" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.009 0.013" numOctaves="2" seed="7" result="n"/><feGaussianBlur in="n" stdDeviation="1.5" result="nb"/><feDisplacementMap in="SourceGraphic" in2="nb" scale="28" xChannelSelector="R" yChannelSelector="G"/></filter></svg>
 
   <div class="pageGlow g1" aria-hidden="true"></div>
   <div class="pageGlow g2" aria-hidden="true"></div>
@@ -1013,7 +1051,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r42 · Prime-opportunity banner fires at ≥1.7x (or projected to reach it via momentum) · skim-format notifications "Predict (ETH - Over 1.2x)"</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r43 · Liquid-glass theme (capability-detected): frosted glass that picks up the pick's colour · drifting glow · specular edges · SVG-refracted glow on the pick card · clean flat fallback where unsupported</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
