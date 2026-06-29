@@ -40,7 +40,7 @@
     /* shared easing curves so motion across the app feels consistent and polished */
     --ease: cubic-bezier(.22,.61,.36,1);          /* smooth ease-out for hovers/colour shifts */
     --ease-soft: cubic-bezier(.4,0,.2,1);          /* gentle in-out for panels/larger moves */
-    --ease-spring: cubic-bezier(.34,1.56,.64,1);   /* slight overshoot for taps/pops */
+    --ease-spring: cubic-bezier(.16,1,.3,1);       /* strong, smooth deceleration for taps/pops (no bounce) */
   }
   /* the whole UI's accent follows the up/down status of the pick */
   body.glow-over  { --accent: var(--green);  --accent-rgb: 13,224,89; }
@@ -328,17 +328,12 @@
     .layout { display: grid; grid-template-columns: 320px minmax(0,1fr) 340px; gap: 20px; align-items: start;
       grid-template-areas:
         "hero   chart  timer"
-        "signal chart  read"
+        "hero   chart  read"
         "signal chart  auto"
         "signal chart  auto"
         "ind    ind    ind"; }
     /* fixed, stable chart height on desktop — no longer stretches to match the side columns */
     .m-chart { align-self: start; }
-    /* The timer shares row 1 with the taller price card, which left an awkward gap beneath it before the
-       AI Co-Pilot. Let the timer card fill that row with its countdown vertically centred, so the AI
-       Co-Pilot sits directly under it — responsive, no dead space. */
-    .m-timer { align-self: stretch; }
-    .m-timer .timerCard { height: 100%; display: flex; flex-direction: column; justify-content: center; }
     /* drop the breadcrumb on desktop too (already hidden on phone/tablet) so the chart card's top
        lines up with the price card's top — the timeframe buttons already convey the pair/interval */
     .m-chart .chartSec { display: none; }
@@ -784,6 +779,23 @@
   .aiBtn { width:100%; height:46px; box-sizing:border-box; border:none; border-radius:12px; background:var(--blue); color:#fff; font-size:14px; font-weight:700; cursor:pointer; margin-top:4px; }
   .aiBtn:active{ opacity:.85; } .aiBtn:disabled{ opacity:.45; }
   .aiMuted { font-size:12.5px; color:var(--label-3); line-height:1.55; margin-bottom:12px; }
+  /* "Who's calling it better" — AI vs 24/7 tracker accuracy meter. Monochrome on purpose (keeps the colour
+     count low); it leans toward whoever's ahead, and the leader's label brightens. */
+  .pickoff { margin: 14px 0 2px; }
+  .pickoff[hidden] { display: none; }
+  .pickoff .poHead { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 9px; }
+  .pickoff .poTitle { font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); }
+  .pickoff .poVerdict { font-size: 12px; font-weight: 700; color: var(--label-2); text-align: right; }
+  .pickoff .poSmall { color: var(--label-3); font-weight: 600; margin-left: 6px; }
+  .pickoff .poBar { position: relative; height: 8px; border-radius: 6px; background: rgba(255,255,255,.06); overflow: hidden; }
+  .pickoff .poCenter { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.20); }
+  .pickoff .poFill { position: absolute; top: 0; bottom: 0; background: rgba(255,255,255,.55); border-radius: 6px; transition: left .5s var(--ease), width .5s var(--ease); }
+  .pickoff .poEnds { display: flex; justify-content: space-between; gap: 12px; margin-top: 9px; font-size: 12px; }
+  .pickoff .poEnd.right { text-align: right; }
+  .pickoff .poEnd .poName { font-weight: 700; color: var(--label-3); }
+  .pickoff .poEnd.lead .poName { color: var(--label); }
+  .pickoff .poEnd .poStat { color: var(--label-3); font-weight: 600; }
+  .pickoff .poEmpty { font-size: 12px; color: var(--label-3); line-height: 1.5; margin-top: 6px; }
   /* consolidated "The read" section inside the Auto Pick panel */
   .panelDivider { display:flex; align-items:center; gap:10px; margin:20px 0 4px; }
   .panelDivider::before, .panelDivider::after { content:""; flex:1; height:.5px; background:var(--separator); }
@@ -1024,6 +1036,7 @@
   <div class="card orb collapseCard">
     <div id="blend" class="blend"></div>
     <div id="aiInfluence" class="aiInfluence"></div>
+    <div class="pickoff" id="pickoff" hidden></div>
     <label class="hiConvToggle" style="margin:2px 0 10px"><input type="checkbox" id="aiBoost" /><span>Trust the AI more — let its weight climb higher as it earns it</span></label>
     <div class="trustDial" id="trustDialWrap">
       <div class="tdHead"><span class="tdLbl">AI trust dial</span><span class="tdVal" id="aiTrustVal">earned · unchanged</span></div>
@@ -1116,7 +1129,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r50 · AI summary folded into the playbook (one panel: Which-to-follow + Game plan + collapsed AI summary) · bigger, tappable dropdown chevrons · desktop: timer fills its row so the AI Co-Pilot sits right under it (no gap) · fewer colors (neutral Play-Style tab) · STRONG — BET banner ~7s + × dismiss · native phone notification · installable PWA</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r51 · "Who's calling it better" meter — AI vs 24/7 tracker accuracy over time (skips excluded) · desktop timer back to natural size with the AI Co-Pilot tucked right under it · smoother easing (no bounce, per design skills) · AI summary folded into the playbook · bigger dropdown chevrons · fewer colors · installable PWA</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3922,6 +3935,8 @@
         '<span class="hres ' + w + '">' + (correct ? "✓" : "✗") + pctTxt + '</span></div>';
     }).join("");
     $("autoHistory").innerHTML = rows || '<div class="empty">No graded rounds yet — rebuilding as new rounds settle.</div>';
+    state.autoRec = { graded: graded, correct: correctN };   // feed the AI-vs-tracker "who's calling it better" meter
+    if (state.lastAI || state.aiRecord) renderPickoffMeter();   // keep the meter fresh when the tracker record updates
     animateStat($("aGraded"), graded, "");
     animateStat($("aCorrect"), correctN, "");
     $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");   // set class BEFORE animating so the flash (statUp) isn't overwritten
@@ -4054,9 +4069,42 @@
       '<div class="aiRow"><span class="k">AI record</span><span class="v">' + cardV + '</span></div>' +
       (edge ? '<div class="aiRow"><span class="k">Edge</span>' + edge + '</div>' : '');
     renderAIInfluence();
+    renderPickoffMeter();
     renderGamePlan();
     renderTrustDial();
     renderPayout();
+  }
+  // "Who's calling it better" — a running scoreboard of the AI Co-Pilot vs the 24/7 tracker, by hit-rate on
+  // the rounds each actually committed to (skips never count). A diverging meter leans toward whoever's ahead.
+  function renderPickoffMeter() {
+    var el = $("pickoff"); if (!el) return;
+    var aiRc = state.aiRecord && state.aiRecord[getModel()];
+    var aiN = aiRc ? aiRc.graded : 0, aiC = aiRc ? aiRc.correct : 0;
+    var tr = state.autoRec || {}, trN = tr.graded || 0, trC = tr.correct || 0;
+    if (aiN < 1 && trN < 1) {
+      el.hidden = false;
+      el.innerHTML = '<div class="poTitle">Who\'s calling it better</div><div class="poEmpty">Once the AI and the 24/7 tracker each grade a few committed (non-skip) calls, this shows who’s been more accurate over time.</div>';
+      return;
+    }
+    var aiH = aiN ? aiC / aiN : null, trH = trN ? trC / trN : null;
+    var pct = function (h) { return h == null ? "—" : Math.round(h * 100) + "%"; };
+    var diff = (aiH != null && trH != null) ? (aiH - trH) : null;   // + = AI ahead
+    // diverging fill: from the centre toward the leader; ~20-pt gap fills a full half
+    var width = diff == null ? 0 : Math.min(50, Math.abs(diff) * 250);
+    var left = diff == null ? 50 : (diff >= 0 ? 50 - width : 50);
+    var lead = diff == null ? "" : (Math.abs(diff) < 0.005 ? "even" : diff > 0 ? "ai" : "tr");
+    var verdict = diff == null ? (aiN ? "tracker has no graded calls yet" : "AI has no graded calls yet")
+      : lead === "even" ? "Dead even so far"
+      : (lead === "ai" ? "AI ahead" : "Tracker ahead") + " by " + Math.round(Math.abs(diff) * 100) + " pts";
+    var small = (aiN && aiN < 8) || (trN && trN < 8) ? '<span class="poSmall">small sample</span>' : "";
+    el.hidden = false;
+    el.innerHTML =
+      '<div class="poHead"><span class="poTitle">Who\'s calling it better</span><span class="poVerdict">' + verdict + small + '</span></div>' +
+      '<div class="poBar"><div class="poCenter"></div><div class="poFill" style="left:' + left + '%;width:' + width + '%"></div></div>' +
+      '<div class="poEnds">' +
+        '<span class="poEnd' + (lead === "ai" ? " lead" : "") + '"><span class="poName">AI Co-Pilot</span> <span class="poStat">' + pct(aiH) + (aiN ? " · " + aiC + "/" + aiN : " · no calls") + '</span></span>' +
+        '<span class="poEnd right' + (lead === "tr" ? " lead" : "") + '"><span class="poName">24/7 Tracker</span> <span class="poStat">' + pct(trH) + (trN ? " · " + trC + "/" + trN : " · no calls") + '</span></span>' +
+      '</div>';
   }
   // Show the est. payout multiplier (≈ 1 / the market's price for the side) AND whether it's worth it:
   // a bet only PROFITS long-term when the app rates the side MORE likely than the market's price (+EV).
