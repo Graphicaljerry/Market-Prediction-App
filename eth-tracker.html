@@ -334,6 +334,11 @@
         "ind    ind    ind"; }
     /* fixed, stable chart height on desktop — no longer stretches to match the side columns */
     .m-chart { align-self: start; }
+    /* The timer shares row 1 with the taller price card, which left an awkward gap beneath it before the
+       AI Co-Pilot. Let the timer card fill that row with its countdown vertically centred, so the AI
+       Co-Pilot sits directly under it — responsive, no dead space. */
+    .m-timer { align-self: stretch; }
+    .m-timer .timerCard { height: 100%; display: flex; flex-direction: column; justify-content: center; }
     /* drop the breadcrumb on desktop too (already hidden on phone/tablet) so the chart card's top
        lines up with the price card's top — the timeframe buttons already convey the pair/interval */
     .m-chart .chartSec { display: none; }
@@ -451,6 +456,14 @@
   .playbook .consensus:empty { display: none; }
   .playbook .gamePlan:not([hidden]) { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--separator); }
   .playbook .consensus:empty + .gamePlan:not([hidden]) { margin-top: 0; padding-top: 0; border-top: none; }
+  /* AI summary, consolidated into the playbook as a tucked, collapsed item under the Game plan */
+  .playbook .aiWhy { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--separator); }
+  .playbook .aiWhy.hidden { display: none; }
+  .playbook .aiWhy > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); }
+  .playbook .aiWhy > summary::-webkit-details-marker { display: none; }
+  .playbook .aiWhy .aiSumHint { text-transform: none; letter-spacing: 0; }
+  .playbook .consensus:empty + .gamePlan[hidden] + .aiWhy { margin-top: 0; padding-top: 0; border-top: none; }
   /* recent 15-min market moves — the same up/down arrows Coinbase shows, from Coinbase candles */
   .moveStrip { display: flex; align-items: center; gap: 4px; margin-top: 14px; flex-wrap: nowrap; overflow: hidden; }
   .moveStrip.open { flex-wrap: wrap; overflow: visible; }
@@ -468,8 +481,12 @@
   .secToggle { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; -webkit-tap-highlight-color: transparent; }
   .secToggle::-webkit-details-marker { display: none; }
   .secToggle .ihelp { pointer-events: auto; }
-  .secChevron { margin-left: auto; color: var(--label-3); font-size: 13px; transition: transform .2s; }
-  details[open] > .secToggle .secChevron { transform: rotate(90deg); }
+  /* Dropdown chevrons — a clear, tappable circular affordance (was a tiny dim ▸). */
+  .secChevron { margin-left: auto; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,.06); color: var(--label-2);
+    font-size: 18px; line-height: 1; transition: transform .28s var(--ease-soft), background .2s var(--ease), color .2s var(--ease); }
+  details[open] > .secToggle .secChevron, .aiWhy[open] > summary .secChevron { transform: rotate(90deg); color: var(--label); background: rgba(255,255,255,.13); }
+  .secToggle:hover .secChevron, .aiWhy > summary:hover .secChevron { color: var(--label); background: rgba(255,255,255,.14); }
   .collapseCard { margin-top: 10px; }
   #liveLean { display: none; }   /* redundant with the tally above — one less line of noise */
 
@@ -959,6 +976,10 @@
       <div class="playbook" id="playbook" hidden>
         <div class="consensus" id="consensus"></div>
         <div class="gamePlan" id="gamePlan" hidden></div>
+        <details id="aiWhy" class="aiWhy aiSummary hidden">
+          <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
+          <div class="aiWhyBody"></div>
+        </details>
       </div>
       <div class="lean mono" id="liveLean">—</div>
     </div>
@@ -1009,10 +1030,6 @@
       <input type="range" id="aiTrust" class="tdSlider" min="-20" max="20" step="5" value="0" aria-label="AI trust dial" />
       <div class="tdScale"><span>lean out −20%</span><span>earned</span><span>lean in +20%</span></div>
     </div>
-    <details id="aiWhy" class="aiWhy aiSetup aiSummary hidden">
-      <summary>AI summary <span class="aiSumHint" id="aiSumHint"></span></summary>
-      <div class="aiWhyBody"></div>
-    </details>
     <div class="aiMuted" id="aiIntro">Add the live <b>Kalshi crowd odds</b> + an <b>AI</b> read to the blend above — connect your Cloudflare Worker below (optional).</div>
     <details id="aiSetup" class="aiSetup">
       <summary>AI Co-Pilot setup</summary>
@@ -1099,7 +1116,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r49 · fewer colors: the Play-Style tab &amp; Game-plan label now use the app's neutral selected style (was violet) · STRONG — BET desktop banner: readable ~7s, × to dismiss early, eased entrance/morph · native iOS/iPadOS notification on phones/tablets · consolidated playbook panel · installable PWA</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r50 · AI summary folded into the playbook (one panel: Which-to-follow + Game plan + collapsed AI summary) · bigger, tappable dropdown chevrons · desktop: timer fills its row so the AI Co-Pilot sits right under it (no gap) · fewer colors (neutral Play-Style tab) · STRONG — BET banner ~7s + × dismiss · native phone notification · installable PWA</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -2130,8 +2147,8 @@
   // Show the consolidated "playbook" panel only when there's something in it (a verdict and/or a plan).
   function syncPlaybook() {
     var pb = $("playbook"); if (!pb) return;
-    var c = $("consensus"), g = $("gamePlan");
-    var has = (c && c.innerHTML.trim() !== "") || (g && !g.hidden);
+    var c = $("consensus"), g = $("gamePlan"), w = $("aiWhy");
+    var has = (c && c.innerHTML.trim() !== "") || (g && !g.hidden) || (w && !w.classList.contains("hidden"));
     pb.hidden = !has;
   }
 
@@ -4098,13 +4115,14 @@
     var el = $("aiWhy"); if (!el) return;
     var ai = state.lastAI, scope = state.aiScope;
     var body = el.querySelector(".aiWhyBody"), hint = $("aiSumHint");
-    if (!ai || !ai.rationale) { el.classList.add("hidden"); el.removeAttribute("open"); if (body) body.innerHTML = ""; if (hint) hint.textContent = ""; return; }
+    if (!ai || !ai.rationale) { el.classList.add("hidden"); el.removeAttribute("open"); if (body) body.innerHTML = ""; if (hint) hint.textContent = ""; syncPlaybook(); return; }
     var s = scope ? '<div class="aiScope' + (scope.nextRound ? ' next' : '') + '">' + scope.label + ' · as of ' + scope.asOf + '</div>' : '';
     body.innerHTML = s + '<div class="aiWhyText"></div>';
     body.querySelector(".aiWhyText").textContent = ai.rationale;   // textContent: never inject model output as HTML
     if (hint) hint.className = "aiSumHint" + (ai.verdict === "OVER" ? " o" : ai.verdict === "UNDER" ? " u" : "");
     if (hint) hint.textContent = ai.verdict ? (ai.verdict + (ai.confidence ? " · " + ai.confidence : "")) : "";
-    el.classList.remove("hidden");   // collapsed by default — tap "AI summary" to read the full rationale
+    el.classList.remove("hidden");   // collapsed by default inside the playbook — tap "AI summary" to read the full rationale
+    syncPlaybook();
   }
   function renderAIError(msg) {
     var el = $("aiWhy"); if (!el) return;
@@ -4113,6 +4131,7 @@
     var body = el.querySelector(".aiWhyBody"); if (!body) return; body.innerHTML = "";
     var d = document.createElement("div"); d.className = "aiMuted"; d.style.color = "var(--red)";
     d.textContent = "AI unavailable: " + msg; body.appendChild(d);
+    syncPlaybook();
   }
   $("aiRun").addEventListener("click", function () {
     try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {}
