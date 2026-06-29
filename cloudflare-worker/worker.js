@@ -1085,9 +1085,11 @@ function rankBest(st) {
     const conf = typeof p.conf === "number" ? p.conf : 0.5;            // confluence share, 0 … 1
     const n = rec.graded || 0, shr = Math.min(1, n / 30);              // trust the record only with samples
     const reliab = typeof rec.hitRatePct === "number" ? (0.5 + (rec.hitRatePct / 100 - 0.5) * shr) : 0.5;
-    const score = edge * (0.6 + 0.4 * conf) * (0.6 + 0.8 * reliab);
+    const mom = p.signals && typeof p.signals.mom === "number" ? p.signals.mom : null;
+    const confirm = mom != null && ((p.side === "OVER" && mom > 0) || (p.side === "UNDER" && mom < 0));   // price already heading the way the pick called
+    const score = edge * (0.6 + 0.4 * conf) * (0.6 + 0.8 * reliab) * (confirm ? 1.15 : 0.9);   // nudge confirmed-direction picks up the ranking
     out.push({
-      coin, side: p.side, prob: p.prob,
+      coin, side: p.side, prob: p.prob, confirm: confirm,
       conf: typeof p.conf === "number" ? Math.round(p.conf * 100) / 100 : null,
       agree: typeof p.agree === "number" ? p.agree : null,
       hitRatePct: typeof rec.hitRatePct === "number" ? rec.hitRatePct : null,

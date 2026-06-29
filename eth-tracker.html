@@ -1051,7 +1051,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r43 · Liquid-glass theme (capability-detected): frosted glass that picks up the pick's colour · drifting glow · specular edges · SVG-refracted glow on the pick card · clean flat fallback where unsupported</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r44 · Best-now bar shows the obvious side: 🔥 BET when momentum confirms the call &amp; reads agree · ▲/▼ "heading" badge per coin · liquid-glass theme (capability-detected)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3578,11 +3578,12 @@
     if (!getWorkerUrl() || !list.length) { el.classList.add("hidden"); document.body.classList.remove("has-bestbar"); state.bestOpen = false; renderBestList(); renderPrimeAlert(); return; }
     var top = list[0];
     var arrow = top.side === "OVER" ? "↑" : "↓", sideCls = top.side === "OVER" ? "o" : "u";
-    var bsub = (top.hitRatePct != null && top.graded >= 5) ? top.hitRatePct + "% hit · " : "";
+    var strongConfirmed = !!top.confirm && (top.agree || 0) >= 3;   // momentum confirms the call + several reads agree → an obvious side to bet
+    var bsub = (top.confirm ? "heading " + top.side + " · " : "") + ((top.hitRatePct != null && top.graded >= 5) ? top.hitRatePct + "% hit · " : "");
     var rpTop = rowPayout(top);
     if (rpTop) bsub += "~" + rpTop.mult.toFixed(2) + "x" + (rpTop.ev ? " +EV" : rpTop.dead ? " (dead money)" : "") + " · ";
-    $("bbTop").innerHTML = "Best now: <b>" + top.coin + "</b> <span class=\"" + sideCls + "\">" + top.side + " " + arrow + "</span> · " + top.prob + "%";
-    $("bbSub").textContent = bsub + "strongest of " + list.length + " coins this round";
+    $("bbTop").innerHTML = (strongConfirmed ? "🔥 <b>BET " + top.coin + "</b> " : "Best now: <b>" + top.coin + "</b> ") + "<span class=\"" + sideCls + "\">" + top.side + " " + arrow + "</span> · " + top.prob + "%";
+    $("bbSub").textContent = bsub + (strongConfirmed ? "strong, confirmed pick" : "strongest of " + list.length + " coins this round");
     var others = list.slice(1, 4);
     $("bbRank").textContent = others.length ? "then " + others.map(function (x) { return x.coin + (x.side === "OVER" ? "↑" : x.side === "UNDER" ? "↓" : "·"); }).join("  ") : "";
     $("bbGo").textContent = state.bestOpen ? "⌃" : "⌄";
@@ -3605,6 +3606,7 @@
       var meta = [];
       if (x.hitRatePct != null && x.graded >= 5) meta.push("<b>" + x.hitRatePct + "%</b> hit");
       if (x.betRatePct != null && (x.seen || 0) >= 5) meta.push("bets " + x.betRatePct + "%");
+      if (x.confirm) meta.push('<b style="color:' + (x.side === "OVER" ? "var(--green)" : "var(--red)") + '">' + (x.side === "OVER" ? "▲" : "▼") + " heading " + x.side + "</b>");
       var rp = rowPayout(x);
       if (rp) meta.push((rp.ev ? '<b style="color:var(--green)">+EV</b> ' : "") + "~" + rp.mult.toFixed(2) + "x");
       var ico = (typeof COIN_ICONS !== "undefined" && COIN_ICONS[x.coin]) ? COIN_ICONS[x.coin] : "";
