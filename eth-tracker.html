@@ -284,6 +284,10 @@
   .m-hero { grid-area: hero; } .m-timer { grid-area: timer; } .m-signal { grid-area: signal; }
   .m-chart { grid-area: chart; } .m-read { grid-area: read; } .m-indicators { grid-area: ind; }
   .m-autotracker { grid-area: auto; }
+  /* Column stacks: transparent by default (modules act as grid items on tablet, and as ordered flex
+     items on mobile). On desktop they become real flex columns so the two sides flow INDEPENDENTLY —
+     expanding the AI Co-Pilot grows only the right column; Auto Pick stays pinned under the price card. */
+  .stack { display: contents; }
 
   /* MOBILE (default, < 768px): dropdown coin picker, single vertical stack */
   @media (max-width: 767px) {
@@ -291,6 +295,10 @@
     .coinSelectWrap { display: flex; }
     .m-chart .chartSec { display: none; }
     .m-chart .miniChart { height: 264px; }   /* taller on phones — easier to read & scrub */
+    /* DOM order is grouped into stacks, so use flex + order to restore the single-column reading order */
+    .layout { display: flex; flex-direction: column; }
+    .m-hero { order: 1; } .m-timer { order: 2; } .m-signal { order: 3; } .m-chart { order: 4; }
+    .m-read { order: 5; } .m-indicators { order: 6; } .m-autotracker { order: 7; }
     .layout .module { margin-top: 18px; }
     .layout .m-hero { margin-top: 0; }
   }
@@ -325,16 +333,16 @@
     body { max-width: 1480px; }
     .price { font-size: 50px; }
     .brandSub, .navExch { display: flex; }
+    /* Three independent columns: left (price + Auto Pick), centre (chart), right (timer + AI Co-Pilot +
+       Track Record), then full-width indicators. The stacks flow on their own, so the timer sits right
+       above the AI Co-Pilot AND Auto Pick stays pinned under the price card regardless of what's expanded. */
     .layout { display: grid; grid-template-columns: 320px minmax(0,1fr) 340px; gap: 20px; align-items: start;
       grid-template-areas:
-        "hero   chart  timer"
-        "signal chart  read"
-        "signal chart  auto"
-        "signal chart  auto"
-        "ind    ind    ind"; }
-    /* Auto Pick (signal) spans from directly under the price card, so expanding the AI Co-Pilot grows its
-       OWN row on the right without pushing Auto Pick down — its top stays pinned beneath the price card. */
-    .m-signal { align-self: start; }
+        "left chart right"
+        "ind  ind   ind"; }
+    .stack { display: flex; flex-direction: column; }   /* real column containers on desktop */
+    .stackL { grid-area: left; }
+    .stackR { grid-area: right; }
     /* fixed, stable chart height on desktop — no longer stretches to match the side columns */
     .m-chart { align-self: start; }
     /* drop the breadcrumb on desktop too (already hidden on phone/tablet) so the chart card's top
@@ -914,9 +922,7 @@
   <h1 class="coinHero" id="coinHero">Ethereum</h1>
 
   <div class="layout">
-  <section class="toprow" style="display:contents">
-
-  <!-- HERO PRICE -->
+  <div class="stack stackL">
   <div class="module m-hero">
   <div class="card hero orb">
     <div class="heroTop">
@@ -940,21 +946,6 @@
 
   </div>
 
-  <!-- TIMER -->
-  <div class="module m-timer">
-  <div class="card flat timerCard">
-    <div class="timerLabel">Next round closes in</div>
-    <div id="timer" class="timer mono">--:--</div>
-    <div class="timerBarWrap"><div id="timerBar"></div></div>
-    <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
-    <div id="nextPick" class="nextPick"></div>
-    <div id="lastClose" class="lastClose"></div>
-    <div id="primeCue" class="primeCue"></div>
-  </div>
-
-  </div>
-
-  <!-- AUTO PICK · the signal -->
   <div class="module m-signal">
   <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span> <button class="ihelp" data-info="autopick">?</button>
     <div class="playStyle" id="playStyle" role="group" aria-label="Play style — how often to bet">
@@ -1000,8 +991,8 @@
     </div>
   </div>
   </div>
+  </div>
 
-  <!-- LIVE CHART -->
   <div class="module m-chart">
   <div class="sec chartSec" id="chartSec">ETH / USD <span class="tiny">· 15m</span></div>
   <div class="card orb chartCard">
@@ -1032,7 +1023,20 @@
   </div>
   </div>
 
-  <!-- THE READ · crowd + AI Co-Pilot -->
+  <div class="stack stackR">
+  <div class="module m-timer">
+  <div class="card flat timerCard">
+    <div class="timerLabel">Next round closes in</div>
+    <div id="timer" class="timer mono">--:--</div>
+    <div class="timerBarWrap"><div id="timerBar"></div></div>
+    <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
+    <div id="nextPick" class="nextPick"></div>
+    <div id="lastClose" class="lastClose"></div>
+    <div id="primeCue" class="primeCue"></div>
+  </div>
+
+  </div>
+
   <div class="module m-read">
   <details class="collapsePanel">
   <summary class="sec secToggle">AI Co-Pilot <span class="tiny">· the read</span><span class="secChevron" aria-hidden="true">▸</span></summary>
@@ -1076,23 +1080,6 @@
 
   </div>
 
-  </section>
-
-  <main class="grid" style="display:contents">
-
-  <!-- (AI Co-Pilot is now consolidated into the Auto Pick panel above) -->
-
-  <!-- INDICATORS · collapsed by default so the call stays the focus -->
-  <div class="module m-indicators">
-  <details class="collapsePanel" open>
-    <summary class="sec secToggle">Live Indicators <span class="tiny" id="indSummary">· the signals behind the %</span><span class="secChevron" aria-hidden="true">▸</span></summary>
-    <div class="card flat collapseCard">
-      <div id="indicators"><div class="empty">Loading indicators…</div></div>
-    </div>
-  </details>
-  </div>
-
-  <!-- TRACK RECORD — 24/7 auto-tracker (server-side, free; grades a round every 15 min even when the app is closed) -->
   <div class="module m-autotracker" id="autoMod">
   <div class="sec secHead">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
   <div class="card flat">
@@ -1119,7 +1106,16 @@
     <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. The AI reads this record too.</div>
   </div>
   </div>
-  </main>
+  </div>
+
+  <div class="module m-indicators">
+  <details class="collapsePanel" open>
+    <summary class="sec secToggle">Live Indicators <span class="tiny" id="indSummary">· the signals behind the %</span><span class="secChevron" aria-hidden="true">▸</span></summary>
+    <div class="card flat collapseCard">
+      <div id="indicators"><div class="empty">Loading indicators…</div></div>
+    </div>
+  </details>
+  </div>
   </div><!-- /.layout -->
 
   <div id="infoSheet"><div class="infoCard"><h3 id="infoTitle">—</h3><p id="infoText">—</p><button class="closeBtn" id="infoClose">Got it</button></div></div>
@@ -1132,7 +1128,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r52 · desktop: Auto Pick pinned under the price card again — expanding the AI Co-Pilot no longer shoves it off-screen · "Who's calling it better" meter (AI vs 24/7 tracker) · smoother easing (no bounce) · AI summary folded into the playbook · bigger dropdown chevrons · fewer colors · installable PWA</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r53 · desktop layout rebuilt as independent column stacks — timer sits right above the AI Co-Pilot AND Auto Pick stays pinned under the price card, whatever's expanded · "Who's calling it better" meter (AI vs 24/7 tracker) · smoother easing · folded-in AI summary · bigger chevrons · fewer colors · installable PWA</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
