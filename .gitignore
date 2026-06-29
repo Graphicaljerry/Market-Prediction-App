@@ -5,3 +5,12 @@ tools/*.png
 # so Cloudflare's git-connected Worker build doesn't try to install it
 package.json
 package-lock.json
+
+# macOS clutter
+.DS_Store
+
+# Local Claude Code state — commit only the shared project settings + the skills.
+# (history, caches, backups, plugins, session/telemetry data stay local.)
+.claude/*
+!.claude/settings.json
+!.claude/skills/
