@@ -693,15 +693,22 @@
   .aiInflMode.on { color: var(--green); } .aiInflMode.off { color: var(--label-2); }
   /* Pick-strength banner — at a glance: worth betting (strong), optional (lean), or a coin-flip to skip. */
   .pickStrength:empty { display: none; }
-  .pickStrength { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; text-align: center;
-    margin: 0 0 14px; padding: 9px 13px; border-radius: 12px; font-weight: 800; font-size: 13px; letter-spacing: .02em; border: 1px solid transparent; }
+  .pickStrength { position: relative; display: flex; flex-wrap: wrap; justify-content: center; align-items: center; text-align: center;
+    margin: 0 0 14px; padding: 9px 13px; border-radius: 12px; font-weight: 800; font-size: 13px; letter-spacing: .02em; border: 1px solid transparent;
+    transition: background .4s var(--ease), border-color .4s var(--ease), color .4s var(--ease), box-shadow .4s var(--ease); }
   .pickStrength .psSub { flex-basis: 100%; margin-top: 3px; font-weight: 600; font-size: 11px; letter-spacing: 0; opacity: .9; }
   .pickStrength.strong { color: var(--green); background: rgba(13,224,89,.12); border-color: rgba(13,224,89,.45); box-shadow: 0 0 18px rgba(13,224,89,.22); }
-  /* "bet" = the clearest setup (app + AI + momentum aligned). Picks up the side's accent color and pulses. */
+  /* "bet" = the clearest setup (app + AI + momentum aligned). Picks up the side's accent color, eases in, then pulses. */
   .pickStrength.bet { color: rgba(var(--accent-rgb),1); background: rgba(var(--accent-rgb),.16); border-color: rgba(var(--accent-rgb),.62);
-    font-size: 14px; box-shadow: 0 0 24px rgba(var(--accent-rgb),.34); animation: betPulse 2.1s ease-in-out infinite; }
+    font-size: 14px; padding-right: 30px; box-shadow: 0 0 24px rgba(var(--accent-rgb),.34);
+    animation: betIn .42s var(--ease-spring) both, betPulse 2.1s ease-in-out .42s infinite; }
   @keyframes betPulse { 0%,100% { box-shadow: 0 0 18px rgba(var(--accent-rgb),.26); } 50% { box-shadow: 0 0 32px rgba(var(--accent-rgb),.52); } }
-  @media (prefers-reduced-motion: reduce) { .pickStrength.bet { animation: none; } }
+  @keyframes betIn { from { opacity: 0; transform: scale(.96) translateY(-3px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+  /* dismiss "×" on the desktop banner */
+  .pickStrength .psClose { position: absolute; top: 5px; right: 7px; width: 22px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+    border: none; border-radius: 50%; background: rgba(255,255,255,.12); color: inherit; font-size: 16px; font-weight: 700; line-height: 1; cursor: pointer; opacity: .7; }
+  .pickStrength .psClose:hover { opacity: 1; background: rgba(255,255,255,.22); }
+  @media (prefers-reduced-motion: reduce) { .pickStrength { transition: none; } .pickStrength.bet { animation: none; } }
   .pickStrength.lean { color: var(--orange); background: rgba(255,159,10,.10); border-color: rgba(255,159,10,.4); }
   .pickStrength.flip { color: var(--label-2); background: rgba(255,255,255,.05); border-color: var(--separator); }
   .pickStrength.sit { color: var(--label-3); background: rgba(255,255,255,.03); border-color: var(--separator); }
@@ -1092,7 +1099,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r47 · STRONG — BET: banner on desktop (readable ~7s), native iOS/iPadOS notification on phones/tablets · consolidated "Game plan + Which to follow" panel · padding on the Track Record card &amp; stroke removed from Recent Rounds · app-wide easing polish · installable PWA (manifest + notifications-only service worker)</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r48 · STRONG — BET desktop banner: readable ~7s, now with a × to dismiss early + eased entrance/morph · native iOS/iPadOS notification on phones/tablets · consolidated "Game plan + Which to follow" panel · padding on the Track Record card &amp; stroke removed from Recent Rounds · app-wide easing polish · installable PWA</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -2064,30 +2071,39 @@
     var el = $("pickStrength"); if (!el) return;
     var s = pickStrength();
     var now = Date.now();
+    var curKey = state.coin + ":" + state.shownDir + ":" + (currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0);
     // STRONG — BET gets special handling. A new bet "event" = a new round+coin+side. On phones/tablets we
-    // fire a native notification ONCE per event (no banner). On desktop we keep the pulsing banner readable
-    // for ~7s (sticky — it survives tick-to-tick flicker), then settle to the calm "strong" line.
-    if (s.tier === "bet") {
-      var key = state.coin + ":" + state.shownDir + ":" + (currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0);
-      if (state._betKey !== key) {
-        state._betKey = key; state._betUntil = now + 7000; state._betLabel = s.label; state._betSub = s.sub;
-        if (isHandheld()) fireBetNotification(state.shownDir);   // phones/tablets → native notification instead of the banner
-      }
+    // fire a native notification ONCE per event (no banner). On desktop we keep the banner readable for ~7s
+    // (sticky — survives tick-to-tick flicker), or until you dismiss it with the ×, then settle to "strong".
+    if (s.tier === "bet" && state._betKey !== curKey) {
+      state._betKey = curKey; state._betUntil = now + 7000; state._betLabel = s.label; state._betSub = s.sub;
+      if (isHandheld()) fireBetNotification(state.shownDir);   // phones/tablets → native notification instead of the banner
     }
-    // Desktop banner: show BET while inside the 7s window (sticky, even if the live tier just flickered off).
     var showBanner = !isHandheld() && state._betUntil && now < state._betUntil &&
-      state._betKey === state.coin + ":" + state.shownDir + ":" + (currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0);
+      state._betKey === curKey && state._betDismissed !== curKey;   // not past 7s, same event, not dismissed
     if (showBanner) {
       el.className = "pickStrength bet";
-      el.innerHTML = '<span>' + (state._betLabel || s.label) + '</span><span class="psSub">' + (state._betSub || s.sub) + '</span>';
+      el.innerHTML = '<button type="button" class="psClose" aria-label="Dismiss">×</button><span>' +
+        (state._betLabel || s.label) + '</span><span class="psSub">' + (state._betSub || s.sub) + '</span>';
       return;
     }
     // Otherwise render the live tier — but a live "bet" never shows as a banner here (handhelds got the
-    // notification; desktop's 7s window is over), so downgrade it to the calm "strong" indicator.
+    // notification; desktop's 7s window is over / dismissed), so downgrade it to the calm "strong" indicator.
     if (s.tier === "bet") s = { tier: "strong", label: "STRONG — worth betting", sub: s.sub };
     el.className = "pickStrength " + s.tier;
     el.innerHTML = '<span>' + s.label + '</span><span class="psSub">' + s.sub + '</span>';
   }
+  // Dismiss the desktop STRONG — BET banner early (one delegated handler — the banner's innerHTML is
+  // rewritten every tick). Marks THIS event dismissed so it settles to "strong" and won't pop back this round.
+  (function () {
+    var el = $("pickStrength"); if (!el) return;
+    el.addEventListener("click", function (e) {
+      var btn = e.target && e.target.closest ? e.target.closest(".psClose") : null;
+      if (!btn) return;
+      state._betDismissed = state._betKey;
+      renderPickStrength();
+    });
+  })();
   function renderConsensus() {
     var el = $("consensus"); if (!el) return;
     var my = state.shownDir || "SKIP";
