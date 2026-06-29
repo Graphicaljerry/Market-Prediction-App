@@ -10,7 +10,7 @@ then tells you what to play for the **next round** right before the clock runs o
 
 > **Live app:** https://graphicaljerry.github.io/Market-Prediction-App/
 > **Design (Figma):** https://www.figma.com/design/K8o8dinrXn2XmHO7T3i9JV/
-> Supports **ETH**, **BTC**, **SOL**, **DOGE**, **SHIB**, and **XRP** (segmented control on
+> Supports **ETH**, **BTC**, **SOL**, **XRP**, **DOGE**, **HYPE**, and **BNB** (segmented control on
 > desktop, a dropdown on mobile).
 
 ---
@@ -18,6 +18,8 @@ then tells you what to play for the **next round** right before the clock runs o
 ## What's new (latest)
 
 Recent work, newest first:
+
+- **Audit fixes on the r38 consistency pass (r39).** A full self-audit caught three follow-ups, all display/doc-only (the picker is untouched): **(1)** the **Payout line now reads the same market as the headline** (`activeCrowd()` instead of `state.lastCrowd`) — in the final 2 minutes it could otherwise price *this* (settling) round while the headline showed *next* round, so the multiplier and the % disagreed. **(2)** The **dead-money cutoff is one shared number** (`DEAD_MONEY_PCT`, 90%) used by both the headline guard and the payout line, so they can't contradict (no more headline "already nearly settled" next to a payout "≈ fair"). **(3)** When a coin has **no live Kalshi crowd**, the % now shows an **"est ·"** label so the fallback to the blended estimate is visible, not silent. Also refreshed stale docs (worker near-lock cron `:08/:23/:38/:53` + 75–92% band, the coin list, and the Auto Pick section). (`renderPayout` / `DEAD_MONEY_PCT` / `marketPct` labels in `eth-tracker.html`.)
 
 - **One source of truth: every % you see is now the live Kalshi market price.** The headline %, the This/Next round chips, and the payout line used to mix two different numbers — the app's *own blended estimate* (jiggly, our guess) for the headline, but the *market's price* for the payout. That's why the app could say "81%" while Robinhood showed "98% / 1.0x" for the same bet, and why it flickered and sometimes flagged dead-money buys. Now **the market's own number (the live Kalshi price) is the single figure shown everywhere** — so the app, the payout, and your exchange screen all agree, and the number stops twitching (market odds are stable). The blend still **picks the side** and now appears only as the small "Live:" lean and the **+EV "edge"** on the payout line. Also: when a side is **already near-certain (~90%+)** the card now says **"already nearly settled"** instead of **BUY**, because betting it pays ~1.0x (just your stake back) — directly fixing the "it told me to bet UNDER but it's 1.0x, so nothing" complaint. **Pick-impact: the directional picker is UNCHANGED (same proven blend chooses the side); what changed is the *number displayed* (now the market's, not ours) and the *buy/skip wording* for near-certain favorites (no longer shown as BUY). The AI-free 24/7 tracker is untouched.** (build marker `r38`; `marketPct` + `renderPickCard` / `renderDualPick` in `eth-tracker.html`.)
 
@@ -428,12 +430,15 @@ disturbing the locked call).
 The headline card (`renderPickCard()`) turns everything into one plain instruction:
 
 - **BUY OVER ↑ / BUY UNDER ↓** in large type, with a plain-language subtitle and a hint.
-- **A single blended likelihood %** from [the probability engine](#the-probability-engine).
-  The % updates live; the **direction stays locked** for the round.
-- **Phase-aware scope + next-round ribbon.** Most of the round it reads *"✅ THIS round ·
-  closes h:mm AM/PM"*. In the final ~40 seconds a pulsing **ribbon** shows the locked
-  **NEXT-round** pick — *"⏭ NEXT ROUND · BUY OVER ↑ when it opens h:mm · 🔒 locked …"*.
-  **SKIP** when there's no clear edge.
+- **The live market price %** (the Kalshi price for the shown side, via `marketPct()`) — the same
+  number your exchange quotes and the one that sets the payout. The **direction stays locked** for the
+  round; the blend that *picked* it shows up only as the "Live:" lean and the payout's +EV edge. When a
+  side is already near-certain (≥ `DEAD_MONEY_PCT`, 90%) the card shows **"already nearly settled"**
+  instead of BUY (it pays ~1.0x). If a coin has **no live Kalshi crowd**, the % falls back to the blended
+  estimate, labelled **"est ·"** rather than "market ·".
+- **Phase-aware scope + next-round pick.** Most of the round it reads *"● LIVE · THIS round ·
+  closes h:mm AM/PM"*. In the final **2 minutes** a **NEXT-round** pick locks in — *"◷ NEXT round
+  h:mm–h:mm · locked …"* — buy it when the round opens. **SKIP** when there's no clear edge.
 - **Zoomable mini chart** (`drawMiniChart` → `drawLiveChart` / `drawTFChart`) — the live price
   racing the strike (green above / red below, dashed strike line), with timeframe buttons
   (Live · 1m · 5m · 10m · 15m · 30m · 1h · 1d) that pull historical closes against the same

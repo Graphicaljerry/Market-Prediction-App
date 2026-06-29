@@ -1001,7 +1001,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r38 · one source of truth: every % is the live Kalshi market price (matches your exchange) · dead-money favorites no longer shown as BUY · retired the Sure-Thing tab</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r39 · audit fixes: payout reads the same market as the headline · one shared dead-money cutoff (90%) · est-labelled fallback when a coin has no live Kalshi crowd</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1499,6 +1499,8 @@
   // round chips, the payout line, and your betting screen ALL agree. Our blended model still picks the side
   // and stays visible as the "Live" lean + the +EV "edge" on the payout line — the market sets the odds.
   // Uses activeCrowd(), so it tracks THIS round normally and the NEXT market in the final 2 min. null = no crowd yet.
+  var DEAD_MONEY_PCT = 90;   // market % at/above which a side pays so little it isn't worth buying — shared by the
+                             // headline dead-money guard AND the payout line so they can never contradict. 90% ≈ a 1.11x payout.
   function marketPct(dir) {
     var c = activeCrowd();
     if (!c || typeof c.overPct !== "number" || (dir !== "OVER" && dir !== "UNDER")) return null;
@@ -1878,7 +1880,7 @@
     var behind = !nextMode && (mpct != null ? mpct < 50 : call.pct < 50);   // our committed side is currently the underdog — we're deliberately holding it
     // Dead-money guard: when the market already prices our side near-certain it pays ~1.0x, so betting it
     // just returns your stake. Don't dress that up as a "BUY" — show it honestly and point at the payout line.
-    if (mpct != null && mpct >= 90 && !nextMode) {
+    if (mpct != null && mpct >= DEAD_MONEY_PCT && !nextMode) {
       el.className = "reco skip"; setGlow("SKIP");
       scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
       buyEl.className = "buyLine skip";
@@ -1902,7 +1904,7 @@
     if (nextMode) {
       scopeEl.innerHTML = '<span class="liveTag next">◷ NEXT</span>round ' + nsH + "–" + neH + (call.atLabel ? " · locked " + call.atLabel : "");
       hintEl.textContent = "Locked for the round that opens next — buy " + call.dir + " when it starts.";
-      lblEl.textContent = (mpct != null ? "market · " : "likely ") + (call.dir === "OVER" ? "UP" : "DOWN");
+      lblEl.textContent = (mpct != null ? "market · " : "est · ") + (call.dir === "OVER" ? "UP" : "DOWN");
     } else {
       scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
       if (behind) {
@@ -1910,7 +1912,7 @@
         lblEl.textContent = "holding " + call.dir;
       } else {
         hintEl.textContent = "Committed " + call.dir + " for this round — held unless it becomes near-certain the other way, so it won't flip every time the line is crossed.";
-        lblEl.textContent = (mpct != null ? "market · " : "chance ") + (call.dir === "OVER" ? "UP" : "DOWN");
+        lblEl.textContent = (mpct != null ? "market · " : "est · ") + (call.dir === "OVER" ? "UP" : "DOWN");
       }
     }
     if (state.hiConvOnly && hiConv) scopeEl.innerHTML += " · " + (call.conv.level === "strong" ? "HIGH CONVICTION" : "EDGE vs CROWD");
@@ -2047,7 +2049,7 @@
       if (call && (call.dir === "OVER" || call.dir === "UNDER")) {
         var dmp = marketPct(call.dir), dpv = dmp != null ? dmp : call.pct;   // show the market's own odds, same as the headline
         setDPCol(tDirEl, tCol, tSub, call.dir, call.dir === "OVER" ? "over" : "under",
-          (dpv < 50 ? "holding · " : "") + dpv + (dmp != null ? "% market" : "% likely"));
+          (dpv < 50 ? "holding · " : "") + dpv + (dmp != null ? "% market" : "% est"));
       } else if (call && call.held) {
         setDPCol(tDirEl, tCol, tSub, "—", "skip", "sitting out");   // locked as a skip — held, not re-picked live
       } else setDPCol(tDirEl, tCol, tSub, "—", "wait", "reading…");
@@ -2058,7 +2060,7 @@
     if (L && L.dir) {
       nCol.classList.remove("dormant");
       if (L.dir === "SKIP") setDPCol(nDirEl, nCol, nSub, "SKIP", "skip", "too close — sit out · locked " + L.atLabel);
-      else { var lmp = nextModeNow() ? marketPct(L.dir) : null; setDPCol(nDirEl, nCol, nSub, L.dir, L.dir === "OVER" ? "over" : "under", (lmp != null ? lmp + "% market" : L.pct + "% likely") + " · locked " + L.atLabel); }
+      else { var lmp = nextModeNow() ? marketPct(L.dir) : null; setDPCol(nDirEl, nCol, nSub, L.dir, L.dir === "OVER" ? "over" : "under", (lmp != null ? lmp + "% market" : L.pct + "% est") + " · locked " + L.atLabel); }
     } else if (inWindow) {
       nCol.classList.remove("dormant");
       setDPCol(nDirEl, nCol, nSub, "…", "wait", "locking your next-round bet");
@@ -3781,12 +3783,12 @@
   // why the high-win-rate near-locks don't make money. Real profit lives in the rare +EV gaps.
   function renderPayout() {
     var el = $("payout"); if (!el) return;
-    var crowd = state.lastCrowd, dir = state.shownDir;
+    var crowd = activeCrowd(), dir = state.shownDir;   // SAME source as the headline % (the NEXT round's market in the final 2 min) so the multiplier never prices a different round than the one shown
     if (!crowd || typeof crowd.overPct !== "number" || (dir !== "OVER" && dir !== "UNDER")) { el.hidden = true; el.textContent = ""; return; }
     var mktProb = (dir === "OVER" ? crowd.overPct : 100 - crowd.overPct) / 100;
     if (!(mktProb > 0.02 && mktProb <= 0.999)) { el.hidden = true; return; }
     el.hidden = false;
-    if (mktProb >= 0.97) { el.innerHTML = 'Payout ≈ <b>~1.0x</b> · <b style="color:var(--label-3)">dead money</b> — ' + dir + ' is near-certain, so it just returns your stake. Only the longshot pays here.'; return; }
+    if (mktProb >= DEAD_MONEY_PCT / 100) { el.innerHTML = 'Payout ≈ <b>~' + (1 / mktProb).toFixed(2) + 'x</b> · <b style="color:var(--label-3)">barely beats your stake</b> — ' + dir + ' is near-certain; the value (if any) is the longshot side.'; return; }
     var mult = 1 / mktProb;
     var reco = state.lastRecoObj, appP = reco ? (dir === "OVER" ? combinedOdds(reco).pOver : 1 - combinedOdds(reco).pOver) : null;
     var edge = appP != null ? appP - mktProb : null;

@@ -897,10 +897,11 @@ async function notifyHotPicks(env, st) {
   }
   if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 High-confidence pick (not a skip): " + msg);
 }
-// SURE-THING scanner — runs ~3 min before each close (the :12/:27/:42/:57 cron). For every coin with a
-// Kalshi series, a near-lock is when the MARKET ITSELF is already ≥ LOCK_MIN_PROB (default 78%) on one
-// side — it'd take a sharp reversal in the final minutes to flip. We ping you to bet it. Honest caveat:
-// near-locks are cheap to win (you pay ~78¢ to win ~22¢), so it's "where it'll land", not a price edge.
+// SURE-THING scanner — runs ~7 min before each close (the 8,23,38,53 cron). For every coin with a Kalshi
+// series, it pings when the MARKET ITSELF is in the BETTABLE band: clearly favored (>= LOCK_MIN_PROB,
+// default 75%) but NOT yet so certain the platform locks the side (< LOCK_MAX_PROB, default 92%). The
+// earlier timing matters: a side locks once near-certain, so the ping aims for the still-bettable window.
+// Honest caveat: these are cheap to win (small payout), so it's "where it'll land", not a price edge.
 // Read-only (persist=false) so it adds no KV writes; one scan per round so it's one ping max per coin.
 async function scanLateLocks(env) {
   if (!env.DISCORD_WEBHOOK && !env.NTFY_TOPIC) return;

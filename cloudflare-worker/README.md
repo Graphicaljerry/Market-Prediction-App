@@ -83,7 +83,9 @@ Add Text vars `KALSHI_SERIES_ETH`, `KALSHI_SERIES_BTC`, `KALSHI_SERIES_SOL` set 
 the nearest-expiry open market in that series.
 
 ## 24/7 auto-tracker (cron) — free, no AI spend
-The root `wrangler.toml` adds a **cron trigger** (`[triggers] crons = ["*/15 * * * *"]`). Every
+The root `wrangler.toml` adds **two cron triggers** (`[triggers] crons = ["*/15 * * * *", "8,23,38,53 * * * *"]`).
+The `*/15` trigger is the auto-tracker loop below; the `8,23,38,53` trigger is the near-lock "bet now" scanner
+(`scanLateLocks`, ~7 min before each close — see Notifications). Every
 15 minutes the Worker's `scheduled` handler makes a market-anchored pick for each coin that has
 a `KALSHI_SERIES_*` set — using **only free data** (Kalshi price + Coinbase 1-min momentum +
 order book, **no LLM**) — grades the previous round (settling on a **~60-second average** of trades
@@ -176,7 +178,7 @@ Cloudflare Workers (shared IPs) *even with a token*, so Discord is the dependabl
 3. Test: open `…workers.dev/?testpush=discord` — it posts to your channel and returns `{"discord":{"sent":true}}`. Real pings then arrive automatically. (`pushDiscord` in `worker.js`.)
 
 **Two kinds of ping fire automatically** once a channel is set:
-- **Near-lock "bet now"** — a cron at **:12/:27/:42/:57** (≈3 min before each close) scans every coin and pings when the **Kalshi market is already ≥ `LOCK_MIN_PROB` (default 78%)** on one side — a round it'd take a sharp reversal to flip. High win rate, small payout. (`scanLateLocks`.) **This is the one you'll actually get** — the old open-of-round check almost never qualified because the open is ~50/50.
+- **Near-lock "bet now"** — a cron at **:08/:23/:38/:53** (≈7 min before each close) scans every coin and pings when the **Kalshi market is in the bettable band — clearly favored (≥ `LOCK_MIN_PROB`, default 75%) but not yet locked (< `LOCK_MAX_PROB`, default 92%)** on one side. The earlier timing matters: a side **locks once it's near-certain**, so the ping aims for the window where you can still place it. High win rate, small payout. (`scanLateLocks`.) **This is the one you'll actually get** — the old open-of-round check almost never qualified because the open is ~50/50.
 - **High-confidence open pick** — the regular 15-min cron still pings if a *new* round opens with a strong, non-SKIP pick (rare). (`notifyHotPicks`.)
 
 Make sure your Discord channel's **notifications are on** (and the Discord phone app can push) so these reach your phone.
