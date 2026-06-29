@@ -900,13 +900,16 @@ async function pushDiscord(env, text) {
 }
 async function notifyHotPicks(env, st) {
   if (!env.NTFY_TOPIC && !env.DISCORD_WEBHOOK) return;
-  const minProb = Number(env.NTFY_MIN_PROB) || 75;
+  // Fired at ROUND OPEN — the EARLIEST, edge-based alert (you get ~13 min to act). Loosened so it
+  // actually fires on the tracker's committed pick, rather than waiting for a near-locked favorite.
+  const minProb = Number(env.NTFY_MIN_PROB) || 68;
+  const minAgree = Number(env.NTFY_MIN_AGREE) || 2;
   const deadPct = Number(env.NTFY_DEAD_PCT) || 90;   // don't ping a side the market already prices >= this — it pays ~1.0x (no profit)
   const hot = [], strongBet = [];
   for (const c of AUTO_COINS) {
     const rec = st.coins && st.coins[c], p = rec && rec.pending;
     if (!p || p.notified) continue;
-    if ((p.side === "OVER" || p.side === "UNDER") && (p.prob || 0) >= minProb && (p.agree || 0) >= 3) {
+    if ((p.side === "OVER" || p.side === "UNDER") && (p.prob || 0) >= minProb && (p.agree || 0) >= minAgree) {
       const mp = p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null;
       const sidePct = mp == null ? null : (p.side === "OVER" ? mp : 100 - mp);   // the market price of OUR side
       if (sidePct != null && sidePct >= deadPct) continue;   // dead money — skip the ping, don't even mark it (in case the price eases later)
@@ -949,7 +952,10 @@ async function ntfyPush(env, title, tag, body) {
 // within one 15-min window) — so pings keep firing through Kalshi 429s without ever using last round's data.
 async function scanLateLocks(env) {
   if (!env.DISCORD_WEBHOOK && !env.NTFY_TOPIC) return;
-  const lo = Number(env.LOCK_MIN_PROB) || 75, hi = Number(env.LOCK_MAX_PROB) || 92;
+  // FORMING-FAVORITE band — a side that's clearly leaning but still PAYS (≈1.35x–1.6x), caught while there's
+  // time to act. Deliberately stops well below the near-locked zone (a side priced ≥ ~75% pays ≤1.3x and the
+  // round's nearly over — "too late"). Tune with LOCK_MIN_PROB / LOCK_MAX_PROB.
+  const lo = Number(env.LOCK_MIN_PROB) || 62, hi = Number(env.LOCK_MAX_PROB) || 74;
   const now = Date.now();
   const lockHot = [], valueHot = [];
   for (const c of AUTO_COINS) {
@@ -977,7 +983,7 @@ async function scanLateLocks(env) {
         const proj = Math.abs(micro.mom) * (rem / 60);                           // projected move over time left
         const impU = underdog === "OVER" ? op / 100 : 1 - op / 100;
         const mult = 1 / Math.max(0.035, impU);
-        if (toward && rem >= 60 && rem <= 480 && proj >= dist * 0.8 && mult >= 2.5) {
+        if (toward && rem >= 60 && rem <= 480 && proj >= dist * 0.8 && mult >= 2.0) {
           valueHot.push(`${c} - ${underdog === "OVER" ? "Over" : "Under"} ${mult.toFixed(1)}x`);
         }
       }
@@ -986,7 +992,7 @@ async function scanLateLocks(env) {
   if (lockHot.length) {
     const msg = "Predict (" + lockHot.join(", ") + ")";
     if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 " + msg);
-    await ntfyPush(env, "Predict — bet while you can", "dart", msg);
+    await ntfyPush(env, "Predict — pick forming, time to act", "dart", msg);
   }
   if (valueHot.length) {
     const msg = "Predict (" + valueHot.join(", ") + ")";

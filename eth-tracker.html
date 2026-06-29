@@ -304,6 +304,10 @@
     .m-read { order: 5; } .m-indicators { order: 6; } .m-autotracker { order: 7; }
     .layout .module { margin-top: 18px; }
     .layout .m-hero { margin-top: 0; }
+    /* Comfortable touch targets on phones (these are ~26-28px on desktop — fine for a mouse, small for a thumb) */
+    .tfBtn, .chartType button { min-height: 38px; }
+    .indBar button { padding-top: 9px; padding-bottom: 9px; }
+    .chip { min-height: 28px; display: inline-flex; align-items: center; justify-content: center; }
   }
 
   /* TABLET + DESKTOP: horizontal nav row, segmented coin tabs, big page title hidden */
@@ -761,7 +765,7 @@
   .autoLearned .pnow { font-weight: 700; color: var(--label); }
 
   /* ---------- Help / info sheet ---------- */
-  .ihelp { display:inline-flex; align-items:center; justify-content:center; width:17px; height:17px; border-radius:50%; background:var(--surface-3); color:var(--label-2); font-size:11px; font-weight:700; margin-left:7px; cursor:pointer; border:none; vertical-align:middle; padding:0; }
+  .ihelp { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:var(--surface-3); color:var(--label-2); font-size:13px; font-weight:700; margin-left:7px; cursor:pointer; border:none; vertical-align:middle; padding:0; }
   .ihelp:active { opacity:.6; }
   .ind { cursor: pointer; }
   #infoSheet { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:flex-end; justify-content:center; z-index:50; }
@@ -1047,7 +1051,7 @@
     <div id="blend" class="blend"></div>
     <div id="aiInfluence" class="aiInfluence"></div>
     <div class="pickoff" id="pickoff" hidden></div>
-    <label class="hiConvToggle" style="margin:2px 0 10px"><input type="checkbox" id="aiBoost" /><span>Trust the AI more — let its weight climb higher as it earns it</span></label>
+    <label class="hiConvToggle" style="margin:2px 0 10px"><input type="checkbox" id="aiBoost" /><span>Trust the AI more as it earns it</span></label>
     <div class="trustDial" id="trustDialWrap">
       <div class="tdHead"><span class="tdLbl">AI trust dial</span><span class="tdVal" id="aiTrustVal">earned · unchanged</span></div>
       <input type="range" id="aiTrust" class="tdSlider" min="-20" max="20" step="5" value="0" aria-label="AI trust dial" />
@@ -1131,7 +1135,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r55 · audit pass: lifted muted-text contrast (toward WCAG AA), solid page title (removed gradient-text tell), keyboard focus ring, aria-labels on icon buttons · Geist + Geist Mono typography · independent column stacks · "Who's calling it better" meter · fewer colors · installable PWA</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r56 · notifications fire EARLIER &amp; on real value (forming favorites ~1.5x + the open-round pick), not the too-late ~1.2x near-lock · bigger touch targets (the "?" buttons + phone chart/indicator buttons) · tighter copy · audit a11y fixes · Geist typography · independent column stacks</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3686,7 +3690,7 @@
     if (!notifyEnabled() || !("Notification" in window) || Notification.permission !== "granted") return;
     var bucket = currentRoundEnd ? Math.floor(currentRoundEnd.getTime() / 900000) : 0;   // one alert per coin per round
     (state.best || []).forEach(function (x) {
-      if ((x.side !== "OVER" && x.side !== "UNDER") || x.prob < 75 || (x.agree || 0) < 3) return;
+      if ((x.side !== "OVER" && x.side !== "UNDER") || x.prob < 68 || (x.agree || 0) < 2) return;   // loosened so early edge-based picks actually alert (was 75 / 3 — too strict, fired too rarely)
       var mp = (typeof x.crowdOver === "number") ? (x.side === "OVER" ? x.crowdOver : 100 - x.crowdOver) : null;   // market price of our side
       if (mp != null && mp >= DEAD_MONEY_PCT) return;   // skip dead-money — a side the market prices >= 90% pays ~1.0x, no profit to ping
       var key = x.coin + ":" + bucket; if (_notifiedKey[key]) return; _notifiedKey[key] = 1;
