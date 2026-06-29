@@ -98,6 +98,7 @@
     <p><b>Green = up / OVER. Red = down / UNDER. Amber = skip.</b> That colour code is used everywhere — the
     price line, the pick, the arrows, the glow behind the cards.</p>
     <div class="toc">
+      <a href="#workflow">★ Start here — the workflow</a>
       <a href="#price">① Price card &amp; the line</a>
       <a href="#arrows">② Recent-15-min arrows</a>
       <a href="#dual">③ This round / Next round</a>
@@ -108,8 +109,25 @@
       <a href="#best">⑧ Best bet &amp; all-coins ranking</a>
       <a href="#chart">⑨ The chart &amp; indicators</a>
       <a href="#ideas">⑩ Key ideas &amp; glossary</a>
+      <a href="#backend">⑪ Under the hood (backend)</a>
     </div>
   </div>
+
+  <!-- ★ WORKFLOW -->
+  <h2 id="workflow"><span class="ico">★</span>Start here — the 30-second workflow</h2>
+  <p class="lede">What to follow, in order. You really only need the one headline call — everything else just tells you <i>how much to trust it</i>.</p>
+  <div class="card">
+    <ol style="padding-left:20px;margin:4px 0">
+      <li><b>Pick a coin</b> — or tap the <b>🏆 Best now</b> bar at the bottom; it surfaces the single strongest coin this minute.</li>
+      <li><b>Read the Auto Pick.</b> One instruction: <b class="green">BUY OVER</b>, <b class="red">BUY UNDER</b>, or <b class="amber">SKIP</b>. That's your bet. The big % beside it is the <b>live market price</b> — the same number Robinhood/Kalshi show.</li>
+      <li><b>Glance at "Which to follow."</b> Tracker <b>agrees</b> → stronger, take it. <b>Split</b> → coin-flip, sit out.</li>
+      <li><b>Check the Payout line.</b> <b class="green">+EV</b> = worth it (the app rates it higher than the price). <b class="amber">~1.0× dead money</b> = skip — you'd just get your stake back.</li>
+      <li><b>Set your Play style once</b> (Disciplined · Balanced · Active) — it decides how often step 2 says "bet" vs "skip."</li>
+      <li><b>Mind the timing.</b> Most of the round you bet <b>THIS round</b>; in the <b>final 2 min</b> it locks a pick for the <b>NEXT round</b> — buy that one when it opens.</li>
+      <li><b>Want it hands-off?</b> Leave the app closed — a <b>Discord ping</b> fires ~7 min before a close when a clear favorite is still bettable.</li>
+    </ol>
+  </div>
+  <p class="note"><span class="k">The one rule:</span> follow the Auto Pick, lean in when the tracker agrees and the payout is +EV, and never throw money at a ~1.0× near-lock — that's the "win the bet, earn nothing" trap.</p>
 
   <!-- ① PRICE CARD -->
   <h2 id="price"><span class="ico">①</span>The price card &amp; the line</h2>
@@ -156,7 +174,7 @@
       <div style="text-align:center">
         <div class="small">THIS ROUND</div>
         <div class="big green">OVER</div>
-        <div class="small">55% likely</div>
+        <div class="small">55% market</div>
       </div>
       <div class="divider"></div>
       <div style="text-align:center">
@@ -178,14 +196,16 @@
     <div class="small">● LIVE · THIS ROUND · CLOSES 3:30 AM</div>
     <div class="big green" style="margin:6px 0">BUY OVER ↑</div>
     <div class="small">betting the price goes UP</div>
-    <div class="big green" style="margin:10px 0 0">54%<span class="small" style="margin-left:8px">CHANCE UP</span></div>
-    <div style="margin-top:6px">High Confidence</div>
+    <div class="big green" style="margin:10px 0 0">62%<span class="small" style="margin-left:8px">MARKET · UP</span></div>
+    <div class="small" style="margin-top:8px">Payout ≈ <b style="color:#fff">1.61×</b> · <b class="green">+EV — app rates it higher than the price</b></div>
   </div>
   <ul>
-    <li><b class="green">BUY OVER ↑</b> / <b class="red">BUY UNDER ↓</b> — the call. The big <b>%</b> is the <b>blended</b> chance it's right (market + position math + AI + indicators, calibrated to your history).</li>
-    <li><b>HOLDING …</b> shows up when the committed side is temporarily losing — it's deliberately sticking with its pick, not flip-flopping.</li>
-    <li><b>High Confidence / conviction</b> reflects how strongly the signals agree.</li>
-    <li>The <b>"Which to follow"</b> line underneath reconciles this Co-Pilot pick with the 24/7 tracker: <b>both agree → higher conviction</b>; <b>split → coin-flip, sit out</b>; <b>tracker SKIPPING → it won't even score this round</b>, treat the call as optional.</li>
+    <li><b class="green">BUY OVER ↑</b> / <b class="red">BUY UNDER ↓</b> — the call. The big <b>%</b> is the <b>live market price</b> (Kalshi) for that side — the same number Robinhood shows and the one that sets your payout. <i>Our own blended model picks the side; it shows up below as the "Live:" lean and the +EV edge — so the market sets the odds, the model picks the door.</i></li>
+    <li><b>HOLDING …</b> shows when the committed side is temporarily losing — it's deliberately sticking with its pick, not flip-flopping.</li>
+    <li><b>"… already nearly settled"</b> replaces BUY when a side is already ~90%+ — betting it pays ~1.0× (just your stake back), so there's nothing worth buying; wait for the next round.</li>
+    <li><b>Payout ≈ N×</b> tells you if it's worth it: <b class="green">+EV</b> = the app rates it above the price (take it) · <b>≈ fair</b> = break-even · <b class="amber">~1.0× dead money</b> = skip.</li>
+    <li><b>Play style</b> (Disciplined / Balanced / Active, at the top of the card) sets <b>how often</b> it calls a round worth betting — fewer &amp; safer vs more action. Disciplined only flags the rare strong setups; Active flags most rounds.</li>
+    <li>The <b>"Which to follow"</b> line underneath reconciles this pick with the 24/7 tracker: <b>both agree → higher conviction</b>; <b>split → coin-flip, sit out</b>; <b>tracker SKIPPING → it won't even score this round</b>, treat the call as optional.</li>
   </ul>
 
   <!-- ⑤ TIMER -->
@@ -305,7 +325,26 @@
     <h3>The learned model</h3>
     <p>A tiny model that learns, per coin, how the round-open signals map to OVER/UNDER. 15-minute direction is near-random, so it's a <b>faint, calibrated tilt</b>, never a crystal ball.</p>
     <h3>Alerts 🔔</h3>
-    <p>Turn on alerts (AI Co-Pilot setup, or the Worker's ntfy push) to get pinged <b>only on high-confidence, non-SKIP picks</b> — a coin it's willing to bet and several reads agree.</p>
+    <p>Set a <b>Discord webhook</b> (recommended) or ntfy on the Worker to get pinged <b>~7 min before a close</b> when a clear favorite is <b>still bettable</b> — and on high-confidence non-SKIP picks — even with the app closed. The timing matters: a side <b>locks once it's near-certain</b>, so the ping aims for the window where you can actually place it, not the 1.0× lock.</p>
+    <h3>Market price vs our model</h3>
+    <p>Every <b>%</b> you see is the <b>live market price</b> (Kalshi) — it sets the payout and matches your exchange, and it's steady. Our blended <b>model</b> only <b>picks the side</b> and flags <b>+EV</b> (where it thinks the price is too low). Two jobs: the market sets the odds, the model picks the door.</p>
+  </div>
+
+  <!-- ⑪ BACKEND -->
+  <h2 id="backend"><span class="ico">⑪</span>Under the hood — how the backend works</h2>
+  <p class="lede">Two moving parts, two data sources. No login, no database — your history lives on your device.</p>
+  <div class="card">
+    <h3>The two data sources</h3>
+    <ul>
+      <li><b>Coinbase</b> — the live price, the candles behind every indicator and the chart, and the official 15-min close used to <b>grade</b> rounds.</li>
+      <li><b>Kalshi</b> — the real-money <b>market odds</b> (the % you see everywhere, which sets the payout) and the official <b>settled result</b> each round.</li>
+    </ul>
+    <h3>The app (on your phone)</h3>
+    <p>One self-contained web page. It pulls Coinbase + Kalshi live, blends the signals into the side-pick, draws the chart, and saves your track record <b>locally on the device</b>. Hosted free on GitHub Pages — that's why a change "goes live" by pushing to the site.</p>
+    <h3>The 24/7 worker (the server)</h3>
+    <p>A small Cloudflare Worker on a timer that runs <b>even when the app is closed</b>: every 15 min it makes a free pick, grades the last round, and nudges its learned model. ~7 min before each close it scans all coins and fires the <b>Discord ping</b> when a clear favorite is still bettable. It also fetches the optional <b>AI read once per round</b> and shares that single read across all your devices — so it costs the same whether the app is open on one screen or three.</p>
+    <h3>What it costs</h3>
+    <p>Everything but the optional AI runs on <b>free tiers</b>. The AI read is the only paid part, and it's cached one-per-round to keep it tiny.</p>
   </div>
 
   <div class="foot">
