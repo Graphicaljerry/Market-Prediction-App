@@ -3510,7 +3510,7 @@
       var mp = (typeof x.crowdOver === "number") ? (x.side === "OVER" ? x.crowdOver : 100 - x.crowdOver) : null;   // market price of our side
       if (mp != null && mp >= DEAD_MONEY_PCT) return;   // skip dead-money — a side the market prices >= 90% pays ~1.0x, no profit to ping
       var key = x.coin + ":" + bucket; if (_notifiedKey[key]) return; _notifiedKey[key] = 1;
-      try { new Notification("🎯 High-confidence: " + x.coin + " " + x.side + " " + x.prob + "%", { body: (x.agree) + " reads agree — bet this 15-min round" + (mp != null ? " · ~" + (100 / mp).toFixed(2) + "x" : ""), tag: key }); } catch (e) {}
+      try { new Notification("Predict (" + x.coin + " - " + (x.side === "OVER" ? "Over" : "Under") + (mp != null ? " " + (100 / mp).toFixed(1) + "x" : "") + ")", { body: "Strong pick · tap to open", tag: key }); } catch (e) {}
     });
   }
   // Payout + EV for a ranked-coin row, from the live market price the worker now forwards (x.crowdOver = market OVER%).

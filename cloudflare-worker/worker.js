@@ -885,21 +885,21 @@ async function notifyHotPicks(env, st) {
       const mp = p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null;
       const sidePct = mp == null ? null : (p.side === "OVER" ? mp : 100 - mp);   // the market price of OUR side
       if (sidePct != null && sidePct >= deadPct) continue;   // dead money — skip the ping, don't even mark it (in case the price eases later)
-      hot.push(`${c} ${p.side} ${p.prob}%` + (sidePct != null ? ` (~${(100 / sidePct).toFixed(2)}x)` : ""));
+      hot.push(`${c} - ${p.side === "OVER" ? "Over" : "Under"}` + (sidePct != null ? ` ${(100 / sidePct).toFixed(1)}x` : ""));
       p.notified = true;   // one push per round (persisted by the saveState that follows)
     }
   }
   if (!hot.length) return;
-  const msg = hot.join("   ·   ") + "  — bet this 15-min round";
+  const msg = "Predict (" + hot.join(", ") + ")";
   if (env.NTFY_TOPIC) {
     const url = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
     await fetch(url, {
       method: "POST",
-      headers: { Title: "High-confidence pick — not a skip", Priority: "high", Tags: "dart", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) },
+      headers: { Title: "Predict — strong pick", Priority: "high", Tags: "fire", ...(env.NTFY_TOKEN ? { Authorization: `Bearer ${env.NTFY_TOKEN}` } : {}) },
       body: msg,
     }).catch(() => {});
   }
-  if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 High-confidence pick (not a skip): " + msg);
+  if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🔥 " + msg);
 }
 // Small ntfy push helper (shared by the alert scanners).
 async function ntfyPush(env, title, tag, body) {
@@ -932,8 +932,8 @@ async function scanLateLocks(env) {
     if (crowd.stale && !stillThisRound) continue;   // fresh is always ok; stale only while it's still this round
     const op = crowd.overPct;
     // (1) NEAR-LOCK band — clearly favored but still bettable (shown with the payout multiplier).
-    if (op >= lo && op < hi) lockHot.push(`${c} OVER ~${Math.round(op)}% (~${(100 / op).toFixed(2)}x)`);
-    else if (op <= 100 - lo && op > 100 - hi) lockHot.push(`${c} UNDER ~${Math.round(100 - op)}% (~${(100 / (100 - op)).toFixed(2)}x)`);
+    if (op >= lo && op < hi) lockHot.push(`${c} - Over ${(100 / op).toFixed(1)}x`);
+    else if (op <= 100 - lo && op > 100 - hi) lockHot.push(`${c} - Under ${(100 / (100 - op)).toFixed(1)}x`);
     // (2) VALUE ENTRY — the big-payout longshot the price is racing toward (needs live Coinbase momentum).
     if (stillThisRound && op > 2 && op < 98 && crowd.strike > 0) {
       let micro = null;
@@ -947,20 +947,20 @@ async function scanLateLocks(env) {
         const impU = underdog === "OVER" ? op / 100 : 1 - op / 100;
         const mult = 1 / Math.max(0.035, impU);
         if (toward && rem >= 60 && rem <= 480 && proj >= dist * 0.8 && mult >= 2.5) {
-          valueHot.push(`${c} ${underdog} ~${mult.toFixed(1)}x (price heading for the line, ~${Math.round(rem / 60)} min left)`);
+          valueHot.push(`${c} - ${underdog === "OVER" ? "Over" : "Under"} ${mult.toFixed(1)}x`);
         }
       }
     }
   }
   if (lockHot.length) {
-    const msg = "LEANING — bet while you can (~7 min to close): " + lockHot.join("   ·   ") + " — clearly favored but still bettable. The favorite LOCKS once near-certain, so place it now. High win rate, small payout.";
+    const msg = "Predict (" + lockHot.join(", ") + ")";
     if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 " + msg);
-    await ntfyPush(env, "Leaning — bet now before it locks", "dart", msg);
+    await ntfyPush(env, "Predict — bet while you can", "dart", msg);
   }
   if (valueHot.length) {
-    const msg = "VALUE ENTRY — longshot about to cross: " + valueHot.join("   ·   ") + " — price is being carried toward the line and the side it's heading to still pays big. Higher variance; size small.";
+    const msg = "Predict (" + valueHot.join(", ") + ")";
     if (env.DISCORD_WEBHOOK) await pushDiscord(env, "⚡ " + msg);
-    await ntfyPush(env, "Value entry — longshot about to cross", "zap", msg);
+    await ntfyPush(env, "Predict — longshot about to cross", "zap", msg);
   }
 }
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).
