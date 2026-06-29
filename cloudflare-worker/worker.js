@@ -601,13 +601,37 @@ function modelForProvider(provider, model, env) {
 async function getAIRead(env, provider, body, crowd, autopicks) {
   const prompt = buildPrompt(body, crowd, autopicks);
   const model = modelForProvider(provider, body.model, env);
-  if (provider === "anthropic") return readAnthropic(env.ANTHROPIC_API_KEY, model, prompt);
-  if (provider === "gemini") return readGemini(env.GEMINI_API_KEY, model, prompt);
-  if (provider === "groq") return readGroq(env.GROQ_API_KEY, model, prompt);
-  return { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "No AI provider configured — add ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY." };
+  const hasKey = (provider === "anthropic" && env.ANTHROPIC_API_KEY) || (provider === "gemini" && env.GEMINI_API_KEY) || (provider === "groq" && env.GROQ_API_KEY);
+  if (!hasKey) return { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "No AI provider configured — add ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY.", plan: "" };
+  const once = (t) => provider === "anthropic" ? readAnthropic(env.ANTHROPIC_API_KEY, model, prompt, t)
+    : provider === "gemini" ? readGemini(env.GEMINI_API_KEY, model, prompt, t)
+    : readGroq(env.GROQ_API_KEY, model, prompt, t);
+  // FREE AI → take a CONSENSUS of several samples at varied temperature. Averaging cuts the variance of a
+  // single noisy read, and the cross-sample agreement becomes an honest confidence. Cached per round, so it's
+  // a few calls per round (not per tick). Tune with AI_SAMPLES (default 3; set 1 to disable the ensemble).
+  const n = Math.max(1, Math.min(5, Number(env.AI_SAMPLES) || 3));
+  if (n === 1) return await once();
+  const temps = [0.2, 0.5, 0.8, 0.35, 0.65];
+  const res = (await Promise.all(Array.from({ length: n }, (_, i) => once(temps[i % temps.length]).catch(() => null)))).filter(Boolean);
+  if (!res.length) return { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "AI temporarily unavailable — try again next round.", plan: "" };
+  if (res.length === 1) return res[0];
+  return aiConsensus(res);
+}
+// Combine several AI samples into one calibrated read: average probOver, verdict from the average, and a
+// confidence reflecting how strongly the samples AGREED (unanimous + lopsided = High; split = Low).
+function aiConsensus(rs) {
+  const pv = (r) => typeof r.probOver === "number" ? r.probOver : r.verdict === "OVER" ? 62 : r.verdict === "UNDER" ? 38 : 50;
+  const avg = Math.round(rs.reduce((a, r) => a + pv(r), 0) / rs.length);
+  const verdict = avg >= 55 ? "OVER" : avg <= 45 ? "UNDER" : "SKIP";
+  const agreeN = rs.filter((r) => r.verdict === verdict).length;
+  const frac = agreeN / rs.length;
+  const confidence = (frac >= 0.8 && (avg >= 62 || avg <= 38)) ? "High" : frac >= 0.6 ? "Medium" : "Low";
+  let rep = rs[0], best = 1e9;
+  for (const r of rs) { const d = Math.abs(pv(r) - avg); if (d < best) { best = d; rep = r; } }
+  return { probOver: avg, verdict, confidence, edge: rep.edge || "n/a", rationale: rep.rationale || "", plan: rep.plan || "", samples: rs.length, agree: agreeN };
 }
 
-async function readAnthropic(key, model, prompt) {
+async function readAnthropic(key, model, prompt, temp) {
   if (!key) throw new Error("ANTHROPIC_API_KEY missing");
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -615,6 +639,7 @@ async function readAnthropic(key, model, prompt) {
     body: JSON.stringify({
       model,
       max_tokens: 400,
+      temperature: typeof temp === "number" ? temp : 1,
       output_config: {
         format: {
           type: "json_schema",
@@ -643,7 +668,7 @@ async function readAnthropic(key, model, prompt) {
   return normalize(extractJson(tb.text));
 }
 
-async function readGemini(key, model, prompt) {
+async function readGemini(key, model, prompt, temp) {
   if (!key) throw new Error("GEMINI_API_KEY missing");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
   const r = await fetch(url, {
@@ -651,7 +676,7 @@ async function readGemini(key, model, prompt) {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json", temperature: 0.3, maxOutputTokens: 400 },
+      generationConfig: { responseMimeType: "application/json", temperature: typeof temp === "number" ? temp : 0.3, maxOutputTokens: 400 },
     }),
   });
   if (!r.ok) throw new Error("gemini " + r.status + " " + (await r.text()).slice(0, 140));
@@ -662,7 +687,7 @@ async function readGemini(key, model, prompt) {
   return normalize(extractJson(text));
 }
 
-async function readGroq(key, model, prompt) {
+async function readGroq(key, model, prompt, temp) {
   if (!key) throw new Error("GROQ_API_KEY missing");
   const r = await fetch("https://api.groq.com/openai/v1/chat/completions", {
     method: "POST",
@@ -670,7 +695,7 @@ async function readGroq(key, model, prompt) {
     body: JSON.stringify({
       model,
       max_tokens: 400,
-      temperature: 0.3,
+      temperature: typeof temp === "number" ? temp : 0.3,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: "Return only a JSON object matching the user's requested shape." },

@@ -663,6 +663,11 @@
     margin: 0 0 14px; padding: 9px 13px; border-radius: 12px; font-weight: 800; font-size: 13px; letter-spacing: .02em; border: 1px solid transparent; }
   .pickStrength .psSub { flex-basis: 100%; margin-top: 3px; font-weight: 600; font-size: 11px; letter-spacing: 0; opacity: .9; }
   .pickStrength.strong { color: var(--green); background: rgba(13,224,89,.12); border-color: rgba(13,224,89,.45); box-shadow: 0 0 18px rgba(13,224,89,.22); }
+  /* "bet" = the clearest setup (app + AI + momentum aligned). Picks up the side's accent color and pulses. */
+  .pickStrength.bet { color: rgba(var(--accent-rgb),1); background: rgba(var(--accent-rgb),.16); border-color: rgba(var(--accent-rgb),.62);
+    font-size: 14px; box-shadow: 0 0 24px rgba(var(--accent-rgb),.34); animation: betPulse 2.1s ease-in-out infinite; }
+  @keyframes betPulse { 0%,100% { box-shadow: 0 0 18px rgba(var(--accent-rgb),.26); } 50% { box-shadow: 0 0 32px rgba(var(--accent-rgb),.52); } }
+  @media (prefers-reduced-motion: reduce) { .pickStrength.bet { animation: none; } }
   .pickStrength.lean { color: var(--orange); background: rgba(255,159,10,.10); border-color: rgba(255,159,10,.4); }
   .pickStrength.flip { color: var(--label-2); background: rgba(255,255,255,.05); border-color: var(--separator); }
   .pickStrength.sit { color: var(--label-3); background: rgba(255,255,255,.03); border-color: var(--separator); }
@@ -1051,7 +1056,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r44 · Best-now bar shows the obvious side: 🔥 BET when momentum confirms the call &amp; reads agree · ▲/▼ "heading" badge per coin · liquid-glass theme (capability-detected)</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r45 · STRONG — BET banner when the app pick, AI read &amp; momentum all line up · consensus AI (several free samples averaged, agreement = confidence) · AI now reads every round by default · Best-now bar shows the obvious side · liquid-glass theme (capability-detected)</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1999,6 +2004,15 @@
     if (nextMode) {
       if (auto && auto === my && edge >= 0.08) return { tier: "lean", label: "NEXT-ROUND LEAN", sub: "heads-up for the next round (it opens ~50/50) — optional, not a sure thing" };
       return { tier: "flip", label: "NEXT-ROUND PREVIEW", sub: "the next round hasn't opened — ~coin-flip, don't bet it like a strong pick" };
+    }
+    // The clearest setup there is: the app's pick, the AI read, AND live momentum are ALL pointing the
+    // same way — and either the disciplined 24/7 tracker confirms it or the blended edge is strong on its
+    // own. When everything agrees, make it unmistakable which side to take.
+    var aiR = state.lastAI, aiAgree = !!(aiR && aiR.verdict === my);
+    var mom = state.micro && typeof state.micro.mom === "number" ? state.micro.mom : null;
+    var momConfirm = mom != null && ((my === "OVER" && mom > 0) || (my === "UNDER" && mom < 0));
+    if (aiAgree && momConfirm && ((auto && auto === my) || edge >= 0.12)) {
+      return { tier: "bet", label: "🔥 STRONG — BET " + my, sub: "app, AI and momentum all line up — the clearest setup to act on" };
     }
     if (auto && auto === my) return { tier: "strong", label: "STRONG — worth betting", sub: "the disciplined 24/7 tracker agrees — its committed bets run ~77–84%" };
     if (auto && auto !== "SKIP") return { tier: "flip", label: "COIN-FLIP — sit out", sub: "split: Co-Pilot says " + my + ", the tracker says " + auto + " — passing is safest" };
@@ -3353,10 +3367,11 @@
   function aiDataReady() { return !!(state.lastList && state.lastList.length && state.lastPrice != null); }
   function tabHidden() { return typeof document !== "undefined" && document.hidden; }
   var AI_BUDGET_KEY = "aiBudget_v1";
-  // Default to MANUAL — the paid AI read never auto-fires unless you tap "Get AI Read" (saves money).
-  // One-time: flip any existing device off the old auto default too (you asked to stop auto-summaries).
-  (function () { try { if (localStorage.getItem("aiBudgetManual_v1") !== "1") { localStorage.setItem(AI_BUDGET_KEY, "manual"); localStorage.setItem("aiBudgetManual_v1", "1"); } } catch (e) {} })();
-  function getAIBudget() { try { return localStorage.getItem(AI_BUDGET_KEY) || "manual"; } catch (e) { return "manual"; } }
+  // Default to ALWAYS (every round) — the AI is on a FREE tier now, so reading every round costs nothing
+  // and the consensus (several samples averaged) measurably sharpens the call. One-time: flip devices that
+  // were stuck on the old money-saving "manual" default up to "always". You can still change the dropdown.
+  (function () { try { if (localStorage.getItem("aiBudgetFree_v1") !== "1") { localStorage.setItem(AI_BUDGET_KEY, "always"); localStorage.setItem("aiBudgetFree_v1", "1"); } } catch (e) {} })();
+  function getAIBudget() { try { return localStorage.getItem(AI_BUDGET_KEY) || "always"; } catch (e) { return "always"; } }
 
   function maybeAutoAI() {
     if (!aiAvailable() || !aiDataReady()) return;

@@ -57,6 +57,11 @@ auto-detects which provider to use; or force it with a Text var `AI_PROVIDER`.
   `gemini-2.0-flash`, `llama-3.3-70b-versatile`). A model id that doesn't match the active provider
   is ignored (so a stale dropdown choice can't 404 the read); the response's `provider` field tells
   the app which brain answered, and the app labels the read **AI · Gemini / Claude / Groq** to match.
+- **Consensus samples:** `AI_SAMPLES` (default `3`, max `5`) sets how many reads are taken per
+  round and **averaged** into one calibrated verdict, with cross-sample agreement as the
+  confidence. Set `AI_SAMPLES=1` for a single read (the old behavior). Each sample is one model
+  call, so on a **paid** provider this multiplies per-round cost — keep it at 1–2 there; on a free
+  provider leave it at 3.
 - **Check it worked:** open the Worker URL in a browser (a GET) — it returns
   `{"ok":true,"provider":"…","model":"…"}` so you can confirm which brain is active.
 

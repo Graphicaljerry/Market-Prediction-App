@@ -19,6 +19,8 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **"STRONG — BET" when everything lines up, plus a smarter free AI read (r45).** Two changes. (1) The pick-strength banner gains a top tier: when the app's pick, the **AI read**, and **live momentum** all point the same way — and either the disciplined 24/7 tracker agrees or the blended edge is already strong — it shows an unmistakable **"🔥 STRONG — BET OVER"** in the side's colour (it pulses). It's the clearest, rarest setup to act on; everything below it stays as-is. (2) The AI now takes a **consensus**: instead of one noisy read, the worker asks the (free) model several times at different "temperatures" and **averages** them, using how strongly the samples agreed as an honest confidence (unanimous + lopsided = High; split = Low). Because the AI is on a free tier now, reads also default to **every round** (was manual/tap-only). **Pick-impact: YES — both the consensus and the every-round default change the *AI input* that feeds the blended % and your live call (more stable, more often). The STRONG — BET banner itself is display-only — it just labels when the existing signals all agree.** Tune samples with `AI_SAMPLES` (default 3; set 1 for the old single read). (`getAIRead`/`aiConsensus` in `worker.js`; `pickStrength` + `.pickStrength.bet` in `eth-tracker.html`.)
+
 - **Best-now bar surfaces the obvious side — "heading the right way" + confidence (r44).** Beyond just the most-lopsided/high-multiplier coin, the 🏆 bar now factors whether **price is already heading the way the pick called** (the pick-time momentum agrees with the side — a `confirm` flag). When momentum confirms **and** several reads agree, the bar shows an unmistakable **"🔥 BET SOL OVER ↑"** so it's obvious which side to take even before you bet, and every coin in the expanded ranking gets a **▲/▼ "heading OVER/UNDER"** badge. The worker forwards `confirm` and nudges confirmed picks up the order. **Pick-impact: re-orders the best-bet *ranking* (a recommendation surface) only — it does NOT change the per-coin picks or the 24/7 grading.** (This bar is the AI-free 24/7 tracker across all coins; per-coin AI agreement still shows on each coin's "Which to follow" line.) (`rankBest` in `worker.js`; `renderBestBar`/`renderBestList` in `eth-tracker.html`.)
 
 - **Liquid-glass theme (Apple-style), capability-detected (r43).** An optional frosted-glass skin: cards become translucent and **pick up the pick's colour** (`backdrop-filter: blur() saturate()` — green when it says BUY OVER, red on UNDER, amber on skip), with drifting ambient glows, **specular top edges**, a glossy gradient coin title, and a **real SVG-displacement refraction** on the pick card's glow. It only turns on where the browser actually supports it — a small probe adds `html.glassui` when `backdrop-filter` is available and the user hasn't enabled *Reduce Transparency*; otherwise the clean flat theme stays (so it's polished everywhere). Apple's true Liquid Glass is a *native* Metal effect, and the Chrome-only `backdrop-filter: url(#svg)` refraction trick is deliberately avoided in favour of the Safari-safe `filter:` approach (so it works on iPhone). Honors `prefers-reduced-motion` / `prefers-reduced-transparency`. **Display-only — no picker/logic changes.** (probe + `#liquidGlass` SVG + `.glassui` rules in `eth-tracker.html`; technique per kube.io / WebKit.)
@@ -613,6 +615,12 @@ verdict.
 - **Structured output:** `{probOver, verdict, confidence, edge, rationale}` — Anthropic via
   JSON-schema, Gemini/Groq via JSON modes, with a tolerant `extractJson()` fallback and a
   `normalize()` that derives `probOver` if omitted.
+- **Consensus read (`getAIRead` → `aiConsensus`):** a single LLM read on a near-coin-flip is
+  noisy, so each round's read is actually **several samples at varied temperature** (`AI_SAMPLES`,
+  default 3) whose `probOver` is **averaged**. The verdict comes from that average, and the
+  **cross-sample agreement becomes the confidence** — unanimous *and* lopsided → High, split →
+  Low. Set `AI_SAMPLES=1` to fall back to the old single read. Cached per round, so it's a few
+  calls per round, not per tick. (Free providers make this essentially free.)
 - **The prompt** (`buildPrompt`) is built around market efficiency: **anchor on the Kalshi
   price** (don't re-derive it), here's **the math** (distance, time-left, volatility, the
   position-model probability, momentum), the indicators are **correlated** so don't over-count
@@ -624,8 +632,9 @@ verdict.
     strike with **no LLM call**.
   - **Once per round** — the paid read fires at the 2-min lock, not every tick or round-open.
   - **Visibility-gated** — no automatic paid reads while the tab is hidden.
-  - **"AI spend" setting** — *Smart* (default; only pays when the call is close or contrarian
-    to the market), *Every round*, or *Manual only*.
+  - **"AI spend" setting** — *Every round* (**default now that the AI is free** — reads every
+    round for the most stable call), *Smart* (only reads when the call is close or contrarian to
+    the market), or *Manual only*. On a paid provider, switch to *Smart* or *Manual* to control cost.
   - Set a hard monthly cap in the Anthropic console for belt-and-suspenders.
 
 Setup details (keys, vars, Git deploy, cron) live in
