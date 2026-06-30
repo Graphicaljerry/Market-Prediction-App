@@ -19,7 +19,7 @@
 <title>15-Min Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
   :root {
     --bg: #0a0a0b;
@@ -41,6 +41,9 @@
     --ease: cubic-bezier(.22,1,.36,1);            /* strong ease-out — punchier than the built-ins (per Emil's animation guidance) */
     --ease-soft: cubic-bezier(.4,0,.2,1);          /* gentle in-out for panels/larger moves */
     --ease-spring: cubic-bezier(.16,1,.3,1);       /* strong, smooth deceleration for taps/pops (no bounce) */
+    /* The face used for the big, bold numeric readouts (price, countdown, scoreboard, Brier, stat cells).
+       Space Mono ships only 400/700, so weight-800 callers map cleanly to 700 (a real face, no faux-bold). */
+    --font-num: "Space Mono", "Geist Mono", ui-monospace, "SF Mono", monospace;
   }
   /* the whole UI's accent follows the up/down status of the pick */
   body.glow-over  { --accent: var(--green);  --accent-rgb: 13,224,89; }
@@ -802,6 +805,9 @@
   .heroStat { display: flex; align-items: center; gap: 14px; }
   .heroStat .hsv { flex: 0 0 auto; white-space: nowrap; font-size: 30px; font-weight: 800; font-family: "Geist Mono", ui-monospace, monospace; letter-spacing: -.02em; line-height: 1; color: var(--label); }
   .heroStat .hsv.good { color: var(--green); }
+  /* The big, bold numbers across the app share one display face (Space Mono). Single source of truth —
+     placed after each selector's own rule so it wins on source order. Tweak the face in --font-num only. */
+  .price, .timer, .stat .v, .heroStat .hsv, .mStat .sv, .aiInflPct { font-family: var(--font-num); }
   .heroStat .hsl { font-size: 11.5px; color: var(--label-2); line-height: 1.45; }
   .heroStat .hsl .q { color: var(--label); font-weight: 700; }
   .heroStat .hsHint { color: var(--label-3); }
@@ -1297,10 +1303,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r76</span><span class="buildSep">·</span><span>2026-06-30</span>
+        <span class="buildVer">build r77</span><span class="buildSep">·</span><span>2026-06-30</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Space Mono for the big numbers (r77).</b> The large, bold numeric readouts — price, countdown, the Track Record scoreboard, the Brier hero, and the stat cells — now use Space Mono for a more distinctive, techy display face. One token (<code>--font-num</code>) drives them all. Display-only.</p>
         <p><b>App-wide UI polish (r76).</b> A consistency pass over the whole app: every section header now carries a small accent "spine" marker and a brighter, bolder label, so the page reads as clear waypoints with a steady rhythm; the oversized coin title was dialed back so the price card leads. Also fixed a scoreboard bug where Hit Rate overflowed and the four boxes overlapped (a CSS class clash from r75). Display-only — no pick change.</p>
         <p><b>Model &amp; Accuracy redesign (r75).</b> Rebuilt the panel from a flat stack of gray prose-boxes into a scannable scoreboard: a consistent stat component (big value · label · sample) so numbers stop hiding in sentences, Brier as a hero readout, the lock-timing &amp; decisive-break tests as stat grids, and reserved colour — near-coin-flip hit-rates stay neutral, only the value return earns green. Display-only — no pick change.</p>
         <p><b>Footer redesign (r74).</b> Grouped the 24/7 status into one subtle capsule (verdict → provenance → model lean), consolidated the fine print, and collapsed this changelog behind the tag you just opened — clearer hierarchy, far less noise. Display-only — no pick change.</p>
