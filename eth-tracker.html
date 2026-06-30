@@ -783,11 +783,13 @@
   .lhN { font-size: 10px; font-weight: 600; letter-spacing: .02em; color: var(--label-3); font-family: "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
   /* stat cells — the scannable number components (big value · label · n/N) */
   .statGrid { display: flex; gap: 8px; flex-wrap: wrap; }
-  .stat { flex: 1 1 0; min-width: 82px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; padding: 9px 11px; }
-  .stat .sv { display: block; font-size: 18px; font-weight: 800; font-family: "Geist Mono", ui-monospace, monospace; letter-spacing: -.01em; color: var(--label); line-height: 1.1; }
-  .stat .sv.good { color: var(--green); } .stat .sv.bad { color: var(--orange); }
-  .stat .sl { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); margin-top: 5px; }
-  .stat .sn { display: block; font-size: 10px; color: var(--label-3); font-family: "Geist Mono", ui-monospace, monospace; margin-top: 2px; }
+  /* .mStat — Model &amp; Accuracy stat cell. NAMESPACED so it never collides with the global .stat
+     used by the Track Record scoreboard (Rounds/Correct/Streak/Hit Rate) above. */
+  .mStat { flex: 1 1 0; min-width: 82px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; padding: 9px 11px; }
+  .mStat .sv { display: block; font-size: 18px; font-weight: 800; font-family: "Geist Mono", ui-monospace, monospace; letter-spacing: -.01em; color: var(--label); line-height: 1.1; }
+  .mStat .sv.good { color: var(--green); } .mStat .sv.bad { color: var(--orange); }
+  .mStat .sl { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); margin-top: 5px; }
+  .mStat .sn { display: block; font-size: 10px; color: var(--label-3); font-family: "Geist Mono", ui-monospace, monospace; margin-top: 2px; }
   /* hero Brier readout (the scoreboard headline) */
   .heroStat { display: flex; align-items: center; gap: 14px; }
   .heroStat .hsv { flex: 0 0 auto; white-space: nowrap; font-size: 30px; font-weight: 800; font-family: "Geist Mono", ui-monospace, monospace; letter-spacing: -.02em; line-height: 1; color: var(--label); }
@@ -1955,8 +1957,8 @@
     var ret = mn ? (win / r.length) * (multSum / mn) : null;
     el.className = "lateRecord";
     el.innerHTML = '<div class="lhRow"><span class="lh">Value-entry record</span><span class="lhN">' + state.coin + '</span></div>' +
-      '<div class="statGrid"><div class="stat"><span class="sv">' + win + '/' + r.length + '</span><span class="sl">won</span></div>' +
-      (ret != null ? '<div class="stat"><span class="sv ' + (ret >= 1 ? 'good' : 'bad') + '">~' + ret.toFixed(2) + 'x</span><span class="sl">back per $1</span></div>' : '') +
+      '<div class="statGrid"><div class="mStat"><span class="sv">' + win + '/' + r.length + '</span><span class="sl">won</span></div>' +
+      (ret != null ? '<div class="mStat"><span class="sv ' + (ret >= 1 ? 'good' : 'bad') + '">~' + ret.toFixed(2) + 'x</span><span class="sl">back per $1</span></div>' : '') +
       '</div>';
   }
   // Signal snapshot behind the current pick — stored per round so we can learn what works.
@@ -2116,8 +2118,8 @@
   function renderLockAB() {
     var el = $("lockABStat"); if (!el) return;
     function statCell(s, label) {
-      if (!s.n) return '<div class="stat"><span class="sv">—</span><span class="sl">' + label + '</span></div>';
-      return '<div class="stat"><span class="sv">' + Math.round(s.c / s.n * 100) + '%</span><span class="sl">' + label + '</span><span class="sn">' + s.c + '/' + s.n + '</span></div>';
+      if (!s.n) return '<div class="mStat"><span class="sv">—</span><span class="sl">' + label + '</span></div>';
+      return '<div class="mStat"><span class="sv">' + Math.round(s.c / s.n * 100) + '%</span><span class="sl">' + label + '</span><span class="sn">' + s.c + '/' + s.n + '</span></div>';
     }
     var html = "";
     var t = state.lockAB && state.lockAB.tally && state.lockAB.tally[state.coin];
