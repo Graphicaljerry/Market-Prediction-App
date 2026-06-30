@@ -232,7 +232,7 @@
   /* ---------- Big coin name heading (mobile V2) ----------
      Dialed back from a near-full-width shout to a confident-but-refined title — it was double-labelling
      the coin (the price card names it again right below) and eating prime vertical space. */
-  .coinHero { font-size: clamp(28px, 8.5vw, 38px); font-weight: 700; letter-spacing: -0.035em; line-height: 1.03; margin: 12px 2px 15px; }
+  .coinHero { font-size: clamp(18px, 5vw, 24px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; margin: 10px 2px 13px; }
 
   /* ---------- Section header ----------
      Unified across the whole app: a small accent "spine" marker + a brighter, tighter label, so
@@ -635,6 +635,9 @@
     border: 1px solid var(--separator); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease); }
   .tfBtn.active { background: var(--surface-3); color: var(--label); border-color: transparent; }
   .tfBtn:active { opacity: .6; }
+  /* On narrow screens the timeframe row scrolls horizontally; fade its right edge so the off-screen
+     options (30m, Line, Candles…) are discoverable instead of just being clipped at a hard edge. */
+  @media (max-width: 920px) { .tfBar { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); } }
   /* chart header row: timeframe bar (scrolls) + line/candles toggle (pinned right) */
   .chartHead { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
   .chartHead .tfBar { margin-top: 0; flex: 1 1 auto; min-width: 0; }
@@ -1033,7 +1036,7 @@
   /* real SVG refraction on the pick card's ambient glow (Safari-safe via filter:, not backdrop-filter) */
   .glassui:not(.reduce-motion) .card.orb::before { filter: blur(30px) url(#liquidGlass); }
   /* glossy gradient coin title */
-  .glassui .coinHero { color: #f3f5f7; filter: drop-shadow(0 2px 12px rgba(var(--accent-rgb),0.22)); }   /* solid (was gradient text — an AI-slop tell); keeps the soft accent glow */
+  .glassui .coinHero { color: #f3f5f7; filter: none; }   /* a quiet kicker now (no hero glow) so it doesn't out-rank the price + the pick below it */
   /* frost the segmented controls + the prime banner too */
   .glassui .seg, .glassui .playStyle { -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%); }
   .glassui .primeAlert { -webkit-backdrop-filter: blur(24px) saturate(200%); backdrop-filter: blur(24px) saturate(200%); }
@@ -1281,7 +1284,7 @@
   </div>
 
   <div class="module m-indicators">
-  <details class="collapsePanel" open>
+  <details class="collapsePanel">
     <summary class="sec secToggle">Live Indicators <span class="tiny" id="indSummary">· the signals behind the %</span><span class="secChevron" aria-hidden="true">▸</span></summary>
     <div class="card flat collapseCard">
       <div id="indicators"><div class="empty">Loading indicators…</div></div>
@@ -1303,10 +1306,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r77</span><span class="buildSep">·</span><span>2026-06-30</span>
+        <span class="buildVer">build r78</span><span class="buildSep">·</span><span>2026-06-30</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>UX pass from the critique (r78).</b> Sharpened hierarchy and calmed the edges: the oversized coin title is now a quiet kicker so the price + pick lead; a data dropout shows one reassuring "reconnecting" message instead of five red alarms; the chart's timeframe row fades at its right edge so the off-screen options are discoverable; and Live Indicators collapses by default (its detail is already echoed by the on-chart indicator chips). Softened the wrapper shadows too. Display-only — no pick change.</p>
         <p><b>Space Mono for the big numbers (r77).</b> The large, bold numeric readouts — price, countdown, the Track Record scoreboard, the Brier hero, and the stat cells — now use Space Mono for a more distinctive, techy display face. One token (<code>--font-num</code>) drives them all. Display-only.</p>
         <p><b>App-wide UI polish (r76).</b> A consistency pass over the whole app: every section header now carries a small accent "spine" marker and a brighter, bolder label, so the page reads as clear waypoints with a steady rhythm; the oversized coin title was dialed back so the price card leads. Also fixed a scoreboard bug where Hit Rate overflowed and the four boxes overlapped (a CSS class clash from r75). Display-only — no pick change.</p>
         <p><b>Model &amp; Accuracy redesign (r75).</b> Rebuilt the panel from a flat stack of gray prose-boxes into a scannable scoreboard: a consistent stat component (big value · label · sample) so numbers stop hiding in sentences, Brier as a hero readout, the lock-timing &amp; decisive-break tests as stat grids, and reserved colour — near-coin-flip hit-rates stay neutral, only the value return earns green. Display-only — no pick change.</p>
@@ -2612,10 +2616,12 @@
     }).catch(function () {
       if (myReq !== state.reqId) return;
       if (state.wsLive) return;   // keep the live price/indicators on screen if REST hiccups
-      elPrice.textContent = "Price unavailable"; elPrice.classList.add("err");
-      elUpdated.textContent = "Data unavailable — retrying…"; elUpdated.classList.add("err");
-      $("indicators").innerHTML = '<div class="empty err">Could not load market data.</div>';
-      $("buyLine").textContent = "—"; $("recoConf").textContent = "Waiting for data";
+      // Calm, consistent "reconnecting" voice (it IS auto-retrying) instead of a wall of different
+      // red alarms — reassures rather than reads as "broken". Display-only.
+      elPrice.textContent = "Reconnecting…"; elPrice.classList.add("err");
+      elUpdated.textContent = "Market feed dropped — retrying automatically…"; elUpdated.classList.add("err");
+      $("indicators").innerHTML = '<div class="empty">Waiting for the market feed to reconnect…</div>';
+      $("buyLine").textContent = "—"; $("recoConf").textContent = "Reconnecting…";
     });
   }
 
