@@ -1215,7 +1215,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r69 · per-coin lock: each coin now keeps its OWN locked next-round pick + committed side, so flipping to another coin and back no longer wipes a held SKIP/side (it already survived a refresh — now it survives a coin switch too) · ACCURACY #1 — settlement-aware barrier: the position model now knows the settle is a ~60-sec AVERAGE at the close, so it (a) treats the round as locking in ~22s early and (b) anchors to a short rolling average in the final stretch — sharper final-minute reads; early-round picks unchanged (CHANGES PICK BEHAVIOR in the last ~2 min) · Recent-15-min arrows re-fit so the last dot + ▾ never clip on the narrow desktop column · liquid glass: gradients fade unclipped, wrappers keep a normal soft edge · Geist typography</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r70 · ACCURACY #2 calibration-band skip gate (only bet a probability band that's actually cleared break-even on record — else pass; makes the live pick skip MORE, never less) + #3 regime conditioning (efficiency ratio: ride momentum in a clean trend, fade it in chop — bounded tilt on the small drift weights) · these refine the LIVE pick you act on; both CHANGE PICK BEHAVIOR (more selective + regime-tilted) · per-coin lock holds a SKIP across coin switches · ACCURACY #1 — settlement-aware barrier: the position model now knows the settle is a ~60-sec AVERAGE at the close, so it (a) treats the round as locking in ~22s early and (b) anchors to a short rolling average in the final stretch — sharper final-minute reads; early-round picks unchanged (CHANGES PICK BEHAVIOR in the last ~2 min) · Recent-15-min arrows re-fit so the last dot + ▾ never clip on the narrow desktop column · liquid glass: gradients fade unclipped, wrappers keep a normal soft edge · Geist typography</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1701,6 +1701,16 @@
     var z = Math.log(price / strike) / sigT;
     return Math.max(0.005, Math.min(0.995, normCdf(z)));
   }
+  // Accuracy #3 — REGIME signal. Efficiency ratio over the round: |net move| / total path length. Near 1 = a
+  // clean TREND (price went somewhere with little back-and-forth → drift tends to persist, RIDE it); near 0 =
+  // CHOP (lots of zig-zag, no progress → drift reverses, FADE it / trust it less). Used only to tilt the small
+  // drift-based weights in the blend, so the change is bounded and the rest of the picker is untouched.
+  function trendEfficiency() {
+    var h = state.priceHist; if (!h || h.length < 8) return null;
+    var net = Math.abs(h[h.length - 1].p - h[0].p), path = 0, i;
+    for (i = 1; i < h.length; i++) path += Math.abs(h[i].p - h[i - 1].p);
+    return path > 0 ? Math.max(0, Math.min(1, net / path)) : null;
+  }
   // Weighted blend, anchored on the market + the position model; weights renormalize when a
   // source is missing. The barrier model's weight grows as the position becomes decisive.
   function rawCombinedOdds(reco) {
@@ -1710,9 +1720,12 @@
     var a = aiOver(state.lastAI), aw = a != null ? aiWeight() : 0; if (a != null) parts.push({ p: a, w: aw });   // AI reasoning — weight is EARNED from its per-model report card (aiWeight): up when right, down when wrong, shrunk to 0.30 until it has a record. "Trust the AI more" raises the ceiling.
     parts.push({ p: indOver(reco), w: 0.22 });                                         // TA indicators (correlated → modest)
     var ob = obiOver(); if (ob != null) parts.push({ p: ob, w: 0.07 });                // order-book nudge
+    var er = trendEfficiency();                                                        // accuracy #3 — regime: 1 = clean trend, 0 = chop
+    var momMult = er == null ? 1 : 0.4 + 1.1 * er;                                     // ride drift in a trend (≤1.5×), distrust it in chop (≥0.4×)
+    var fadeMult = er == null ? 1 : 1.3 - 0.6 * er;                                    // mean-reversion (fade) is the opposite — stronger in chop
     var pf = panicFadeOver();                                                          // EXTREME move → fade the over-reaction
-    if (pf != null) parts.push({ p: pf, w: 0.12 });                                    // (replaces plain momentum, slightly higher weight — robust edge)
-    else { var mo = momOver(); if (mo != null) parts.push({ p: mo, w: 0.08 }); }       // moderate drift → ride it
+    if (pf != null) parts.push({ p: pf, w: 0.12 * fadeMult });                         // (replaces plain momentum) — regime-weighted
+    else { var mo = momOver(); if (mo != null) parts.push({ p: mo, w: 0.08 * momMult }); }   // moderate drift → ride it (regime-weighted)
     var rg = rangeOver(); if (rg != null) parts.push({ p: rg, w: 0.07 });              // where price sits in its round high–low range
     var am = autoModelOver(); if (am != null) parts.push({ p: am, w: 0.10 });          // the 24/7 auto-tracker's learned read (the two systems talk)
     var wsum = 0, acc = 0;
@@ -1734,6 +1747,24 @@
     var emp = (nOver + 0.5) / (n + 1);               // Laplace-smoothed realized OVER-rate in this band
     var w = Math.min(n, 40) / 40 * 0.5;              // up to 50% weight toward realized results
     return Math.max(0.02, Math.min(0.98, pRaw * (1 - w) + emp * w));
+  }
+  // Accuracy #2 — calibration-band SELECTION gate. The model showing pOver just off 50% isn't enough on its
+  // own; only treat it as a BETTABLE edge if rounds in the same probability band have actually cleared
+  // break-even on THIS device. A band whose picked side has only been a coin-flip gets passed — that "edge"
+  // was noise. Sparse data → no opinion (don't gate), so the proven picker is untouched until there's real
+  // per-band evidence. Returns true = OK to bet, false = skip this round. (Only ever makes it skip MORE.)
+  function bandEdgeOK(pOver) {
+    if (typeof pOver !== "number") return true;
+    var r = state.rounds, n = 0, hit = 0, i, f, win = 0.08;
+    for (i = 0; i < r.length; i++) {
+      f = r[i].feat;
+      if (!f || typeof f.pOver !== "number" || (r[i].actual !== "OVER" && r[i].actual !== "UNDER")) continue;
+      if (Math.abs(f.pOver - pOver) > win) continue;
+      n++;
+      if ((f.pOver >= 0.5) === (r[i].actual === "OVER")) hit++;   // did the side the model would have picked actually win?
+    }
+    if (n < 15) return true;                         // not enough evidence in this band — trust the model
+    return (hit + 0.5) / (n + 1) >= 0.515;           // must clear ~break-even (Laplace-smoothed) or it's a coin-flip band → skip
   }
   function combinedOdds(reco) {
     var pRaw = rawCombinedOdds(reco), pOver = calibrate(pRaw);
@@ -1852,6 +1883,7 @@
     if (!reco) return null;
     var o = combinedOdds(reco);
     var dir = reco.dir === "SKIP" ? (o.pOver >= 0.55 ? "OVER" : o.pOver <= 0.45 ? "UNDER" : "SKIP") : reco.dir;
+    if (dir !== "SKIP" && !bandEdgeOK(o.raw)) dir = "SKIP";   // accuracy #2: this probability band hasn't beaten break-even on record — pass (raw band, matches feat.pOver)
     return { dir: dir, pct: dir === "SKIP" ? 50 : pctFor(o.pOver, dir), conv: convictionFor(reco), atLabel: null };
   }
   function fallbackThisCall() { var rc = state.roundCall || state.lastRecoObj; return rc ? makeCall(rc) : null; }
@@ -1887,6 +1919,7 @@
     if (state.lockedNext || !state.lockingNext) return;
     var reco = state.lastRecoObj; if (!reco) { state.lockingNext = false; return; }
     var o = combinedOdds(reco), dir = o.pOver >= 0.55 ? "OVER" : o.pOver <= 0.45 ? "UNDER" : "SKIP";
+    if (dir !== "SKIP" && !bandEdgeOK(o.raw)) dir = "SKIP";   // accuracy #2: skip a band with no proven edge (next-round lock; raw band)
     state.lockedNext = {
       dir: dir, pct: dir === "SKIP" ? 50 : pctFor(o.pOver, dir), conv: convictionFor(reco),
       atLabel: nowClock(), forLabel: hma(currentRoundEnd)
