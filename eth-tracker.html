@@ -752,13 +752,26 @@
     background: rgba(255,255,255,0.045); border: 1px solid rgba(255,255,255,0.08); }
   .autoLatest.over { color: var(--green); } .autoLatest.under { color: var(--red); } .autoLatest.skip { color: var(--orange); }
   .autoLatest .sub { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); margin-top: 4px; letter-spacing: 0; }
-  /* The tracker's live status (auto pick + model lean) now sits quietly in the footer — boxless,
-     small, muted — so it's available without competing with the picks up top. */
-  .footStatus { margin-bottom: 18px; }
+  /* The 24/7 tracker's live status (auto pick + model lean) — grouped into ONE subtle capsule so it
+     reads as a single unit with clear internal hierarchy (verdict → provenance → model lean), tinted
+     to the auto pick's OWN side via :has(). Stays quiet so it never competes with the picks up top.
+     Purely a display echo of the tracker — no pick logic lives here. */
+  .footStatus { --fs-rgb: 235,235,245; max-width: 344px; margin: 0 auto; }
+  .footStatus:has(.autoLatest.over)  { --fs-rgb: 48,209,88; }
+  .footStatus:has(.autoLatest.under) { --fs-rgb: 255,69,58; }
+  .footStatus:has(.autoLatest.skip)  { --fs-rgb: 255,159,10; }
+  .footStatus:has(#autoLatest:not(:empty)) {
+    margin-bottom: 22px; padding: 14px 16px 13px; border-radius: 16px;
+    background: linear-gradient(180deg, rgba(var(--fs-rgb), .06), rgba(var(--fs-rgb), 0)), rgba(255,255,255,.022);
+    border: 1px solid rgba(var(--fs-rgb), .17);
+    box-shadow: 0 6px 22px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.05);
+  }
   .footStatus:empty { display: none; }
-  .footnote .autoLatest { font-size: 12px; font-weight: 700; padding: 0; margin: 0 0 5px; background: none; border: none; border-radius: 0; }
+  .footnote .autoLatest { font-size: 14px; font-weight: 800; letter-spacing: .01em; padding: 0; margin: 0; background: none; border: none; border-radius: 0; }
   .footnote .autoLatest:empty { display: none; }
-  .footnote .autoLatest .sub { font-size: 10.5px; margin-top: 2px; }
+  .footnote .autoLatest .sub { display: block; font-size: 10.5px; font-weight: 600; color: var(--label-3); margin-top: 4px; letter-spacing: .01em; }
+  /* model lean — the quietest line in the capsule, set off from the provenance by a hairline */
+  .modelLean { text-align: center; font-size: 11px; color: var(--label-3); margin: 10px 0 0; padding-top: 10px; border-top: 1px solid rgba(var(--fs-rgb), .15); }
   /* what the online model has learned */
   /* Each Model & Accuracy sub-block is its own lifted tile, so the panel reads as grouped cards
      (clear hierarchy) instead of a flat wall of text. Empty blocks collapse so there are no empty boxes. */
@@ -838,6 +851,36 @@
   .aiSetupBody { padding-top:6px; }
 
   .footnote { text-align: center; font-size: 11px; color: var(--label-3); margin-top: 8px; line-height: 1.6; }
+  /* Tier 2 — the Guide action + fine print, consolidated into one quiet group */
+  .footMeta { display: flex; flex-direction: column; align-items: center; gap: 11px; }
+  .footMeta .guideBtn { margin: 0; }
+  .footFine { max-width: 344px; margin: 0 auto; font-size: 10.5px; line-height: 1.5; color: var(--label-3); opacity: .92; }
+  /* Tier 3 — build marker collapsed behind a small mono "stamp"; the changelog wall is one tap away */
+  .buildTag { max-width: 360px; margin: 22px auto 0; text-align: center; }
+  .buildTag summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+    padding: 5px 12px; border-radius: 999px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07);
+    font-family: "Geist Mono", ui-monospace, SFMono-Regular, monospace; font-size: 10px; letter-spacing: .02em; color: var(--label-3); }
+  .buildTag summary::-webkit-details-marker { display: none; }
+  .buildTag summary::marker { content: ""; }
+  .buildTag summary:hover { color: var(--label-2); border-color: rgba(255,255,255,.16); }
+  .buildVer { color: var(--label-2); font-weight: 600; }
+  .buildSep { opacity: .4; }
+  .buildToggle { display: inline-flex; align-items: center; gap: 3px; opacity: .8; margin-left: 2px; }
+  .buildChev { width: 10px; height: 10px; flex: none; }
+  .buildTag[open] .buildChev { transform: rotate(180deg); }
+  .buildNotes { max-width: 360px; margin: 12px auto 0; padding: 14px 16px; text-align: left;
+    background: rgba(255,255,255,.022); border: 1px solid rgba(255,255,255,.06); border-radius: 14px;
+    font-size: 11px; line-height: 1.55; color: var(--label-3); }
+  .buildNotes p { margin: 0 0 9px; }
+  .buildNotes p:last-child { margin-bottom: 0; }
+  .buildNotes b { color: var(--label-2); font-weight: 700; }
+  .buildNotes .buildFootline { margin-top: 11px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.06);
+    font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; opacity: .6; }
+  @media (prefers-reduced-motion: no-preference) {
+    .buildChev { transition: transform .28s var(--ease-soft); }
+    .buildTag[open] .buildNotes { animation: buildReveal .34s var(--ease-soft) both; }
+  }
+  @keyframes buildReveal { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
   /* Prime-opportunity banner — fires when a coin is a rare spot to win AND pay big (+EV, payout >= ~2x). */
   .primeAlert { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 80; width: min(560px, 94vw); box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 14px; background: linear-gradient(135deg, rgba(48,209,88,.18), rgba(255,159,10,.16)); border: 1px solid rgba(48,209,88,.55); box-shadow: 0 10px 34px rgba(0,0,0,.5); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); animation: primeGlow 2.2s ease-in-out infinite; }
   .primeAlert[hidden] { display: none; }
@@ -1212,10 +1255,24 @@
       <div id="autoLatest" class="autoLatest"></div>
       <div id="modelLeanChip" style="display:none"></div>
     </div>
-    <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
-    Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
-    Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-30 · figma-pass r73 · SHARED AI READ (Build B): the AI verdict is computed ONCE per round per coin and cached in the Worker; every device picks it up for free on its ~1/min crowd poll (newer-read-wins, so a poll never reverts a fresher local read) — all devices converge on the same AI input, one paid call per round, no accuracy traded · MOBILE FIX: restored overflow-x clip on the body so the page can't drift sideways / push content off-screen (the ambient orbs sit past the screen edge; html's clip alone didn't hold it on iOS Safari) — content stays within the viewport, the chart's timeframe row still scrolls inside its own card by design · SYNCED PICKER: the #2 skip gate reads the GLOBAL per-coin 24/7 history and is ported into the Worker, so the Track Record scoreboard measures it · accuracy: #1 settlement-aware barrier (final 2 min) · #2 calibration-band skip gate · #3 regime conditioning · per-coin pick lock holds a SKIP across coin switches · liquid glass · Geist typography</span>
+    <div class="footMeta">
+      <a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat">📖 Guide</a>
+      <p class="footFine">Live price via Coinbase · indicators on 15-min candles · not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.</p>
+    </div>
+    <details class="buildTag">
+      <summary>
+        <span class="buildVer">build r74</span><span class="buildSep">·</span><span>2026-06-30</span>
+        <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      </summary>
+      <div class="buildNotes">
+        <p><b>Footer redesign (r74).</b> Grouped the 24/7 status into one subtle capsule (verdict → provenance → model lean), consolidated the fine print, and collapsed this changelog behind the tag you just opened — clearer hierarchy, far less noise. Display-only — no pick change.</p>
+        <p><b>Shared AI read (Build B, r73).</b> The AI verdict is computed once per round per coin and cached; every device picks it up free on its ~1-min crowd poll (newest-read-wins) — all devices land on the same AI input, one paid call per round, no accuracy traded.</p>
+        <p><b>Mobile fix (r72).</b> Restored the body's horizontal clip so the page can't drift sideways or push content off-screen.</p>
+        <p><b>Synced picker (r71).</b> The skip gate reads the global per-coin 24/7 history and is ported into the Worker, so the Track Record scoreboard measures it.</p>
+        <p><b>Accuracy series.</b> #1 settlement-aware barrier (final 2 min) · #2 calibration-band skip gate · #3 regime conditioning · per-coin pick lock holds a SKIP across coin switches.</p>
+        <p class="buildFootline">liquid glass · Geist typography</p>
+      </div>
+    </details>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -2072,7 +2129,7 @@
     var dir = mo == null ? "n" : mo >= 53 ? "o" : mo <= 47 ? "u" : "n";
     var word = dir === "o" ? "leaning OVER " + mo + "%" : dir === "u" ? "leaning UNDER " + (100 - mo) + "%" : (mo == null ? "no live read right now" : "no lean (~50/50)");
     var col = dir === "o" ? "#16c784" : dir === "u" ? "#ea3943" : "var(--label-3)";
-    el.style.cssText = "display:block;text-align:center;font-size:11.5px;color:var(--label-3);margin:0;padding:0;background:none";   // quiet single line for the footer
+    el.className = "modelLean"; el.style.display = "block";   // styled by CSS now — sits as the hairline-set-off line inside the status capsule
     el.innerHTML = '🧠 Model <b style="color:' + col + '">' + word + '</b> · learned ' + n + ' round' + (n === 1 ? "" : "s") + (lr && lr.confidence ? " · " + lr.confidence : "");
   }
 
