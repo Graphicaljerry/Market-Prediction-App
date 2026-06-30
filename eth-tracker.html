@@ -226,12 +226,20 @@
   .coinSelect option { background: var(--surface); color: var(--label); font-weight: 600; }
   .coinSelectWrap::after { content: "\25BE"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); color: var(--label-2); pointer-events: none; font-size: 14px; }
 
-  /* ---------- Big coin name heading (mobile V2) ---------- */
-  .coinHero { font-size: clamp(34px, 11.5vw, 46px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.04; margin: 14px 2px 18px; }
+  /* ---------- Big coin name heading (mobile V2) ----------
+     Dialed back from a near-full-width shout to a confident-but-refined title — it was double-labelling
+     the coin (the price card names it again right below) and eating prime vertical space. */
+  .coinHero { font-size: clamp(28px, 8.5vw, 38px); font-weight: 700; letter-spacing: -0.035em; line-height: 1.03; margin: 12px 2px 15px; }
 
-  /* ---------- Section header ---------- */
-  .sec { font-size: 13px; font-weight: 600; color: var(--label-2); margin: 0 4px 10px; }
-  .sec .tiny { color: var(--label-3); font-weight: 500; }
+  /* ---------- Section header ----------
+     Unified across the whole app: a small accent "spine" marker + a brighter, tighter label, so
+     every section (Auto Pick, AI Co-Pilot, Live Indicators, Track Record, Model & Accuracy, Recent
+     Rounds…) reads as a clear waypoint and the page gets a consistent structural rhythm. The marker
+     is inline-block so it works whether the header is plain flow or one of the flex variants. */
+  .sec { font-size: 13px; font-weight: 700; color: var(--label); letter-spacing: -.01em; margin: 0 2px 11px; }
+  .sec::before { content: ""; display: inline-block; vertical-align: middle; flex: 0 0 auto; width: 3px; height: 14px;
+    border-radius: 2px; margin-right: 9px; margin-bottom: 2px; background: linear-gradient(180deg, rgba(var(--accent-rgb), .85), rgba(var(--accent-rgb), .3)); }
+  .sec .tiny { color: var(--label-3); font-weight: 500; letter-spacing: 0; }
   /* "High-conviction only" switch — sits inline at the LEFT of the Auto Pick header, in line
      with the rest of the interface (no longer floated off to the right edge). */
   .m-signal .sec { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
@@ -1289,10 +1297,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r75</span><span class="buildSep">·</span><span>2026-06-30</span>
+        <span class="buildVer">build r76</span><span class="buildSep">·</span><span>2026-06-30</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>App-wide UI polish (r76).</b> A consistency pass over the whole app: every section header now carries a small accent "spine" marker and a brighter, bolder label, so the page reads as clear waypoints with a steady rhythm; the oversized coin title was dialed back so the price card leads. Also fixed a scoreboard bug where Hit Rate overflowed and the four boxes overlapped (a CSS class clash from r75). Display-only — no pick change.</p>
         <p><b>Model &amp; Accuracy redesign (r75).</b> Rebuilt the panel from a flat stack of gray prose-boxes into a scannable scoreboard: a consistent stat component (big value · label · sample) so numbers stop hiding in sentences, Brier as a hero readout, the lock-timing &amp; decisive-break tests as stat grids, and reserved colour — near-coin-flip hit-rates stay neutral, only the value return earns green. Display-only — no pick change.</p>
         <p><b>Footer redesign (r74).</b> Grouped the 24/7 status into one subtle capsule (verdict → provenance → model lean), consolidated the fine print, and collapsed this changelog behind the tag you just opened — clearer hierarchy, far less noise. Display-only — no pick change.</p>
         <p><b>Shared AI read (Build B, r73).</b> The AI verdict is computed once per round per coin and cached; every device picks it up free on its ~1-min crowd poll (newest-read-wins) — all devices land on the same AI input, one paid call per round, no accuracy traded.</p>
