@@ -1108,6 +1108,25 @@ function freePick(crowdOverPct, mom, obi, modelOver, sig, calib) {
   const side = pOver >= 0.5 + band ? "OVER" : pOver <= 0.5 - band ? "UNDER" : "SKIP";
   return { pOver, pRaw, side, conf: Math.round(conf * 100) / 100, agree: agreeN };
 }
+// Accuracy #2 — calibration-band SELECTION gate (Worker side; mirrors the app's bandEdgeOK so the 24/7
+// scoreboard measures the same discipline). A side only stands if THIS coin's graded rounds whose RAW model
+// prob sat in the same band have actually cleared ~break-even; otherwise the "edge" is noise → SKIP. Sparse
+// band (<15 graded) → no opinion (don't gate), so the proven picker is untouched until the data earns it.
+// Only ever makes it skip MORE (skipping never loses), so it can't hurt the measured record. history holds
+// pRaw on a 0–100 scale (see rec.pending.pRaw); pRaw01 is the live pick's raw prob on 0–1.
+function bandEdgeOK(history, pRaw01) {
+  if (!Array.isArray(history) || typeof pRaw01 !== "number") return true;
+  const p = pRaw01 * 100, win = 8;
+  let n = 0, hit = 0;
+  for (const e of history) {
+    if (!e || typeof e.pRaw !== "number" || (e.actual !== "OVER" && e.actual !== "UNDER")) continue;
+    if (Math.abs(e.pRaw - p) > win) continue;
+    n++;
+    if ((e.pRaw >= 50) === (e.actual === "OVER")) hit++;   // did the side the model leaned actually win?
+  }
+  if (n < 15) return true;                       // not enough evidence in this band — trust the model
+  return (hit + 0.5) / (n + 1) >= 0.515;         // must clear ~break-even (Laplace-smoothed) or it's a coin-flip band → skip
+}
 // Rank all coins by how confident their CURRENT-round pick is, for the app's "best bet now" ticker.
 // Confidence = how lopsided the pick is (edge) × how much INDEPENDENT confluence backs it (conf) ×
 // the coin's shrunk historical reliability (a real track record is trusted more, but only once it
@@ -1466,6 +1485,7 @@ async function runCoinPick(env, coin, st) {
       const modelOver = predictBlend(coinModel, global, feat);      // learned P(OVER) for this round
       const cmem = caseMemory(st, feat, 20);                        // case memory: nearest past setups → outcome (measurement-only, NOT in the blend below)
       const fp = freePick(mkt.overPct, micro && micro.mom, obi, modelOver, micro && micro.sig, rec.calib);
+      if (fp && fp.side !== "SKIP" && !bandEdgeOK(rec.history, fp.pRaw)) fp.side = "SKIP";   // accuracy #2: this band hasn't beaten break-even on record → pass (measured on the 24/7 scoreboard)
       if (fp) {
         const d = new Date(nowTs);
         rec.pending = {

@@ -1215,7 +1215,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r70 · ACCURACY #2 calibration-band skip gate (only bet a probability band that's actually cleared break-even on record — else pass; makes the live pick skip MORE, never less) + #3 regime conditioning (efficiency ratio: ride momentum in a clean trend, fade it in chop — bounded tilt on the small drift weights) · these refine the LIVE pick you act on; both CHANGE PICK BEHAVIOR (more selective + regime-tilted) · per-coin lock holds a SKIP across coin switches · ACCURACY #1 — settlement-aware barrier: the position model now knows the settle is a ~60-sec AVERAGE at the close, so it (a) treats the round as locking in ~22s early and (b) anchors to a short rolling average in the final stretch — sharper final-minute reads; early-round picks unchanged (CHANGES PICK BEHAVIOR in the last ~2 min) · Recent-15-min arrows re-fit so the last dot + ▾ never clip on the narrow desktop column · liquid glass: gradients fade unclipped, wrappers keep a normal soft edge · Geist typography</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r71 · SYNCED PICKER: the #2 skip gate now reads the GLOBAL per-coin 24/7 history (same on every device, Kalshi-confirmed, far more sample) so every device gates identically for every coin · ported the #2 gate into the WORKER's picker too, so the Track Record scoreboard now measures the same discipline · (#1 settlement-aware stays app-only — the Worker locks its pick at round-open and never re-picks; #3 regime stays app-only — the Worker only has coarse 1-min data) · ACCURACY #2 calibration-band skip gate (only bet a probability band that's actually cleared break-even on record — else pass; makes the live pick skip MORE, never less) + #3 regime conditioning (efficiency ratio: ride momentum in a clean trend, fade it in chop — bounded tilt on the small drift weights) · these refine the LIVE pick you act on; both CHANGE PICK BEHAVIOR (more selective + regime-tilted) · per-coin lock holds a SKIP across coin switches · ACCURACY #1 — settlement-aware barrier: the position model now knows the settle is a ~60-sec AVERAGE at the close, so it (a) treats the round as locking in ~22s early and (b) anchors to a short rolling average in the final stretch — sharper final-minute reads; early-round picks unchanged (CHANGES PICK BEHAVIOR in the last ~2 min) · Recent-15-min arrows re-fit so the last dot + ▾ never clip on the narrow desktop column · liquid glass: gradients fade unclipped, wrappers keep a normal soft edge · Geist typography</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1748,20 +1748,32 @@
     var w = Math.min(n, 40) / 40 * 0.5;              // up to 50% weight toward realized results
     return Math.max(0.02, Math.min(0.98, pRaw * (1 - w) + emp * w));
   }
-  // Accuracy #2 — calibration-band SELECTION gate. The model showing pOver just off 50% isn't enough on its
-  // own; only treat it as a BETTABLE edge if rounds in the same probability band have actually cleared
-  // break-even on THIS device. A band whose picked side has only been a coin-flip gets passed — that "edge"
-  // was noise. Sparse data → no opinion (don't gate), so the proven picker is untouched until there's real
-  // per-band evidence. Returns true = OK to bet, false = skip this round. (Only ever makes it skip MORE.)
+  // Accuracy #2 — calibration-band SELECTION gate. A side only stands if rounds in the same probability band
+  // have actually cleared ~break-even; a band whose leaned side has only been a coin-flip gets passed — that
+  // "edge" was noise. SYNCED ACROSS DEVICES: it reads the GLOBAL per-coin 24/7 history first (state.lastAuto.
+  // history — identical on every device, Kalshi-confirmed ground truth, far more sample than one device's
+  // local log), so every device gates the same way AND the gate actually has the data to fire; falls back to
+  // this device's own log only until the server history loads. Sparse band (<15) → no opinion (don't gate),
+  // so the proven picker is untouched until there's real evidence. Only ever makes it skip MORE.
   function bandEdgeOK(pOver) {
     if (typeof pOver !== "number") return true;
-    var r = state.rounds, n = 0, hit = 0, i, f, win = 0.08;
-    for (i = 0; i < r.length; i++) {
-      f = r[i].feat;
-      if (!f || typeof f.pOver !== "number" || (r[i].actual !== "OVER" && r[i].actual !== "UNDER")) continue;
-      if (Math.abs(f.pOver - pOver) > win) continue;
-      n++;
-      if ((f.pOver >= 0.5) === (r[i].actual === "OVER")) hit++;   // did the side the model would have picked actually win?
+    var n = 0, hit = 0, i, e, rr;
+    var hist = (state.lastAuto && Array.isArray(state.lastAuto.history)) ? state.lastAuto.history : null;
+    if (hist && hist.length) {                       // GLOBAL history (pRaw on 0–100) — synced across devices
+      for (i = 0; i < hist.length; i++) {
+        e = hist[i];
+        if (!e || typeof e.pRaw !== "number" || (e.actual !== "OVER" && e.actual !== "UNDER")) continue;
+        if (Math.abs(e.pRaw / 100 - pOver) > 0.08) continue;
+        n++; if ((e.pRaw >= 50) === (e.actual === "OVER")) hit++;
+      }
+    } else {                                         // fallback: this device's own log (feat.pOver on 0–1)
+      var r = state.rounds;
+      for (i = 0; i < r.length; i++) {
+        rr = r[i].feat;
+        if (!rr || typeof rr.pOver !== "number" || (r[i].actual !== "OVER" && r[i].actual !== "UNDER")) continue;
+        if (Math.abs(rr.pOver - pOver) > 0.08) continue;
+        n++; if ((rr.pOver >= 0.5) === (r[i].actual === "OVER")) hit++;
+      }
     }
     if (n < 15) return true;                         // not enough evidence in this band — trust the model
     return (hit + 0.5) / (n + 1) >= 0.515;           // must clear ~break-even (Laplace-smoothed) or it's a coin-flip band → skip

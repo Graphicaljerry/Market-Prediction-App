@@ -148,11 +148,13 @@ where `z = mom·3.16/sig` (momentum in σ units) and `s = min(1, (|z|−2)/2)`.
 
 So fully-aligned reads commit past **±0.10**; fully-split reads need **±0.20**. It SKIPs the majority *by design* — that selectivity is the edge.
 
+**Calibration-band skip gate (`bandEdgeOK`, accuracy #2):** after the commit gate above, a non-SKIP side is *only kept* if **this coin's graded rounds whose `pRaw` sat in the same ±8-pt band have actually cleared ~break-even** — `(hit + 0.5) / (n + 1) ≥ 0.515`. A band that's only ever been a coin-flip is downgraded to **SKIP** (its "edge" was noise). Inert until a band has **≥ 15** graded rounds, so it never fires on thin evidence; it can only ever skip *more*, so it can't hurt the measured record. Mirrors the app's `bandEdgeOK`, so the scoreboard measures the same discipline the live pick uses. *(The app's two other accuracy passes are deliberately app-only: #1 settlement-aware sharpens the live final-2-min read but the Worker locks at open and never re-picks; #3 regime needs the live tick stream the Worker doesn't have.)*
+
 **Output:** `{ side, prob = round(pRaw·100), conf, agree }`.
 
 **Lock & grade (the honesty layer):** one pick per round, never overwritten (`!rec.pending`); only locks a still-open round (≥ 6 min left **and** odds 3–97%); graded on the finalized boundary candle, then **reconciled to Kalshi's settled result** — the definitive outcome, exactly what Robinhood pays (a separate **confirmed hit-rate** counts only Kalshi-settled rounds). If Kalshi is unreachable, a self-anchored fallback grades on the Coinbase close vs the round's open (flagged *self-tracked*, never counted as confirmed).
 
-*(Source of truth: `freePick`, `favLongshotAdj`, `reconcileKalshi` in `worker.js` — update this table if those change.)*
+*(Source of truth: `freePick`, `bandEdgeOK`, `favLongshotAdj`, `reconcileKalshi` in `worker.js` — update this table if those change.)*
 
 ### Backups — the learned state is snapshotted hourly *and* daily
 
