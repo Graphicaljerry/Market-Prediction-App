@@ -857,25 +857,26 @@
      otherwise the clean flat theme above stays. 100% display — no logic/picker changes.
      Apple's true Liquid Glass is native (Metal); the web-safe parts are blur+saturate+specular
      + an SVG filter (kube.io / WebKit). The Chrome-only SVG-as-backdrop-filter trick is avoided. */
-  /* Ambient light MESH behind everything — the "light behind the pane" the frosted glass refracts. The
-     KEY fix: the primary pools are a soft, NEUTRAL cool light (independent of the pick colour) and they're
-     made clearly visible, so every card sits over a real gradient that CONTRASTS with it — instead of the
-     whole page being one flat green/red wash the same colour as the cards. A gentle accent wash is layered
-     on top (off to the sides) so the pick colour is still present, but it never floods. */
-  .glassui body {
+  /* Ambient light MESH behind everything — the "light behind the pane" the frosted glass refracts. It lives
+     on a FIXED, FULL-VIEWPORT layer (not on the max-width body) so it spans edge-to-edge on any width — on an
+     ultrawide it no longer cuts off at the ~1480px content column with a hard seam. Positions are viewport-
+     relative (%) so the pools always reach every edge. Primary pools are soft NEUTRAL cool light (calm,
+     contrasts with the cards); a gentle pick-colour wash sits centred behind the content from top + bottom
+     so the accent reads in the background without flooding. Per-card colour is the #glassBack layer's job. */
+  .glassui body { background: transparent; }
+  .glassui body::before {
+    content: ""; position: fixed; inset: 0; z-index: -3; pointer-events: none;
     background:
-      /* neutral ambient pools — the visible gradient behind the glass (cool, desaturated, calm) */
-      radial-gradient(1050px 740px at 80% 3%, rgba(160,172,200,0.155), transparent 58%),
-      radial-gradient(900px 780px at 6% 30%, rgba(142,156,188,0.120), transparent 57%),
-      radial-gradient(1180px 840px at 60% 103%, rgba(148,162,194,0.105), transparent 62%),
-      /* gentle pick-colour accent, kept to the edges so it tints without flooding */
-      radial-gradient(840px 600px at 94% -2%, rgba(var(--accent-rgb),0.085), transparent 52%),
-      radial-gradient(780px 720px at 1% 74%, rgba(var(--accent-rgb),0.050), transparent 56%),
+      /* neutral ambient — spread across the whole viewport so the sides are never bare */
+      radial-gradient(1400px 920px at 78% -6%, rgba(158,170,198,0.115), transparent 60%),
+      radial-gradient(1300px 1000px at 4% 32%, rgba(140,154,186,0.090), transparent 58%),
+      radial-gradient(1500px 1040px at 98% 72%, rgba(146,160,192,0.078), transparent 60%),
+      radial-gradient(1200px 900px at 48% 114%, rgba(150,164,196,0.072), transparent 60%),
+      /* pick-colour wash, centred behind the content (top + bottom) */
+      radial-gradient(1150px 800px at 50% -10%, rgba(var(--accent-rgb),0.10), transparent 62%),
+      radial-gradient(980px 840px at 50% 116%, rgba(var(--accent-rgb),0.055), transparent 62%),
       #070809;
   }
-  /* the drifting orbs become soft NEUTRAL highlights (with only a hint of the pick colour) — a visible
-     MOVING light behind the frosted glass that the specular rim glides toward, instead of yet another flat
-     green pool. Slightly larger + a touch brighter than before so the motion actually reads through. */
   /* the drifting orbs are now just faint position anchors for the light-tracking (dimmed right down so they
      can't blow out a hard hotspot where one sits behind a card — the visible "light behind the glass" now
      comes from the per-card BACKING glows below, which stay aligned to each wrapper). */
@@ -890,9 +891,15 @@
   #glassBack { display: none; }
   .glassui #glassBack { display: block; position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: visible; contain: layout style; }
   .glassui #glassBack .gb { position: absolute; pointer-events: none; filter: blur(17px); border-radius: 28px; }
-  .glassui #glassBack .gb.orb   { background: radial-gradient(66% 58% at var(--lx,50%) var(--ly,36%), rgba(var(--accent-rgb),0.22) 0%, rgba(var(--accent-rgb),0.085) 42%, rgba(var(--accent-rgb),0) 72%); }
-  .glassui #glassBack .gb.plain { background: radial-gradient(66% 58% at var(--lx,50%) var(--ly,36%), rgba(202,214,238,0.105) 0%, rgba(202,214,238,0.035) 42%, rgba(202,214,238,0) 72%); }
+  .glassui #glassBack .gb.orb   { background: radial-gradient(72% 62% at var(--lx,50%) var(--ly,36%), rgba(var(--accent-rgb),0.34) 0%, rgba(var(--accent-rgb),0.14) 40%, rgba(var(--accent-rgb),0.03) 66%, rgba(var(--accent-rgb),0) 80%); }
+  .glassui #glassBack .gb.plain { background: radial-gradient(72% 62% at var(--lx,50%) var(--ly,36%), rgba(202,214,238,0.13) 0%, rgba(202,214,238,0.05) 40%, rgba(202,214,238,0) 74%); }
   .reduce-motion #glassBack { display: none; }
+  /* Inset boxes inside the glass cards — the "This Round / Next Round" split (.dualPick, was solid #141414)
+     and the "closing near…" note (.lastClose.pending, which borrows the solid .pending surface) — used to
+     sit on the glass like opaque stickers. In glass mode give them a translucent, frosted-consistent fill +
+     a hairline top highlight so the card's light and its backing glow read through and they blend in. */
+  .glassui .dualPick { background: rgba(255,255,255,0.05); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 0 1px rgba(255,255,255,0.03); }
+  .glassui .pending  { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.06); }
   .glassui .card.orb::before, .glassui .card.orb::after { display: block; }
   /* Light-reactive glass RIM — the stroke is no longer one flat colour. A border-box gradient makes the
      top-left edge catch light (bright white), fade through neutral, pick up the pick's accent, then darken
@@ -1198,7 +1205,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r61 · liquid glass v3: a soft, same-coloured light sits DIRECTLY BEHIND each wrapper (aligned + lit to match its front gradient) so the frosted glass transmits it and reads as truly transparent · drifting glows dimmed so they can't blow out a hotspot, surface sheen softened · pick cards calmed to neutral glass · specular rim glides toward the nearest light · Geist typography</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r62 · liquid glass v4: ambient light moved to a FULL-VIEWPORT fixed layer so the background spans ultrawide with no hard cutoff · pick-colour reads clearly BEHIND the wrappers (stronger per-card backing + a centred accent wash) · inner inset boxes (This/Next round split, the "closing near…" note) made translucent so they blend with the glass instead of sitting on it like stickers · Geist typography</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
