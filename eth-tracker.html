@@ -1215,7 +1215,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r68 · ACCURACY #1 — settlement-aware barrier: the position model now knows the settle is a ~60-sec AVERAGE at the close, so it (a) treats the round as locking in ~22s early and (b) anchors to a short rolling average in the final stretch — sharper final-minute reads; early-round picks unchanged (CHANGES PICK BEHAVIOR in the last ~2 min) · Recent-15-min arrows re-fit so the last dot + ▾ never clip on the narrow desktop column · liquid glass: gradients fade unclipped, wrappers keep a normal soft edge · Geist typography</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r69 · per-coin lock: each coin now keeps its OWN locked next-round pick + committed side, so flipping to another coin and back no longer wipes a held SKIP/side (it already survived a refresh — now it survives a coin switch too) · ACCURACY #1 — settlement-aware barrier: the position model now knows the settle is a ~60-sec AVERAGE at the close, so it (a) treats the round as locking in ~22s early and (b) anchors to a short rolling average in the final stretch — sharper final-minute reads; early-round picks unchanged (CHANGES PICK BEHAVIOR in the last ~2 min) · Recent-15-min arrows re-fit so the last dot + ▾ never clip on the narrow desktop column · liquid glass: gradients fade unclipped, wrappers keep a normal soft edge · Geist typography</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1903,37 +1903,42 @@
   // (noisier) current signals. Save it keyed to the round it's for, and restore it on load while we're
   // still in that round's bet window — so reloading shows the SAME committed pick, never a re-roll.
   function lockBucket() { return Math.floor(currentRoundEnd.getTime() / 900000); }
+  // PER-COIN storage keys: every coin keeps its OWN locked next-round pick + committed side, so flipping to
+  // another coin and back doesn't wipe a held SKIP/side (all coins share the same 15-min round, so the lock
+  // is still valid on return). Previously a single slot meant the last coin's lock clobbered the others'.
+  function lnKey() { return "lockedNext_v1_" + state.coin; }
   function saveLockedNext() {
     try {
-      if (state.lockedNext) localStorage.setItem("lockedNext_v1", JSON.stringify({ coin: state.coin, bucket: lockBucket(), lock: state.lockedNext }));
-      else localStorage.removeItem("lockedNext_v1");
+      if (state.lockedNext) localStorage.setItem(lnKey(), JSON.stringify({ coin: state.coin, bucket: lockBucket(), lock: state.lockedNext }));
+      else localStorage.removeItem(lnKey());
     } catch (e) {}
   }
   function loadLockedNext() {
     try {
-      var s = localStorage.getItem("lockedNext_v1"); if (!s) return;
+      var s = localStorage.getItem(lnKey()); if (!s) return;
       var d = JSON.parse(s); if (!d || !d.lock) return;
       var rem = Math.floor((currentRoundEnd.getTime() - Date.now()) / 1000);
       if (d.coin === state.coin && d.bucket === lockBucket() && rem > 0 && rem <= BET_WINDOW) {
         state.lockedNext = d.lock; state.betWindowFired = true;   // restore the committed pick; don't re-roll or re-pull a fresh read
-      } else localStorage.removeItem("lockedNext_v1");
+      } else localStorage.removeItem(lnKey());
     } catch (e) {}
   }
   // Persist THIS round's committed side (coin + round bucket) so a refresh shows the SAME pick instead
   // of re-rolling from the noisy ~50/50 round-open signals — the "it changed its mind when I refreshed" fix.
+  function cmKey() { return "committed_v1_" + state.coin; }   // per-coin (see lnKey note above)
   function saveCommitted() {
     try {
       if (state.committed === "OVER" || state.committed === "UNDER" || state.committed === "SKIP")
-        localStorage.setItem("committed_v1", JSON.stringify({ coin: state.coin, bucket: lockBucket(), side: state.committed }));
-      else localStorage.removeItem("committed_v1");
+        localStorage.setItem(cmKey(), JSON.stringify({ coin: state.coin, bucket: lockBucket(), side: state.committed }));
+      else localStorage.removeItem(cmKey());
     } catch (e) {}
   }
   function loadCommitted() {
     try {
-      var s = localStorage.getItem("committed_v1"); if (!s) return;
+      var s = localStorage.getItem(cmKey()); if (!s) return;
       var d = JSON.parse(s); if (!d) return;
       if (d.coin === state.coin && d.bucket === lockBucket() && (d.side === "OVER" || d.side === "UNDER" || d.side === "SKIP")) state.committed = d.side;
-      else if (d.bucket !== lockBucket()) localStorage.removeItem("committed_v1");   // a past round — drop the stale commit
+      else if (d.bucket !== lockBucket()) localStorage.removeItem(cmKey());   // a past round — drop the stale commit
     } catch (e) {}
   }
 
@@ -3430,6 +3435,7 @@
     state.candles = null; state.wsLive = false; state.aiPrimed = false; state.roundCall = null; state.lastRecoObj = null;
     state.lastAI = null; state.lastCrowd = null; state.betWindowFired = false;
     state.lockedNext = null; state.thisRoundLock = null; state.committed = null; state.leanDir = null; state.leanFlips = 0; clearLocks();
+    loadLockedNext(); loadCommitted();   // restore THIS coin's OWN held next-round lock + committed side (per-coin) — flipping coins no longer wipes a held SKIP/side
     state.obi = null; state.micro = null;
     state.gradePending = null; state.lastSettled = null; state.lastAuto = null; _primeSig = ""; renderLastClose(); renderLateRecord();   // clear the prior coin's close readout + show this coin's prime record
     var _am = $("autoMod"); if (_am) _am.style.display = "none"; fetchAutoTracker(coin, true);   // 24/7 record for the new coin
