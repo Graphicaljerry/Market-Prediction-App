@@ -141,7 +141,7 @@
     position: relative; overflow: hidden;   /* CONTAIN the glow inside the rounded card so it can't
                                                 bleed past the glass and leave a hard-edged disc on the page */
     border-color: rgba(var(--accent-rgb), 0.22);
-    box-shadow: 0 8px 30px rgba(0,0,0,0.35), inset 0 1px 40px rgba(var(--accent-rgb), 0.07);
+    box-shadow: 0 7px 26px rgba(0,0,0,0.25), inset 0 1px 40px rgba(var(--accent-rgb), 0.07);
     transition: border-color .8s ease, box-shadow .8s ease;
   }
   .card.orb::before, .card.orb::after {
@@ -260,7 +260,7 @@
     background: rgba(28,28,30,0.55);
     -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
     border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 18px; margin-bottom: 28px;
-    box-shadow: 0 10px 34px rgba(0,0,0,0.30), inset 0 1px 0 rgba(255,255,255,0.05);   /* softer, more diffused shadow + a 1px inner top highlight (machined edge) */
+    box-shadow: 0 8px 28px rgba(0,0,0,0.21), inset 0 1px 0 rgba(255,255,255,0.05);   /* softened, diffused drop shadow + a 1px inner top highlight (machined edge) */
     transition: border-color .4s ease;
   }
   /* "clear" sections — no glass, content sits straight on the glow */
@@ -276,7 +276,7 @@
      Additive overrides only; the glow rules above are untouched, so reverting is a one-block delete. */
   .card.orb::before, .card.orb::after { display: none; }
   .pageGlow { display: none; }
-  .card.orb { background: rgba(43,43,43,0.20); border-color: rgba(255,255,255,0.09); box-shadow: 0 10px 34px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.06); }
+  .card.orb { background: rgba(43,43,43,0.20); border-color: rgba(255,255,255,0.09); box-shadow: 0 8px 28px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.06); }
   /* Timer card stays clean like the mockup — hide the next-round preview line in the timer. The
      next-round pick is NOT lost: it still surfaces in the Auto Pick panel's "Next round" column
      when it locks in the final 2 min. One-line revert. (id selector so it wins over .nextPick below.) */
@@ -769,7 +769,7 @@
     margin-bottom: 22px; padding: 14px 16px 13px; border-radius: 16px;
     background: linear-gradient(180deg, rgba(var(--fs-rgb), .06), rgba(var(--fs-rgb), 0)), rgba(255,255,255,.022);
     border: 1px solid rgba(var(--fs-rgb), .17);
-    box-shadow: 0 6px 22px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.05);
+    box-shadow: 0 5px 18px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.05);
   }
   .footStatus:empty { display: none; }
   .footnote .autoLatest { font-size: 14px; font-weight: 800; letter-spacing: .01em; padding: 0; margin: 0; background: none; border: none; border-radius: 0; }
@@ -1015,7 +1015,7 @@
     /* The WRAPPER keeps a normal soft edge (dimmed rim). The softness lives in the GRADIENTS, not the wrapper:
        the glow behind (#glassBack) and the orb glow inside both fade out on their own — they're no longer
        clipped by an overflow:hidden (card or body), so the gradient never cuts at a hard line. */
-    box-shadow: 0 12px 30px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -16px 26px rgba(0,0,0,0.10);
+    box-shadow: 0 9px 26px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -16px 26px rgba(0,0,0,0.10);
     transition: border-color .4s var(--ease), box-shadow .4s var(--ease), --lx .5s linear, --ly .5s linear;
   }
   .glassui .card.orb {
@@ -1028,7 +1028,7 @@
       radial-gradient(135% 105% at var(--lx,30%) var(--ly,-6%), rgba(255,255,255,0.024) 0%, rgba(255,255,255,0.009) 30%, rgba(255,255,255,0) 60%) padding-box,
       linear-gradient(rgba(18,20,25,0.18), rgba(18,20,25,0.18)) padding-box,
       radial-gradient(135% 120% at var(--lx,30%) var(--ly,-12%), rgba(255,255,255,0.15) 0%, rgba(var(--accent-rgb),0.14) 22%, rgba(var(--accent-rgb),0.06) 58%, rgba(255,255,255,0.018) 100%) border-box;
-    box-shadow: 0 14px 38px rgba(0,0,0,0.36), inset 0 1px 0 rgba(255,255,255,0.055), 0 0 30px rgba(var(--accent-rgb),0.05);
+    box-shadow: 0 11px 32px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.055), 0 0 30px rgba(var(--accent-rgb),0.05);
   }
   /* real SVG refraction on the pick card's ambient glow (Safari-safe via filter:, not backdrop-filter) */
   .glassui:not(.reduce-motion) .card.orb::before { filter: blur(30px) url(#liquidGlass); }
