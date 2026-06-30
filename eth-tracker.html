@@ -925,10 +925,15 @@
          the card reads as lit glass, not a flat panel. Neutral white → adds light, not colour. */
       radial-gradient(150% 120% at var(--lx,30%) var(--ly,-10%), rgba(255,255,255,0.026) 0%, rgba(255,255,255,0.009) 34%, rgba(255,255,255,0) 64%) padding-box,
       linear-gradient(rgba(20,22,27,0.22), rgba(20,22,27,0.22)) padding-box;
-    -webkit-backdrop-filter: blur(26px) saturate(175%); backdrop-filter: blur(26px) saturate(175%);
-    /* NO bright rim stroke — that crisp border-box line was the hard edge. A soft inset shadow in the page
-       colour feathers the card's edges into the background, so the glass fades out instead of cutting. */
-    box-shadow: 0 16px 38px rgba(0,0,0,0.28), inset 0 0 32px rgba(7,8,9,0.36);
+    -webkit-backdrop-filter: blur(26px) saturate(172%); backdrop-filter: blur(26px) saturate(172%);
+    /* NO rim stroke, and the whole PERIMETER is feathered to transparent with a mask (two linear feathers,
+       horizontal + vertical, intersected) so the fill + frost fade out at every edge AND corner instead of
+       cutting at a hard line. This is what kills the faint edge that survived on big screens. */
+    box-shadow: 0 18px 40px rgba(0,0,0,0.30);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%), linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+    -webkit-mask-composite: source-in;
+    mask-image: linear-gradient(to right, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%), linear-gradient(to bottom, transparent 0, #000 20px, #000 calc(100% - 20px), transparent 100%);
+    mask-composite: intersect;
     transition: box-shadow .4s var(--ease), --lx .5s linear, --ly .5s linear;
   }
   .glassui .card.orb {
@@ -936,7 +941,7 @@
     background:
       radial-gradient(150% 120% at var(--lx,30%) var(--ly,-10%), rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 34%, rgba(255,255,255,0) 64%) padding-box,
       linear-gradient(rgba(18,20,25,0.16), rgba(18,20,25,0.16)) padding-box;
-    box-shadow: 0 16px 40px rgba(0,0,0,0.32), inset 0 0 32px rgba(7,8,9,0.34), 0 0 30px rgba(var(--accent-rgb),0.05);
+    box-shadow: 0 18px 42px rgba(0,0,0,0.34), 0 0 30px rgba(var(--accent-rgb),0.05);   /* perimeter feather inherited from .glassui .card mask */
   }
   /* real SVG refraction on the pick card's ambient glow (Safari-safe via filter:, not backdrop-filter) */
   .glassui:not(.reduce-motion) .card.orb::before { filter: blur(30px) url(#liquidGlass); }
@@ -1208,7 +1213,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r65 · liquid glass v5: NOTHING hard-edged — removed the crisp rim stroke and feathered every card edge into the background (soft inset shadow in the page colour), so the glass fades out instead of cutting · full-viewport ambient light (no ultrawide cutoff) · soft pick-colour glow BEHIND each wrapper, backing glows are organic blobs · dimmed, non-glary highlights · translucent inset boxes · Geist typography</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r66 · liquid glass v6: NOTHING hard-edged — every card's whole PERIMETER is feathered to transparent with a mask (intersecting H+V feathers), so the fill + frost dissolve into the background at all edges + corners, even on big screens · no rim stroke · full-viewport ambient light (no ultrawide cutoff) · soft pick-colour glow behind each wrapper · dimmed, non-glary highlights · Geist typography</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
