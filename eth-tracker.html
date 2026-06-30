@@ -1215,7 +1215,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r72 · MOBILE FIX: restored overflow-x clip on the body so the page can't drift sideways / push content off-screen (the ambient orbs sit past the screen edge; html's clip alone didn't hold it on iOS Safari) — content stays within the viewport, the chart's timeframe row still scrolls inside its own card by design · SYNCED PICKER: the #2 skip gate reads the GLOBAL per-coin 24/7 history and is ported into the Worker, so the Track Record scoreboard measures it · accuracy: #1 settlement-aware barrier (final 2 min) · #2 calibration-band skip gate · #3 regime conditioning · per-coin pick lock holds a SKIP across coin switches · liquid glass · Geist typography</span>
+    <span style="opacity:.45">UI build · 2026-06-30 · figma-pass r73 · SHARED AI READ (Build B): the AI verdict is computed ONCE per round per coin and cached in the Worker; every device picks it up for free on its ~1/min crowd poll (newer-read-wins, so a poll never reverts a fresher local read) — all devices converge on the same AI input, one paid call per round, no accuracy traded · MOBILE FIX: restored overflow-x clip on the body so the page can't drift sideways / push content off-screen (the ambient orbs sit past the screen edge; html's clip alone didn't hold it on iOS Safari) — content stays within the viewport, the chart's timeframe row still scrolls inside its own card by design · SYNCED PICKER: the #2 skip gate reads the GLOBAL per-coin 24/7 history and is ported into the Worker, so the Track Record scoreboard measures it · accuracy: #1 settlement-aware barrier (final 2 min) · #2 calibration-band skip gate · #3 regime conditioning · per-coin pick lock holds a SKIP across coin switches · liquid glass · Geist typography</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -3742,15 +3742,24 @@
     var scope = scopeAt(secondsLeft);
     fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
-      .then(function (d) { if (crowdOnly) applyCrowd(d); else renderAI(d, scope); })
+      .then(function (d) { if (crowdOnly) applyCrowd(d, scope); else renderAI(d, scope); })
       .catch(function (e) { if (!crowdOnly) renderAIError(e.message); })
       .then(function () { if (!crowdOnly) { state._aiFetching = false; if (btn) { btn.disabled = false; btn.textContent = "Refresh AI Read"; } renderBlend(); } });
   }
   // Crowd-only response: refresh the market price + real strike without touching the AI read.
-  function applyCrowd(d) {
+  function applyCrowd(d, scope) {
     if (!d) return;
     if (d.crowd) state.lastCrowd = d.crowd;
     if (d.provider) state.lastProvider = d.provider;   // which AI the Worker is set to (drives the label)
+    // Cross-device convergence (Build B): the free crowd poll also carries this round's SHARED AI read.
+    // Adopt it ONLY when it's newer than the read we already hold — so a poll never reverts a fresher
+    // local read, and every device lands on the one read computed once for the round (identical AI,
+    // no extra LLM cost). This DOES feed the blend, but it's the same read quality everywhere.
+    if (d.ai && typeof d.aiTs === "number" && d.aiTs > (state._aiTs || 0)) {
+      state.lastAI = d.ai; state._aiTs = d.aiTs; state._aiCached = true;
+      if (scope) { state.aiScope = scope; recordAIRead(state.lastAI, scope); }   // log it for grading, same as a paid read
+      renderWhy();
+    }
     if (d.crowd && typeof d.crowd.strike === "number") setRoundStrike(d.crowd.strike);
     renderPickCard(); updateRoundStatus(); drawMiniChart(); renderBlend();
   }
@@ -4254,6 +4263,7 @@
 
   function renderAI(d, scope) {
     state.lastAI = d.ai || null; state.lastCrowd = d.crowd || null; state._aiCached = !!d.cached;   // feed the blend + combined odds; note if this read was the round's shared one
+    state._aiTs = (typeof d.aiTs === "number" ? d.aiTs : (state.lastAI ? Date.now() : 0));   // timestamp of the read we now hold (for cross-device convergence — see applyCrowd)
     if (d.provider) state.lastProvider = d.provider;   // which AI actually answered, so the label reflects it
     if (d.crowd && typeof d.crowd.strike === "number") setRoundStrike(d.crowd.strike);   // real line to beat (active phase only)
     if (state.lockingNext && !state.lockedNext) commitLockedNext();   // settle the locked next-round pick on this fresh read

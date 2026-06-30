@@ -79,6 +79,14 @@ Spend is small by design, but cap it anyway:
   matter how many devices are open**. The app's "read now contradicts the market" catch-up sends
   `fresh: true` to bypass the cache and then overwrites the shared entry (so the one catch-up benefits
   everyone). (POST handler in `worker.js`.)
+- **Shared read piggybacks the free crowd poll (cross-device convergence):** the `noAI` crowd
+  response **also carries the round's cached AI read** (a free KV read) plus its write timestamp
+  `aiTs`, so a device that never pays for its own read still **converges on the shared one** on its
+  regular ~1/min poll. The app adopts it only when `aiTs` is **newer** than the read it already
+  holds (newer-read-wins), so a poll can't revert a fresher local/manual read. Both the `noAI`
+  branch and the full read path return `aiTs`; the full path writes it as `ts` when it caches.
+  Net: identical AI input on every device, still **one paid call per round**. (`noAI` branch +
+  `airead:` write in `worker.js`; `applyCrowd` in `eth-tracker.html`.)
 
 ## (Optional) Crowd odds — Kalshi series tickers
 Without these, the AI still works; the **Crowd** line just shows `n/a`.

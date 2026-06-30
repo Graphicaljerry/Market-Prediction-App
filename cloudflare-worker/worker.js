@@ -196,9 +196,20 @@ export default {
     const seriesTicker = env["KALSHI_SERIES_" + coin];
     if (seriesTicker) { try { crowd = await getKalshiCrowd(env, seriesTicker); } catch (_) { crowd = null; } }
 
-    // Cheap path: the client can refresh the (free) Kalshi crowd + strike without paying
-    // for an LLM call. Used between decisions and when the tab isn't actively watched.
-    if (body.noAI) return json({ crowd, ai: null, provider: aiProvider });
+    // Cheap path: the client can refresh the (free) Kalshi crowd + strike without paying for an LLM call.
+    // We ALSO piggyback the SHARED cached AI read for this round (just a free KV read) so every device
+    // CONVERGES on the one read — identical AI across all devices, no extra LLM cost. The full path below
+    // still does the actual (paid) compute once per round; this only re-serves what's already cached.
+    if (body.noAI) {
+      let sharedAi = null, sharedProv = aiProvider, sharedTs = 0;
+      try {
+        const bMs = Math.ceil(Date.now() / 9e5) * 9e5;
+        const isN = typeof body.secondsLeft === "number" && body.secondsLeft <= 120;
+        const hit = await kvGetRaw(env, `airead:${coin}:${body.model || aiProvider}:${bMs}:${isN ? "n" : "t"}`);
+        if (hit && hit.ai) { sharedAi = hit.ai; sharedProv = hit.provider || aiProvider; sharedTs = hit.ts || 0; }
+      } catch (_) {}
+      return json({ crowd, ai: sharedAi, provider: sharedProv, aiTs: sharedTs, cached: !!sharedAi, shared: !!sharedAi });
+    }
 
     // Give the AI the full picture: the 24/7 auto-tracker's own record (its market-anchored
     // guesses + how they actually settled) on top of the client's live history.
@@ -218,7 +229,7 @@ export default {
     const readKey = `airead:${coin}:${body.model || aiProvider}:${boundaryMs}:${isNext ? "n" : "t"}`;
     if (!body.fresh) {
       const hit = await kvGetRaw(env, readKey);
-      if (hit && hit.ai) return json({ crowd, ai: hit.ai, provider: hit.provider || aiProvider, cached: true });
+      if (hit && hit.ai) return json({ crowd, ai: hit.ai, provider: hit.provider || aiProvider, aiTs: hit.ts || 0, cached: true });
     }
 
     let ai, ok = true;
@@ -226,7 +237,7 @@ export default {
     catch (e) { ok = false; ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", probOver: 50, rationale: "AI error: " + e.message }; }
     // Cache only a SUCCESSFUL read (~30-min TTL) so a transient API error isn't frozen in for the round.
     if (ok) { try { if (env.CROWD_KV) await env.CROWD_KV.put(readKey, JSON.stringify({ ai, provider: aiProvider, ts: nowMs }), { expirationTtl: 1800 }); } catch (_) {} }
-    return json({ crowd, ai, provider: aiProvider });
+    return json({ crowd, ai, provider: aiProvider, aiTs: nowMs });
   },
 
   // Cron (every 15 min): compute a pick from FREE data only — no LLM call, so no AI spend —

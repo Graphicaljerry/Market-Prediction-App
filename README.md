@@ -19,6 +19,8 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **Shared AI read — every device sees the same AI verdict now (Build B, r73).** The AI read is the one pick-input that used to differ per device: each tab paid for its *own* LLM call, so two phones could hold slightly different reads for the same round. Now the Worker computes the read **once per round per coin**, caches it, and **hands it back for free on the regular ~1/min crowd poll** — so every device converges on the **same** AI input without any extra paid calls. The rule is **newer-read-wins**: a device adopts the shared read only when it's *newer* than the one it already holds, so a background poll can never revert a fresher local read (e.g. one you just refreshed by hand). Mechanically: the Worker tags each read with a timestamp (`aiTs`) and piggybacks the cached read on the `noAI` crowd response; the app's `applyCrowd` adopts it when `aiTs` is newer and re-grades it like any read. **This touches the pick** — the AI is one input to the blend, so all devices now blend the *same* AI — but it trades **no accuracy**: it's the same read quality everywhere, computed by the same model, just shared instead of recomputed. One paid call per round, not one per device. (`applyCrowd` + `renderAI` in `eth-tracker.html`; `noAI` branch + `airead:` cache in `worker.js`.)
+
 - **Mobile fix — page can't drift sideways / off-screen anymore (r72).** On phones the page had started scrolling horizontally, shoving the content off to the side with empty space on the other edge. Cause: r67 removed `overflow-x: clip` from `body` (to let glows bleed into wide-screen margins), but the ambient glow orbs sit *past* the screen edges (negative offsets), and `html`'s clip alone doesn't contain that on iOS Safari. Restored `overflow-x: clip` on `body` — content stays within the viewport, no sideways scroll. Verified no real content is cut (the chart's timeframe row scrolls inside its *own* card by design) and there's no leftover vertical over-scroll. The glows now fade to ~0 before the card edges, so clipping at the body box no longer cuts a visible edge in wide-screen margins. **Display-only — no pick change.** (`body { overflow-x: clip }` in `eth-tracker.html`.)
 
 - **Synced picker + the skip gate ported to the Worker (r71).** Two follow-ups to close the loop. **(1) The #2 skip gate is now synced across all your devices, for every coin.** It used to read each device's *own* local log (sparse, and different per device). It now reads the **global per-coin 24/7 history** (`state.lastAuto.history` — identical on every device, Kalshi-confirmed ground truth, and far more sample), so every device gates the same way *and* the gate actually has the data to fire. Falls back to the local log only until the server history loads. (Calibration stays on the device's own model bins on purpose — mixing two different probability models there would be wrong; the gate is a coarse reliability check where the shared data is a sound proxy.) **(2) The #2 gate is ported into the Worker's picker**, so the **Track Record scoreboard now measures the same discipline** (it'll bet fewer, higher-quality rounds). **What did NOT port, and why:** **#1 (settlement-aware)** only sharpens the live *final-2-minutes* read, but the Worker **locks its pick at round-open and never re-picks** — there's nothing for it to attach to, so it stays app-only. **#3 (regime)** needs the live tick stream; the Worker only has coarse 1-minute candles, so it stays app-only too. **Changes pick behavior** (more synced + the scoreboard more selective). (`bandEdgeOK` in `eth-tracker.html`; `bandEdgeOK` + `freePick` call-site in `worker.js`.)
@@ -673,8 +675,16 @@ verdict.
   rationale. It reframes for the **next round** when ≤120s remain.
 - **Cost controls:**
   - **Crowd-only path** — the app can POST `noAI: true` to refresh the free Kalshi price +
-    strike with **no LLM call**.
-  - **Once per round** — the paid read fires at the 2-min lock, not every tick or round-open.
+    strike with **no LLM call**. This path **also returns the round's shared cached AI read**
+    (just a free KV read, tagged with its timestamp `aiTs`) so every device can converge on the
+    one read without paying — see *Shared AI read* below.
+  - **Once per round, shared across devices** — the paid read fires once at the 2-min lock and is
+    cached under a per-round/per-coin/per-model key (`airead:{coin}:{model}:{boundaryMs}:{this|next}`,
+    ~30-min TTL). Every other device — and every later tick on the same device — re-serves that
+    **one** cached read instead of paying again. The app adopts a shared read only when its `aiTs`
+    is **newer** than the one it already holds (newer-read-wins), so a background poll never reverts
+    a fresher local read. Net: identical AI input on all devices, **one paid call per round, not one
+    per device** — same read quality, no accuracy traded for the consistency.
   - **Visibility-gated** — no automatic paid reads while the tab is hidden.
   - **"AI spend" setting** — *Every round* (**default now that the AI is free** — reads every
     round for the most stable call), *Smart* (only reads when the call is close or contrarian to
