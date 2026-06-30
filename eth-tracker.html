@@ -1215,7 +1215,7 @@
     <div style="margin-bottom:16px"><a class="guideBtn" href="guide.html" target="_blank" rel="noopener" title="How to read every panel &amp; stat" style="margin:0">📖 Guide</a></div>
     Real-time price via Coinbase WebSocket; indicators on 15-minute candles.<br>
     Not affiliated with Coinbase or Kalshi · for tracking only — not financial advice.<br>
-    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r67 · liquid glass: the WRAPPER keeps a normal soft edge — the softness is in the GRADIENTS, not the wrapper. The glow behind each card and the glow inside the pick cards now fade out UNCLIPPED: removed a redundant overflow:clip on the body (it was cutting the glows at the content width → a hard edge in the margins on wide screens) and the orb cards' overflow:hidden, so no gradient cuts at a hard line · full-viewport ambient light · dimmed, non-glary highlights · Geist typography</span>
+    <span style="opacity:.45">UI build · 2026-06-29 · figma-pass r68 · ACCURACY #1 — settlement-aware barrier: the position model now knows the settle is a ~60-sec AVERAGE at the close, so it (a) treats the round as locking in ~22s early and (b) anchors to a short rolling average in the final stretch — sharper final-minute reads; early-round picks unchanged (CHANGES PICK BEHAVIOR in the last ~2 min) · Recent-15-min arrows re-fit so the last dot + ▾ never clip on the narrow desktop column · liquid glass: gradients fade unclipped, wrappers keep a normal soft edge · Geist typography</span>
   </div>
 
   <!-- Best bet across ALL coins right now — a sticky footer ticker; tap to expand the full ranking -->
@@ -1659,18 +1659,44 @@
     var v = rets.reduce(function (s, x) { return s + (x - m) * (x - m); }, 0) / (rets.length - 1);
     return Math.sqrt(v);
   }
+  // ---------- Settlement-aware barrier (accuracy pass #1) ----------
+  // Kalshi/Coinbase don't settle on the instantaneous closing tick — they settle on a ~60-SECOND AVERAGE of
+  // the index at the close (a CF Benchmarks-style window). Two consequences the plain barrier model missed,
+  // both of which only matter in the final stretch (early-round picks are unchanged):
+  //   (a) the settle effectively LOCKS IN early — the variance of a terminal 60-sec time-average ≈ that of
+  //       the price ~a third-of-a-window (≈SETTLE_LEAD sec) before the close, so a last-second tick barely
+  //       moves it. We shrink the remaining time by SETTLE_LEAD → the model is correctly more confident late.
+  //   (b) the target is that AVERAGE, not the spot tick — so near the close we anchor the barrier's price onto
+  //       a short rolling average (settlePrice), so one noisy print can't flip the read off what really settles.
+  var SETTLE_LEAD = 22;   // seconds the 60-sec-average settle leads the literal close (≈ window/3)
+  function recentAvgSec(secs) {   // mean price over the last `secs` seconds of tick history
+    var h = state.priceHist; if (!h || h.length < 3) return null;
+    var now = h[h.length - 1].t, from = now - secs * 1000, sum = 0, n = 0, i;
+    for (i = h.length - 1; i >= 0 && h[i].t >= from; i--) { sum += h[i].p; n++; }
+    return n >= 3 ? sum / n : null;
+  }
+  function settlePrice() {   // the price the barrier should aim at: spot far out, blending to a short average near close
+    var spot = state.lastPrice;
+    var rem = state.remaining == null ? 900 : state.remaining;
+    if (rem > 120 || spot == null) return spot;                       // far from close — spot is the martingale estimate
+    var win = Math.max(8, Math.min(60, 120 - rem + 8));               // widen the averaging window as the close nears
+    var avg = recentAvgSec(win); if (avg == null) return spot;
+    var wAvg = Math.max(0, Math.min(0.6, (120 - rem) / 120 * 0.6));   // up to 60% weight on the average at the close
+    return spot * (1 - wAvg) + avg * wAvg;
+  }
+  function settleRemEff(rem) { return Math.max(2, rem - SETTLE_LEAD); }   // 60-sec-average settle locks in ~SETTLE_LEAD sec early
   // THE position model: P(price > line at close) = Φ( ln(price/line) / (σ·√(timeLeft)) ).
   // This is what actually settles an OVER/UNDER — distance to the line vs remaining time vs
   // volatility. As time runs out it locks to ~1/0; at round open (price≈line) it's ~0.5.
   function barrierOver() {
     if (nextModeNow()) return null;   // next round opens at ≈the line — no distance edge yet; let drift signals decide
-    var strike = roundStrike(), price = state.lastPrice;
+    var strike = roundStrike(), price = settlePrice();   // settlement-aware: anchor to the ~60-sec average near close
     if (strike == null || price == null || price <= 0 || strike <= 0) return null;
     var sigRound = (state.micro && state.micro.sigRound) ? state.micro.sigRound : sigmaRoundFallback();
     if (!sigRound || sigRound <= 0) return null;
     var remaining = state.remaining == null ? 900 : Math.max(0, Math.min(900, state.remaining));
     if (remaining <= 1) return price >= strike ? 0.995 : 0.005;
-    var sigT = sigRound * Math.sqrt(remaining / 900);
+    var sigT = sigRound * Math.sqrt(settleRemEff(remaining) / 900);   // shrink for the early-locking 60-sec-average settle
     if (sigT < 1e-9) return price >= strike ? 0.995 : 0.005;
     var z = Math.log(price / strike) / sigT;
     return Math.max(0.005, Math.min(0.995, normCdf(z)));
@@ -1731,13 +1757,13 @@
   // The barrier probability for THIS round, valid even in the final 2 min (unlike barrierOver,
   // which bows out to next-round mode). Same physics: distance to the line vs time-left vs vol.
   function currentRoundBarrier() {
-    var strike = roundStrike(), price = state.lastPrice;
+    var strike = roundStrike(), price = settlePrice();   // settlement-aware: anchor to the ~60-sec average near close
     if (strike == null || price == null || price <= 0 || strike <= 0) return null;
     var sigRound = (state.micro && state.micro.sigRound) ? state.micro.sigRound : sigmaRoundFallback();
     if (!sigRound || sigRound <= 0) return null;
     var rem = state.remaining == null ? 900 : Math.max(0, Math.min(900, state.remaining));
     if (rem <= 1) return price >= strike ? 0.995 : 0.005;
-    var sigT = sigRound * Math.sqrt(rem / 900);
+    var sigT = sigRound * Math.sqrt(settleRemEff(rem) / 900);   // 60-sec-average settle locks in ~SETTLE_LEAD sec early
     if (sigT < 1e-9) return price >= strike ? 0.995 : 0.005;
     return Math.max(0.005, Math.min(0.995, normCdf(Math.log(price / strike) / sigT)));
   }
@@ -3305,8 +3331,13 @@
     var allKeys = Object.keys(byBucket).map(Number).sort(function (a, b) { return a - b; });
     // Fit the closed row to the card width so arrows never overflow/overlap the wrapper (esp. the
     // narrow desktop column): reserve ~135px for the label + ▾ button, ~24px per dot, clamp 4–10.
-    var avail = el.clientWidth || (el.parentElement && el.parentElement.clientWidth) || 320;
-    var fit = Math.max(4, Math.min(10, Math.floor((avail - 135) / 24)));
+    var avail = el.clientWidth || (el.parentElement && el.parentElement.clientWidth) || 0;
+    if ((!avail || avail < 90) && !el._msRetry) { el._msRetry = 1; requestAnimationFrame(function () { el._msRetry = 0; renderMoveStrip(); }); }
+    if (!avail || avail < 90) avail = 300;                 // not laid out yet — safe default this pass; the rAF re-fits once measured
+    // Reserve enough for the "RECENT 15-MIN" label (wider in Geist than the old font) + the ▾ button + gaps,
+    // so the last dot and the button ALWAYS fully fit — never clipped by overflow:hidden (which read as the
+    // arrows "not lining up", especially on the narrow desktop column).
+    var fit = Math.max(4, Math.min(10, Math.floor((avail - 158) / 25)));
     var open = !!state.moveOpen, keys = open ? allKeys.slice(-24) : allKeys.slice(-fit);
     el.className = "moveStrip" + (open ? " open" : "");
     if (!keys.length) { if (el._html) { el._html = ""; el.innerHTML = ""; } return; }
