@@ -234,6 +234,30 @@
      the coin (the price card names it again right below) and eating prime vertical space. */
   .coinHero { font-size: clamp(18px, 5vw, 24px); font-weight: 600; letter-spacing: -0.02em; line-height: 1.1; margin: 10px 2px 13px; }
 
+  /* ---------- At-a-glance decision bar (read-only mirror of the pick) ----------
+     Leads the page with the one thing you came for — side · % · confidence · time left — so you don't
+     reassemble the call from scattered pieces under a 15-min clock. renderDecisionBar() only REFLECTS
+     what the pick card renders below (#buyLine / #oddsPct / #recoConf) + the countdown; it never
+     computes, commits, or otherwise touches a pick. Tinted to the call's own side via --db-rgb. */
+  .decisionBar { --db-rgb: 235,235,245; display: flex; align-items: center; gap: 7px 11px; flex-wrap: wrap;
+    margin: 0 2px 18px; padding: 12px 15px; border-radius: 16px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    background: linear-gradient(180deg, rgba(var(--db-rgb),.11), rgba(var(--db-rgb),.025)), rgba(255,255,255,.018);
+    border: 1px solid rgba(var(--db-rgb),.28); box-shadow: 0 6px 20px rgba(0,0,0,.16), inset 0 1px 0 rgba(255,255,255,.05);
+    transition: border-color .35s var(--ease), background .35s var(--ease); }
+  .decisionBar.over  { --db-rgb: 48,209,88; }
+  .decisionBar.under { --db-rgb: 255,69,58; }
+  .decisionBar.skip  { --db-rgb: 255,159,10; }
+  .decisionBar.wait  { --db-rgb: 235,235,245; }
+  .decisionBar:hover { border-color: rgba(var(--db-rgb),.5); }
+  .decisionBar:focus-visible { outline: 2px solid rgba(var(--db-rgb),.9); outline-offset: 2px; }
+  .dbSide { font-weight: 800; font-size: 16px; letter-spacing: .02em; color: rgb(var(--db-rgb)); white-space: nowrap; }
+  .dbPct { font-family: var(--font-num); font-weight: 700; font-size: 16px; color: var(--label); white-space: nowrap; }
+  .dbPct:empty { display: none; }
+  .dbConf { font-size: 11.5px; font-weight: 600; color: var(--label-2); white-space: nowrap; padding-left: 1px; }
+  .dbConf:empty { display: none; }
+  .dbClock { margin-left: auto; font-family: var(--font-num); font-weight: 700; font-size: 15px; color: var(--label-2); white-space: nowrap; }
+  .dbClock.warn { color: var(--red); }
+
   /* ---------- Section header ----------
      Unified across the whole app: a small accent "spine" marker + a brighter, tighter label, so
      every section (Auto Pick, AI Co-Pilot, Live Indicators, Track Record, Model & Accuracy, Recent
@@ -1096,6 +1120,15 @@
 
   <h1 class="coinHero" id="coinHero">Ethereum</h1>
 
+  <!-- At-a-glance decision bar — a READ-ONLY mirror of the pick the card computes below. It reflects
+       #buyLine / #oddsPct / #recoConf + the live countdown; it never decides, commits, or changes a pick. -->
+  <div class="decisionBar wait" id="decisionBar" role="button" tabindex="0" aria-label="Current call — tap to jump to the full pick">
+    <span class="dbSide" id="dbSide">Reading…</span>
+    <span class="dbPct mono" id="dbPct"></span>
+    <span class="dbConf" id="dbConf"></span>
+    <span class="dbClock mono" id="dbClock">—</span>
+  </div>
+
   <div class="layout">
   <div class="stack stackL">
   <div class="module m-hero">
@@ -1306,10 +1339,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r78</span><span class="buildSep">·</span><span>2026-06-30</span>
+        <span class="buildVer">build r79</span><span class="buildSep">·</span><span>2026-06-30</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>At-a-glance decision bar (r79).</b> A compact bar now leads the page with the one thing you came for — <b>side · % · confidence · time left</b>, colored to the call — so you don't reassemble it from scattered pieces under the clock; tap it to jump to the full pick. It's a <b>read-only mirror</b> of the pick the card already computes (it reflects the verdict, odds and countdown) — it never decides, commits, or changes a pick. The clock turns red in the final 2 minutes.</p>
         <p><b>UX pass from the critique (r78).</b> Sharpened hierarchy and calmed the edges: the oversized coin title is now a quiet kicker so the price + pick lead; a data dropout shows one reassuring "reconnecting" message instead of five red alarms; the chart's timeframe row fades at its right edge so the off-screen options are discoverable; and Live Indicators collapses by default (its detail is already echoed by the on-chart indicator chips). Softened the wrapper shadows too. Display-only — no pick change.</p>
         <p><b>Space Mono for the big numbers (r77).</b> The large, bold numeric readouts — price, countdown, the Track Record scoreboard, the Brier hero, and the stat cells — now use Space Mono for a more distinctive, techy display face. One token (<code>--font-num</code>) drives them all. Display-only.</p>
         <p><b>App-wide UI polish (r76).</b> A consistency pass over the whole app: every section header now carries a small accent "spine" marker and a brighter, bolder label, so the page reads as clear waypoints with a steady rhythm; the oversized coin title was dialed back so the price card leads. Also fixed a scoreboard bug where Hit Rate overflowed and the four boxes overlapped (a CSS class clash from r75). Display-only — no pick change.</p>
@@ -3175,6 +3209,32 @@
   function nextBoundary(now) { var d = new Date(now.getTime()); d.setMinutes((Math.floor(d.getMinutes() / 15) + 1) * 15, 0, 0); return d; }
   var currentRoundEnd = nextBoundary(new Date());
   var elTimer = $("timer"), elTimerSub = $("timerSub"), elTimerBar = $("timerBar");
+  // READ-ONLY mirror of the pick the card renders below — reflects #buyLine / #oddsPct / #recoConf and
+  // the live countdown into the at-a-glance bar at the top. It decides nothing and writes no pick state;
+  // if the card changes, the bar follows. (Flagged per the standing rule: this does NOT touch the picker.)
+  function renderDecisionBar() {
+    var bar = $("decisionBar"); if (!bar) return;
+    var bl = $("buyLine"), blTxt = bl ? (bl.textContent || "") : "";
+    var loading = !bl || !blTxt.trim() || blTxt.trim() === "—" || /analyz|locking|loading|reconnect|waiting|reading/i.test(blTxt);
+    var side = "wait", word = "Reading…", pct = "", confTxt = "";
+    if (!loading) {
+      if (bl.classList.contains("over") || bl.classList.contains("under")) {
+        side = bl.classList.contains("over") ? "over" : "under";
+        var verb = /^\s*holding/i.test(blTxt) ? "HOLD" : "BUY";
+        word = verb + (side === "over" ? " OVER" : " UNDER");
+        var p = $("oddsPct"); pct = p ? (p.textContent || "").trim() : ""; if (pct === "—") pct = "";
+        var cf = $("recoConf"), c = cf ? (cf.textContent || "").trim() : "";
+        if (c && c.length <= 16 && !/load|wait|reconnect|indicator/i.test(c)) confTxt = c;   // short confidence token only
+      } else { side = "skip"; word = "SIT OUT"; confTxt = "no clear edge"; }
+    }
+    var rem = currentRoundEnd ? Math.max(0, Math.floor((currentRoundEnd.getTime() - Date.now()) / 1000)) : 0;
+    var clock = Math.floor(rem / 60) + ":" + (rem % 60 < 10 ? "0" : "") + (rem % 60);
+    bar.className = "decisionBar " + side;
+    $("dbSide").textContent = word;
+    $("dbPct").textContent = pct;
+    $("dbConf").textContent = confTxt;
+    var clk = $("dbClock"); clk.textContent = clock + " left"; clk.classList.toggle("warn", rem > 0 && rem <= 120);
+  }
   function tickTimer() {
     var now = new Date();
     if (now >= currentRoundEnd) {
@@ -3214,6 +3274,7 @@
     elTimer.classList.toggle("critical", critical);
     elTimerBar.style.width = (remaining / 900 * 100) + "%";
     elTimerSub.textContent = "Round closes at " + hma(currentRoundEnd);
+    renderDecisionBar();   // keep the at-a-glance bar's clock + mirrored call in sync each second (read-only)
     updateBetWindow(remaining);
     renderPrime();   // keep the prime-entry cue live as price/time tick down
     // The pick card + mini chart only change on a data refresh, a lock, or when we cross the
@@ -4574,6 +4635,13 @@
   function resetCoinServer(coin) {   // zero the worker's record for a coin (keeps the learned model); resolves to the JSON or null
     var rurl = workerGet({ reset: coin });
     return rurl ? fetch(rurl, { cache: "no-store" }).then(function (r) { return r.json(); }).catch(function () { return null; }) : Promise.resolve(null);
+  }
+  // Decision bar → tap/Enter jumps to the full pick card (glance, then confirm the detail).
+  var _db = $("decisionBar");
+  if (_db) {
+    var _dbGo = function () { var r = $("reco"); if (r) r.scrollIntoView({ behavior: "smooth", block: "center" }); };
+    _db.addEventListener("click", _dbGo);
+    _db.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); _dbGo(); } });
   }
   var _cl = $("clearLog"); if (_cl) _cl.addEventListener("click", function () {
     var coin = state.coin;
