@@ -374,13 +374,7 @@
   @keyframes primePulseG { 0%,100% { box-shadow: 0 0 0 0 rgba(13,224,89,0); } 50% { box-shadow: 0 0 16px 1px rgba(13,224,89,.55); } }
   @keyframes primePulseR { 0%,100% { box-shadow: 0 0 0 0 rgba(255,69,58,0); } 50% { box-shadow: 0 0 16px 1px rgba(255,69,58,.55); } }
   @media (prefers-reduced-motion: reduce) { .primeCue.show { animation: none; } }
-  .lateRecord { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; gap: 10px;
-    font-size: 12.5px; font-weight: 600; color: var(--label-3); padding: 12px 14px; border: 1px solid var(--separator);
-    border-radius: 12px; background: rgba(255,255,255,.035); }
-  .lateRecord:empty { display: none; }
-  .lateRecord .lrLbl { color: var(--label-2); }
-  .lateRecord.pos .lrVal { color: var(--green); }
-  .lateRecord.neg .lrVal { color: var(--orange); }
+  /* .lateRecord (Value-entry record) now shares the Model &amp; Accuracy tile + stat system defined below. */
 
   /* ---------- Hero / price ---------- */
   .heroTop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
@@ -772,15 +766,47 @@
   .footnote .autoLatest .sub { display: block; font-size: 10.5px; font-weight: 600; color: var(--label-3); margin-top: 4px; letter-spacing: .01em; }
   /* model lean — the quietest line in the capsule, set off from the provenance by a hairline */
   .modelLean { text-align: center; font-size: 11px; color: var(--label-3); margin: 10px 0 0; padding-top: 10px; border-top: 1px solid rgba(var(--fs-rgb), .15); }
-  /* what the online model has learned */
-  /* Each Model & Accuracy sub-block is its own lifted tile, so the panel reads as grouped cards
-     (clear hierarchy) instead of a flat wall of text. Empty blocks collapse so there are no empty boxes. */
-  .autoLearned { margin-top: 10px; font-size: 12.5px; color: var(--label-2); line-height: 1.5;
-    background: rgba(255,255,255,.035); border: 1px solid var(--separator); border-radius: 12px; padding: 12px 14px; }
-  .autoLearned:empty { display: none; }
-  .autoLearned .lh { font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); margin-bottom: 8px; }
-  .autoLearned ul { margin: 0; padding-left: 16px; } .autoLearned li { margin: 3px 0; }
-  .autoLearned .pnow { font-weight: 700; color: var(--label); }
+  /* ---------- Model & Accuracy panel — a clean, scannable scoreboard ----------
+     Was a flat stack of gray prose-boxes with the numbers buried inline. Rebuilt as lighter tiles
+     with a consistent STAT component (big value · label · sample) so the eye scans the numbers, a
+     hero Brier readout, and RESERVED colour — hit-rates that sit near a coin-flip stay neutral white,
+     so the design never fakes a signal; only the money line + a beating-coin-flip Brier earn green.
+     Purely a display of the learned model + scoreboard — no pick logic lives here. */
+  .autoLearned, .lateRecord { margin-top: 12px; font-size: 12.5px; color: var(--label-2); line-height: 1.5;
+    background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06); border-radius: 14px; padding: 13px 15px; }
+  .autoLearned:first-child, .lateRecord:first-child { margin-top: 0; }
+  .autoLearned:empty, .lateRecord:empty { display: none; }
+  .autoLearned.hero { background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.012)); border-color: rgba(255,255,255,.11); }
+  /* header row: section label (left) + a quiet mono sample-size badge (right) */
+  .lhRow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
+  .autoLearned .lh, .lateRecord .lh { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--label-2); margin: 0; }
+  .lhN { font-size: 10px; font-weight: 600; letter-spacing: .02em; color: var(--label-3); font-family: "Geist Mono", ui-monospace, monospace; white-space: nowrap; }
+  /* stat cells — the scannable number components (big value · label · n/N) */
+  .statGrid { display: flex; gap: 8px; flex-wrap: wrap; }
+  .stat { flex: 1 1 0; min-width: 82px; background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.05); border-radius: 10px; padding: 9px 11px; }
+  .stat .sv { display: block; font-size: 18px; font-weight: 800; font-family: "Geist Mono", ui-monospace, monospace; letter-spacing: -.01em; color: var(--label); line-height: 1.1; }
+  .stat .sv.good { color: var(--green); } .stat .sv.bad { color: var(--orange); }
+  .stat .sl { display: block; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); margin-top: 5px; }
+  .stat .sn { display: block; font-size: 10px; color: var(--label-3); font-family: "Geist Mono", ui-monospace, monospace; margin-top: 2px; }
+  /* hero Brier readout (the scoreboard headline) */
+  .heroStat { display: flex; align-items: center; gap: 14px; }
+  .heroStat .hsv { flex: 0 0 auto; white-space: nowrap; font-size: 30px; font-weight: 800; font-family: "Geist Mono", ui-monospace, monospace; letter-spacing: -.02em; line-height: 1; color: var(--label); }
+  .heroStat .hsv.good { color: var(--green); }
+  .heroStat .hsl { font-size: 11.5px; color: var(--label-2); line-height: 1.45; }
+  .heroStat .hsl .q { color: var(--label); font-weight: 700; }
+  .heroStat .hsHint { color: var(--label-3); }
+  /* supporting key→value lines */
+  .mLine { margin-top: 10px; font-size: 12px; color: var(--label-2); line-height: 1.45; }
+  .mLine b { color: var(--label); font-weight: 700; }
+  .mLine .mlk { color: var(--label-3); }
+  /* learned-insights list — cleaner custom markers, tighter rhythm */
+  .insightList { list-style: none; margin: 0; padding: 0; }
+  .insightList li { position: relative; padding-left: 15px; margin: 5px 0; color: var(--label-2); }
+  .insightList li::before { content: ""; position: absolute; left: 2px; top: .58em; width: 4px; height: 4px; border-radius: 50%; background: var(--label-3); }
+  .insightList .pnow { font-weight: 700; color: var(--label); }
+  /* the case-memory line — measured, not in the pick yet — set off as a quiet meta note */
+  .mNote { margin-top: 10px; padding: 9px 11px; border-radius: 10px; background: rgba(255,255,255,.028); border: 1px solid rgba(255,255,255,.06); font-size: 11px; color: var(--label-3); line-height: 1.45; }
+  .mHint { margin-top: 10px; font-size: 11px; color: var(--label-3); line-height: 1.45; }
 
   /* ---------- Help / info sheet ---------- */
   .ihelp { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:var(--surface-3); color:var(--label-2); font-size:13px; font-weight:700; margin-left:7px; cursor:pointer; border:none; vertical-align:middle; padding:0; }
@@ -1261,10 +1287,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r74</span><span class="buildSep">·</span><span>2026-06-30</span>
+        <span class="buildVer">build r75</span><span class="buildSep">·</span><span>2026-06-30</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Model &amp; Accuracy redesign (r75).</b> Rebuilt the panel from a flat stack of gray prose-boxes into a scannable scoreboard: a consistent stat component (big value · label · sample) so numbers stop hiding in sentences, Brier as a hero readout, the lock-timing &amp; decisive-break tests as stat grids, and reserved colour — near-coin-flip hit-rates stay neutral, only the value return earns green. Display-only — no pick change.</p>
         <p><b>Footer redesign (r74).</b> Grouped the 24/7 status into one subtle capsule (verdict → provenance → model lean), consolidated the fine print, and collapsed this changelog behind the tag you just opened — clearer hierarchy, far less noise. Display-only — no pick change.</p>
         <p><b>Shared AI read (Build B, r73).</b> The AI verdict is computed once per round per coin and cached; every device picks it up free on its ~1-min crowd poll (newest-read-wins) — all devices land on the same AI input, one paid call per round, no accuracy traded.</p>
         <p><b>Mobile fix (r72).</b> Restored the body's horizontal clip so the page can't drift sideways or push content off-screen.</p>
@@ -1920,15 +1947,17 @@
   function renderLateRecord() {
     var el = $("lateRecord"); if (!el) return;
     var r = (state.lateRounds || []).filter(function (x) { return x.coin === state.coin && (x.actual === "OVER" || x.actual === "UNDER"); });
-    if (!r.length) { el.className = "lateRecord"; el.innerHTML = '<span class="lrLbl">Value-entry record</span><span class="lrVal">no value calls graded yet</span>'; return; }
+    if (!r.length) { el.className = "lateRecord"; el.innerHTML = '<div class="lhRow"><span class="lh">Value-entry record</span></div><div class="mHint">no value calls graded yet</div>'; return; }
     var win = 0, multSum = 0, mn = 0;
     for (var i = 0; i < r.length; i++) { if (r[i].correct) win++; if (typeof r[i].mult === "number") { multSum += r[i].mult; mn++; } }
     // "Return" = the average $ back per $1 staked = win-rate × average payout. >1 = profitable even at a
     // low win-rate (that's the whole point of buying the big-multiplier underdog).
     var ret = mn ? (win / r.length) * (multSum / mn) : null;
-    el.className = "lateRecord " + (ret != null ? (ret >= 1 ? "pos" : "neg") : (win / r.length >= 0.5 ? "pos" : "neg"));
-    el.innerHTML = '<span class="lrLbl">Value-entry record · ' + state.coin + '</span><span class="lrVal">' + win + '/' + r.length + ' won' +
-      (ret != null ? ' · ~' + ret.toFixed(2) + 'x back per $1' : '') + '</span>';
+    el.className = "lateRecord";
+    el.innerHTML = '<div class="lhRow"><span class="lh">Value-entry record</span><span class="lhN">' + state.coin + '</span></div>' +
+      '<div class="statGrid"><div class="stat"><span class="sv">' + win + '/' + r.length + '</span><span class="sl">won</span></div>' +
+      (ret != null ? '<div class="stat"><span class="sv ' + (ret >= 1 ? 'good' : 'bad') + '">~' + ret.toFixed(2) + 'x</span><span class="sl">back per $1</span></div>' : '') +
+      '</div>';
   }
   // Signal snapshot behind the current pick — stored per round so we can learn what works.
   function snapshotFeat() {
@@ -2086,15 +2115,19 @@
   }
   function renderLockAB() {
     var el = $("lockABStat"); if (!el) return;
-    function pc(s) { return s.n ? Math.round(s.c / s.n * 100) + "% (" + s.c + "/" + s.n + ")" : "—"; }
+    function statCell(s, label) {
+      if (!s.n) return '<div class="stat"><span class="sv">—</span><span class="sl">' + label + '</span></div>';
+      return '<div class="stat"><span class="sv">' + Math.round(s.c / s.n * 100) + '%</span><span class="sl">' + label + '</span><span class="sn">' + s.c + '/' + s.n + '</span></div>';
+    }
     var html = "";
     var t = state.lockAB && state.lockAB.tally && state.lockAB.tally[state.coin];
     if (t && t.rounds) {
       var lead;
       if (t.two.n >= 10 && t.late.n >= 10) { var a = t.two.c / t.two.n, b = t.late.c / t.late.n; lead = Math.abs(a - b) < 0.03 ? "too close to call so far" : (a > b ? "2-min is ahead" : "1-min is ahead"); }
       else lead = "need ~50 graded rounds to judge";
-      html += '<div class="lh">Lock-timing test · ' + t.rounds + ' rounds</div>' +
-        '<div>2-min lock <b>' + pc(t.two) + '</b> · 1-min <b>' + pc(t.late) + '</b> <span style="color:var(--label-3)">— ' + lead + '</span></div>';
+      html += '<div class="lhRow"><span class="lh">Lock-timing test</span><span class="lhN">' + t.rounds + ' rounds</span></div>' +
+        '<div class="statGrid">' + statCell(t.two, "2-min lock") + statCell(t.late, "1-min lock") + '</div>' +
+        '<div class="mHint">' + lead + '</div>';
     }
     // Decisive-break calibration: of the rounds we LOCKED, group by how strong the lean was and show
     // how often each group actually won. If "strong" beats "coin-flip" by a lot, waiting for a clear
@@ -2111,9 +2144,9 @@
           var hl = cf.slight.c / cf.slight.n;
           verdict = (hl - hf >= 0.06 ? "even a slight lean is beating a coin-flip so far" : "a slight lean is about as random as a coin-flip — these look like the ones to skip") + (cf.strong.n < 20 ? " · still building the decisive-lean sample" : "");
         } else verdict = "still building the sample (decisive leans are uncommon, so a trustworthy read needs a few hundred rounds — that's fine, it keeps gathering)";
-        html += '<div class="lh" style="margin-top:8px">Decisive-break test · ' + tot + ' rounds (all coins)</div>' +
-          '<div>strong lean ≥60/40 <b>' + pc(cf.strong) + '</b> · slight <b>' + pc(cf.slight) + '</b> · coin-flip <b>' + pc(cf.flat) + '</b></div>' +
-          '<div style="color:var(--label-3)">' + verdict + '</div>';
+        html += '<div class="lhRow"' + (t && t.rounds ? ' style="margin-top:14px"' : '') + '><span class="lh">Decisive-break test</span><span class="lhN">' + tot + ' rounds · all coins</span></div>' +
+          '<div class="statGrid">' + statCell(cf.strong, "strong ≥60/40") + statCell(cf.slight, "slight lean") + statCell(cf.flat, "coin-flip") + '</div>' +
+          '<div class="mHint">' + verdict + '</div>';
       }
     }
     el.innerHTML = html;
@@ -4266,18 +4299,17 @@
       if (lr && lr.afterUpOverPct != null) items.push("after an UP round → OVER " + lr.afterUpOverPct + "%; after a DOWN round → OVER " + lr.afterDownOverPct + "%");
       if (lr && lr.streak) items.push(lr.streak.len + " " + lr.streak.dir + " rounds in a row right now");
       if (lr && typeof lr.avgMarginAbsPct === "number") items.push("rounds lately settle " + (lr.avgMarginAbsPct < 0.05 ? "razor-thin" : "±" + lr.avgMarginAbsPct + "%") + " past the line" + (typeof lr.thinSharePct === "number" && lr.thinSharePct >= 25 ? " (" + lr.thinSharePct + "% within a hair — fragile)" : ""));
-      var cmem = p && p.caseMem;   // case memory: similar past setups (measured, not in the pick yet)
+      var cmem = p && p.caseMem, cmTxt = "";   // case memory: similar past setups (measured, not in the pick yet) — shown as a set-off note
       if (cmem && typeof cmem.overPct === "number") {
-        var cmTxt = "🧩 case memory: the " + cmem.n + " setups most like now → OVER " + cmem.overPct + "%" + (cmem.side === "OVER" || cmem.side === "UNDER" ? " (leans " + cmem.side + ")" : " (no lean)");
+        cmTxt = "🧩 case memory · the " + cmem.n + " setups most like now → OVER " + cmem.overPct + "%" + (cmem.side === "OVER" || cmem.side === "UNDER" ? " (leans " + cmem.side + ")" : " (no lean)");
         if (typeof d.caseHitPct === "number" && d.caseGraded >= 10) cmTxt += " · right " + d.caseHitPct + "% of " + d.caseGraded + " so far";
         cmTxt += " — measured, not in the pick yet";
-        items.push(cmTxt);
       }
-      var modelNow = (p && typeof p.modelOver === "number") ? p.modelOver : null;
       if (lr && items.length) {
-        le.innerHTML = '<div class="lh">What it\'s learned · ' + (lr.confidence || "warming up") + '</div>' +
-          '<ul>' + items.map(function (t) { return '<li>' + t + '</li>'; }).join("") + '</ul>' +
-          '<div style="color:var(--label-3);margin-top:6px">15-min direction is near-random — faint tilts, not certainties.</div>';
+        le.innerHTML = '<div class="lhRow"><span class="lh">What it\'s learned</span><span class="lhN">' + (lr.confidence || "warming up") + '</span></div>' +
+          '<ul class="insightList">' + items.map(function (t) { return '<li>' + t + '</li>'; }).join("") + '</ul>' +
+          (cmTxt ? '<div class="mNote">' + cmTxt + '</div>' : '') +
+          '<div class="mHint">15-min direction is near-random — faint tilts, not certainties.</div>';
       } else { le.innerHTML = ""; }
     }
     // Calibration & accuracy — is the stated % trustworthy, and how good are the probabilities (Brier)?
@@ -4285,18 +4317,23 @@
     if (calEl) {
       if (scr && scr.n >= 20) {
         var qual = scr.brier <= 0.20 ? "sharp" : scr.brier <= 0.243 ? "beating a coin-flip" : "about a coin-flip";
+        var brierGood = scr.brier <= 0.243 ? " good" : "";   // only colour the headline green when it's actually beating a coin-flip
         var rel = "";
         if (scr.bins && scr.bins.length) {
           var top = scr.bins.slice().sort(function (a, b) { return b.n - a.n; })[0];
-          rel = 'When it says ~<b>' + top.p + '%</b> OVER, it actually goes over <b>' + top.real + '%</b> <span style="color:var(--label-3)">(' + top.n + ' rounds)</span>';
+          rel = '<div class="mLine">When it says ~<b>' + top.p + '%</b> OVER, it actually goes over <b>' + top.real + '%</b> <span class="mlk">· ' + top.n + ' rounds</span></div>';
         }
         var confLine = (typeof d.confirmedHitPct === "number")
-          ? '<div style="color:var(--label-3);margin-top:4px">Settled vs Kalshi · <b>' + d.confirmedHitPct + '%</b> over ' + d.confirmedGraded + ' confirmed bets — the definitive number</div>' : '';
-        calEl.innerHTML = '<div class="lh">Accuracy · ' + scr.n + ' scored</div>' +
-          '<div>Brier <b>' + scr.brier.toFixed(3) + '</b> <span style="color:var(--label-3)">— ' + qual + ' · 0.25 = a coin-flip, lower is better</span></div>' +
-          (rel ? '<div style="margin-top:2px">' + rel + '</div>' : '') + confLine;
+          ? '<div class="mLine"><span class="mlk">Settled vs Kalshi ·</span> <b>' + d.confirmedHitPct + '%</b> over ' + d.confirmedGraded + ' confirmed bets <span class="mlk">— the definitive number</span></div>' : '';
+        calEl.className = "autoLearned hero";
+        calEl.innerHTML = '<div class="lhRow"><span class="lh">Accuracy</span><span class="lhN">' + scr.n + ' scored</span></div>' +
+          '<div class="heroStat"><span class="hsv' + brierGood + '">' + scr.brier.toFixed(3) + '</span>' +
+          '<span class="hsl"><span class="q">' + qual + '</span><br><span class="hsHint">Brier score · 0.25 = coin-flip, lower is better</span></span></div>' +
+          rel + confLine;
       } else {
-        calEl.innerHTML = '<div class="lh">Accuracy</div><div style="color:var(--label-3)">warming up — needs ~20+ graded rounds to score, ~80 to calibrate the %</div>';
+        calEl.className = "autoLearned";
+        calEl.innerHTML = '<div class="lhRow"><span class="lh">Accuracy</span><span class="lhN">warming up</span></div>' +
+          '<div class="mHint">needs ~20+ graded rounds to score, ~80 to calibrate the %</div>';
       }
       var sumEl = $("modelPanelSummary"); if (sumEl) sumEl.textContent = (scr && scr.n >= 20) ? ("· Brier " + scr.brier.toFixed(3) + " · " + scr.n + " scored") : "· warming up";
       var mPanel = $("modelPanel"); if (mPanel) mPanel.style.display = "";
