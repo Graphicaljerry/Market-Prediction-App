@@ -942,7 +942,7 @@
   /* Tier 2 — the Guide action + fine print, consolidated into one quiet group */
   .footMeta { display: flex; flex-direction: column; align-items: center; gap: 11px; }
   .footMeta .guideBtn { margin: 0; }
-  .footFine { max-width: 344px; margin: 0 auto; font-size: 10.5px; line-height: 1.5; color: var(--label-3); opacity: .92; }
+  .footFine { max-width: 344px; margin: 0 auto; font-size: 10.5px; line-height: 1.5; color: var(--label-3); }   /* no extra opacity on the already-faint tier — keeps the fine print at readable contrast */
   /* Tier 3 — build marker collapsed behind a small mono "stamp"; the changelog wall is one tap away */
   .buildTag { max-width: 360px; margin: 22px auto 0; text-align: center; }
   .buildTag summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
@@ -1360,10 +1360,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r80</span><span class="buildSep">·</span><span>2026-07-01</span>
+        <span class="buildVer">build r81</span><span class="buildSep">·</span><span>2026-07-01</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Audit follow-ups (r81).</b> Screen-reader support (the pick + a throttled price announce are spoken now; the info sheet is a proper dialog with Escape + focus handling), a 2×2 scoreboard on very narrow phones, bigger touch targets on the small controls, storage growth caps, ambient glow pauses in hidden tabs, and one green/red everywhere. Display-only.</p>
         <p><b>Audit accuracy fixes (r80).</b> Calibration and the skip-gate's local fallback now read only the CURRENT coin's history (they were quietly mixing all coins' rounds — the recorded data itself was always clean, so no history reset is needed). The shared AI read now reaches every device for the whole round it's about (the lock-time read used to stop being shared once the round opened). Changes pick behavior: per-coin calibration can shift the % slightly.</p>
         <p><b>At-a-glance decision bar (r79).</b> A compact bar now leads the page with the one thing you came for — <b>side · % · confidence · time left</b>, colored to the call — so you don't reassemble it from scattered pieces under the clock; tap it to jump to the full pick. It's a <b>read-only mirror</b> of the pick the card already computes (it reflects the verdict, odds and countdown) — it never decides, commits, or changes a pick. The clock turns red in the final 2 minutes.</p>
         <p><b>UX pass from the critique (r78).</b> Sharpened hierarchy and calmed the edges: the oversized coin title is now a quiet kicker so the price + pick lead; a data dropout shows one reassuring "reconnecting" message instead of five red alarms; the chart's timeframe row fades at its right edge so the off-screen options are discoverable; and Live Indicators collapses by default (its detail is already echoed by the on-chart indicator chips). Softened the wrapper shadows too. Display-only — no pick change.</p>
@@ -2243,7 +2244,7 @@
     if (mo == null && !n) { el.style.display = "none"; return; }
     var dir = mo == null ? "n" : mo >= 53 ? "o" : mo <= 47 ? "u" : "n";
     var word = dir === "o" ? "leaning OVER " + mo + "%" : dir === "u" ? "leaning UNDER " + (100 - mo) + "%" : (mo == null ? "no live read right now" : "no lean (~50/50)");
-    var col = dir === "o" ? "#16c784" : dir === "u" ? "#ea3943" : "var(--label-3)";
+    var col = dir === "o" ? "var(--green)" : dir === "u" ? "var(--red)" : "var(--label-3)";   // app tokens — one green/red everywhere (audit polish)
     el.className = "modelLean"; el.style.display = "block";   // styled by CSS now — sits as the hairline-set-off line inside the status capsule
     el.innerHTML = '🧠 Model <b style="color:' + col + '">' + word + '</b> · learned ' + n + ' round' + (n === 1 ? "" : "s") + (lr && lr.confidence ? " · " + lr.confidence : "");
   }
