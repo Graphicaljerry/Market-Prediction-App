@@ -85,6 +85,9 @@ Spend is small by design, but cap it anyway:
   regular ~1/min poll. The app adopts it only when `aiTs` is **newer** than the read it already
   holds (newer-read-wins), so a poll can't revert a fresher local/manual read. Both the `noAI`
   branch and the full read path return `aiTs`; the full path writes it as `ts` when it caches.
+  If the current round has no `:t` entry yet, the `noAI` branch **falls back to the previous
+  boundary's `:n` key** — that's where the 2-min-lock read about *this* round lives — so the shared
+  read reaches every device for the whole round it's about, not just during the lock window (r80).
   Net: identical AI input on every device, still **one paid call per round**. (`noAI` branch +
   `airead:` write in `worker.js`; `applyCrowd` in `eth-tracker.html`.)
 

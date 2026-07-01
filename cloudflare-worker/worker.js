@@ -205,7 +205,12 @@ export default {
       try {
         const bMs = Math.ceil(Date.now() / 9e5) * 9e5;
         const isN = typeof body.secondsLeft === "number" && body.secondsLeft <= 120;
-        const hit = await kvGetRaw(env, `airead:${coin}:${body.model || aiProvider}:${bMs}:${isN ? "n" : "t"}`);
+        let hit = await kvGetRaw(env, `airead:${coin}:${body.model || aiProvider}:${bMs}:${isN ? "n" : "t"}`);
+        // Coverage fix (audit): the read ABOUT this round taken at the 2-min lock was cached under the
+        // PREVIOUS round's boundary with ":n". If no fresher this-round (":t") read exists, fall back to
+        // it — so devices converge on the lock read for the WHOLE round it's about, not just during the
+        // lock window itself. (The 30-min TTL keeps it alive through the round.)
+        if ((!hit || !hit.ai) && !isN) hit = await kvGetRaw(env, `airead:${coin}:${body.model || aiProvider}:${bMs - 9e5}:n`);
         if (hit && hit.ai) { sharedAi = hit.ai; sharedProv = hit.provider || aiProvider; sharedTs = hit.ts || 0; }
       } catch (_) {}
       return json({ crowd, ai: sharedAi, provider: sharedProv, aiTs: sharedTs, cached: !!sharedAi, shared: !!sharedAi });

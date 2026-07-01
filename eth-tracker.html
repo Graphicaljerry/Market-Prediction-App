@@ -1339,10 +1339,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r79</span><span class="buildSep">·</span><span>2026-06-30</span>
+        <span class="buildVer">build r80</span><span class="buildSep">·</span><span>2026-07-01</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Audit accuracy fixes (r80).</b> Calibration and the skip-gate's local fallback now read only the CURRENT coin's history (they were quietly mixing all coins' rounds — the recorded data itself was always clean, so no history reset is needed). The shared AI read now reaches every device for the whole round it's about (the lock-time read used to stop being shared once the round opened). Changes pick behavior: per-coin calibration can shift the % slightly.</p>
         <p><b>At-a-glance decision bar (r79).</b> A compact bar now leads the page with the one thing you came for — <b>side · % · confidence · time left</b>, colored to the call — so you don't reassemble it from scattered pieces under the clock; tap it to jump to the full pick. It's a <b>read-only mirror</b> of the pick the card already computes (it reflects the verdict, odds and countdown) — it never decides, commits, or changes a pick. The clock turns red in the final 2 minutes.</p>
         <p><b>UX pass from the critique (r78).</b> Sharpened hierarchy and calmed the edges: the oversized coin title is now a quiet kicker so the price + pick lead; a data dropout shows one reassuring "reconnecting" message instead of five red alarms; the chart's timeframe row fades at its right edge so the off-screen options are discoverable; and Live Indicators collapses by default (its detail is already echoed by the on-chart indicator chips). Softened the wrapper shadows too. Display-only — no pick change.</p>
         <p><b>Space Mono for the big numbers (r77).</b> The large, bold numeric readouts — price, countdown, the Track Record scoreboard, the Brier hero, and the stat cells — now use Space Mono for a more distinctive, techy display face. One token (<code>--font-num</code>) drives them all. Display-only.</p>
@@ -1879,6 +1880,7 @@
   function calibrate(pRaw) {
     var r = state.rounds, n = 0, nOver = 0, win = 0.085, i, f;
     for (i = 0; i < r.length; i++) {
+      if (r[i].coin !== state.coin) continue;        // per-coin: BTC rounds must not calibrate an ETH pick (audit fix)
       f = r[i].feat;
       if (!f || typeof f.pOver !== "number" || r[i].actual !== "OVER" && r[i].actual !== "UNDER") continue;
       if (Math.abs(f.pOver - pRaw) <= win) { n++; if (r[i].actual === "OVER") nOver++; }
@@ -1909,6 +1911,7 @@
     } else {                                         // fallback: this device's own log (feat.pOver on 0–1)
       var r = state.rounds;
       for (i = 0; i < r.length; i++) {
+        if (r[i].coin !== state.coin) continue;      // per-coin, same as the global branch (audit fix)
         rr = r[i].feat;
         if (!rr || typeof rr.pOver !== "number" || (r[i].actual !== "OVER" && r[i].actual !== "UNDER")) continue;
         if (Math.abs(rr.pOver - pOver) > 0.08) continue;
