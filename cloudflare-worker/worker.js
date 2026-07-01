@@ -71,11 +71,18 @@ export default {
         } catch (e) { return json({ coin, seriesTicker: t, error: e.message, kvCached }, 502); }
       }
       // Auto-tracker readout: ?picks=ETH for one coin, or ?picks for all configured coins.
+      // Add &dl=1 to receive it as a DOWNLOADED .json file (Content-Disposition: attachment) —
+      // the one-tap way to export the record on iPhone/iPad (Safari drops it into Files),
+      // instead of select-all-copying a wall of JSON. Read-only, same data either way.
       if (u.searchParams.has("picks")) {
         const st = await loadState(env);
         const coin = (u.searchParams.get("picks") || "").toUpperCase();
-        if (coin) return json(st.coins[coin] || { coin, empty: true });
-        return json(st.coins || {});
+        const body = coin ? (st.coins[coin] || { coin, empty: true }) : (st.coins || {});
+        if (u.searchParams.has("dl")) {
+          const name = "tracker-picks-" + (coin || "all") + "-" + new Date().toISOString().slice(0, 10) + ".json";
+          return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json", "Content-Disposition": 'attachment; filename="' + name + '"', ...CORS } });
+        }
+        return json(body);
       }
       // Best bet across all coins right now — a compact ranked leaderboard for the app's footer ticker.
       if (u.searchParams.has("best")) {
