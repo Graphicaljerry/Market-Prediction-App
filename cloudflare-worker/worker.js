@@ -1113,7 +1113,11 @@ function freePick(crowdOverPct, mom, obi, modelOver, sig, calib) {
     if (Math.abs(z) >= 2.0) { const s = Math.min(1, (Math.abs(z) - 2.0) / 2.0); parts.push({ p: Math.max(0.38, Math.min(0.62, 0.5 - (z > 0 ? 1 : -1) * (0.05 + 0.09 * s))), w: 0.18 }); }
     else parts.push({ p: Math.max(0.4, Math.min(0.6, 0.5 + 0.5 * Math.tanh(mom * 120))), w: 0.15 });
   }
-  if (typeof obi === "number") parts.push({ p: Math.max(0.3, Math.min(0.7, 0.5 + 0.5 * Math.tanh(2 * obi))), w: 0.15 });
+  // Order-book weight DEMOTED 0.15 → 0.05 (2026-07-01 empirical audit): across 2,324 graded rounds the
+  // OBI's sign predicted the outcome 47.2% of the time — slightly INVERTED, p<0.01 — so a strong fixed
+  // vote was actively hurting. Kept as a whisper (not flipped/removed: one ~3-day window, and the learned
+  // model can still earn it back through its own obi feature weight). Revert = restore w: 0.15.
+  if (typeof obi === "number") parts.push({ p: Math.max(0.3, Math.min(0.7, 0.5 + 0.5 * Math.tanh(2 * obi))), w: 0.05 });
   if (typeof modelOver === "number") parts.push({ p: Math.max(0.05, Math.min(0.95, modelOver)), w: 0.2 });
   if (!parts.length) return null;
   let ws = 0, ac = 0; for (const x of parts) { ws += x.w; ac += x.p * x.w; }

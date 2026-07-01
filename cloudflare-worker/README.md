@@ -143,7 +143,7 @@ The 24/7 tracker's pick is a **deterministic, no-LLM blend**. Per coin, per roun
 | **Crowd** (market) | `favLongshotAdj(clamp(crowdOverPct/100, .02, .98))` | **0.55** |
 | **Momentum** — *ride* (\|z\| < 2) | `clamp(0.5 + 0.5·tanh(mom·120), .40, .60)` | 0.15 |
 | **Momentum** — *panic-fade* (\|z\| ≥ 2) | `clamp(0.5 − sign(z)·(.05 + .09·s), .38, .62)` | 0.18 |
-| **Order book** | `clamp(0.5 + 0.5·tanh(2·obi), .30, .70)` | 0.15 |
+| **Order book** | `clamp(0.5 + 0.5·tanh(2·obi), .30, .70)` | 0.05 — demoted from 0.15 (2026-07 audit: sign-hit 47.2% over 2,324 rounds, slightly inverted) |
 | **Learned model** | `clamp(modelOver, .05, .95)` | 0.20 |
 
 where `z = mom·3.16/sig` (momentum in σ units) and `s = min(1, (|z|−2)/2)`.
