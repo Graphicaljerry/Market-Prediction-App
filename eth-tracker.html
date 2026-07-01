@@ -1028,6 +1028,12 @@
   .glassui #glassBack .gb.orb   { background: radial-gradient(56% 50% at var(--lx,50%) var(--ly,40%), rgba(var(--accent-rgb),0.38) 0%, rgba(var(--accent-rgb),0.13) 32%, rgba(var(--accent-rgb),0.03) 50%, rgba(var(--accent-rgb),0) 62%); }
   .glassui #glassBack .gb.plain { background: radial-gradient(56% 50% at var(--lx,50%) var(--ly,40%), rgba(202,214,238,0.14) 0%, rgba(202,214,238,0.045) 32%, rgba(202,214,238,0) 58%); }
   .reduce-motion #glassBack { display: none; }
+  /* Mid-resize "settle" state (see the resize handler): iPad Safari can freeze a stale backdrop-filter
+     tile / backing glow sized for the OLD layout when the window is resized (Split View, rotation) —
+     it shows up as a misplaced blue-grey box in the background. While resizing we hide the backing
+     glows and drop the backdrop blurs; on settle everything re-composites + re-tracks fresh. */
+  .resizing-glass #glassBack { display: none !important; }
+  .resizing-glass .card { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
   /* Inset boxes inside the glass cards — the "This Round / Next Round" split (.dualPick, was solid #141414)
      and the "closing near…" note (.lastClose.pending, which borrows the solid .pending surface) — used to
      sit on the glass like opaque stickers. In glass mode give them a translucent, frosted-consistent fill +
@@ -1360,10 +1366,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r81</span><span class="buildSep">·</span><span>2026-07-01</span>
+        <span class="buildVer">build r82</span><span class="buildSep">·</span><span>2026-07-01</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Resize glitch fix (r82).</b> Resizing between mobile and desktop widths (Split View / rotation) could leave a misplaced blue-grey box in the background — a backing glow or a frozen Safari blur tile sized for the old layout. Resizes now clear the glass layers and rebuild them fresh once the window settles. Display-only.</p>
         <p><b>Audit follow-ups (r81).</b> Screen-reader support (the pick + a throttled price announce are spoken now; the info sheet is a proper dialog with Escape + focus handling), a 2×2 scoreboard on very narrow phones, bigger touch targets on the small controls, storage growth caps, ambient glow pauses in hidden tabs, and one green/red everywhere. Display-only.</p>
         <p><b>Audit accuracy fixes (r80).</b> Calibration and the skip-gate's local fallback now read only the CURRENT coin's history (they were quietly mixing all coins' rounds — the recorded data itself was always clean, so no history reset is needed). The shared AI read now reaches every device for the whole round it's about (the lock-time read used to stop being shared once the round opened). Changes pick behavior: per-coin calibration can shift the % slightly.</p>
         <p><b>At-a-glance decision bar (r79).</b> A compact bar now leads the page with the one thing you came for — <b>side · % · confidence · time left</b>, colored to the call — so you don't reassemble it from scattered pieces under the clock; tap it to jump to the full pick. It's a <b>read-only mirror</b> of the pick the card already computes (it reflects the verdict, odds and countdown) — it never decides, commits, or changes a pick. The clock turns red in the final 2 minutes.</p>
@@ -4191,6 +4198,18 @@
       for (j = cards.length; j < pool.length; j++) pool[j].style.display = "none";
     }
     requestAnimationFrame(frame);
+    // Resize re-settle: a layout change (Split View drag, rotation, window resize) can leave a
+    // backing glow — or, on iPad Safari, a frozen backdrop-filter tile — sized for the OLD layout,
+    // which reads as a misplaced blue-grey box in the background. Kill the glows immediately and
+    // drop the blurs while resizing (.resizing-glass), then re-composite + re-track on settle.
+    var _rzT = null;
+    window.addEventListener("resize", function () {
+      var b = document.getElementById("glassBack");
+      if (b) for (var i = 0; i < b.children.length; i++) b.children[i].style.display = "none";
+      document.documentElement.classList.add("resizing-glass");
+      clearTimeout(_rzT);
+      _rzT = setTimeout(function () { document.documentElement.classList.remove("resizing-glass"); last = 0; }, 180);
+    });
   })();
   // Payout + EV for a ranked-coin row, from the live market price the worker now forwards (x.crowdOver = market OVER%).
   // payout = 1 / (price of the picked side); +EV when our model rates that side above the market's price. null = no live market.
