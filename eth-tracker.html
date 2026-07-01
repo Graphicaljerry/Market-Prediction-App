@@ -172,7 +172,9 @@
   .pageGlow.g1 { width: 300px; height: 200px; right: -60px; top: 360px; animation: orbCircleB 40s linear infinite; }
   .pageGlow.g2 { width: 440px; height: 420px; left: -130px; bottom: 60px; animation: orbCircleA 52s linear infinite; }
   .pageGlow.g3 { width: 400px; height: 380px; right: -110px; bottom: 0; animation: orbCircleB 46s linear infinite; }
-  @media (prefers-reduced-motion: reduce) { .pageGlow { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .pageGlow { animation: none; } .price.flash { animation: none; } }
+  /* Visually hidden but readable by screen readers — used for throttled live announcements. */
+  .srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   /* on big screens the orbs are largest, so feather them even more to kill any visible edge */
   @media (min-width: 1024px) {
     .card.orb::before, .card.orb::after { filter: blur(48px); }
@@ -1123,7 +1125,7 @@
   <!-- At-a-glance decision bar — a READ-ONLY mirror of the pick the card computes below. It reflects
        #buyLine / #oddsPct / #recoConf + the live countdown; it never decides, commits, or changes a pick. -->
   <div class="decisionBar wait" id="decisionBar" role="button" tabindex="0" aria-label="Current call — tap to jump to the full pick">
-    <span class="dbSide" id="dbSide">Reading…</span>
+    <span class="dbSide" id="dbSide" aria-live="polite">Reading…</span>
     <span class="dbPct mono" id="dbPct"></span>
     <span class="dbConf" id="dbConf"></span>
     <span class="dbClock mono" id="dbClock">—</span>
@@ -1180,7 +1182,7 @@
         </div>
       </div>
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
-      <div class="buyLine skip" id="buyLine">Analyzing…</div>
+      <div class="buyLine skip" id="buyLine" aria-live="polite">Analyzing…</div>
       <div class="buyHint" id="buyHint">Loading live market data…</div>
       <div class="oddsRow"><span class="oddsPct mono" id="oddsPct">—</span><span class="oddsLbl" id="oddsLbl"></span></div>
       <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
@@ -1326,7 +1328,9 @@
   </div>
   </div><!-- /.layout -->
 
-  <div id="infoSheet"><div class="infoCard"><h3 id="infoTitle">—</h3><p id="infoText">—</p><button class="closeBtn" id="infoClose">Got it</button></div></div>
+  <div id="infoSheet"><div class="infoCard" role="dialog" aria-modal="true" aria-labelledby="infoTitle"><h3 id="infoTitle">—</h3><p id="infoText">—</p><button class="closeBtn" id="infoClose">Got it</button></div></div>
+  <div id="srAnnounce" class="srOnly" aria-live="polite" aria-atomic="true"></div>   <!-- throttled price announcements for screen readers -->
+
 
   <div class="footnote">
     <div class="footStatus">
@@ -1663,8 +1667,10 @@
   function gradeAIReadsFromLog() {
     if (!state.aiPending || !state.moveLog) return false;
     var changed = false;
+    var nowB = Math.floor(Date.now() / 900000);
     for (var key in state.aiPending) {
       var ci = key.indexOf(":"), coin = key.slice(0, ci), bucket = key.slice(ci + 1);
+      if (nowB - +bucket > 8) { delete state.aiPending[key]; changed = true; continue; }   // >2h ungraded → round never resolved here; stop carrying it (growth cap)
       var log = state.moveLog[coin], o = log && log[bucket];
       if (!o || typeof o.d !== "number") continue;                         // round not settled yet
       var actual = o.d > 0 ? "OVER" : "UNDER", p = state.aiPending[key];
@@ -3278,6 +3284,10 @@
     elTimerBar.style.width = (remaining / 900 * 100) + "%";
     elTimerSub.textContent = "Round closes at " + hma(currentRoundEnd);
     renderDecisionBar();   // keep the at-a-glance bar's clock + mirrored call in sync each second (read-only)
+    // Screen-reader price announcement — at most once per 30s (every tick would be spam; silence would be a blank app).
+    if ((state._srTick = (state._srTick || 0) + 1) % 30 === 0 && state.lastPrice != null) {
+      var sr = $("srAnnounce"); if (sr) sr.textContent = state.coin + " " + fmtMoney(state.lastPrice) + " · " + Math.floor(remaining / 60) + " min " + (remaining % 60) + "s left in the round";
+    }
     updateBetWindow(remaining);
     renderPrime();   // keep the prime-entry cue live as price/time tick down
     // The pick card + mini chart only change on a data refresh, a lock, or when we cross the
@@ -3516,7 +3526,19 @@
   // (never the most recent rounds) so there are always ~8 arrows in the row. It's saved to
   // localStorage, so it accumulates across reloads — the history the AI + app keep learning from.
   function moveLogFor(coin) { if (!state.moveLog) state.moveLog = {}; return state.moveLog[coin] || (state.moveLog[coin] = {}); }
-  function saveMoveLog() { try { localStorage.setItem("moveLog_v1", JSON.stringify(state.moveLog || {})); } catch (e) {} }
+  function saveMoveLog() {
+    try {
+      // Growth cap (audit): keep only each coin's newest 500 round buckets (~5 days). Chosen ABOVE the
+      // server history's 300-round cap so the server stays the binding stats window (nothing measured
+      // changes) — this only stops the log growing forever and bloating every save.
+      var ml = state.moveLog || {};
+      for (var c in ml) {
+        var keys = Object.keys(ml[c]);
+        if (keys.length > 500) { keys.sort(function (a, b) { return +a - +b; }); for (var i = 0; i < keys.length - 500; i++) delete ml[c][keys[i]]; }
+      }
+      localStorage.setItem("moveLog_v1", JSON.stringify(ml));
+    } catch (e) {}
+  }
   function loadMoveLog() { try { var s = localStorage.getItem("moveLog_v1"); if (s) state.moveLog = JSON.parse(s) || {}; } catch (e) {} if (!state.moveLog) state.moveLog = {}; }
   var MOVE_WANT = 8;   // arrows in one row by default (expand for more history)
   function renderMoveStrip() {
@@ -3749,7 +3771,19 @@
     "Volume": { t: "Volume", d: "Trade volume versus the 20-bar average. High volume on an up candle signals real buying conviction; on a down candle, real selling. Shown for context — it doesn't vote." },
     "Order Book": { t: "Order Book pressure", d: "Live look at the resting buy and sell orders right next to the current price (within ±0.15%). 'Buyers heavier' means more size is waiting to buy than sell — short-term upward pressure; 'Sellers heavier' is the reverse. It's a fast, short-horizon read (it can flip within seconds), so it's shown for context and only nudges the blended odds a little." }
   };
-  function setSheet(open) { $("infoSheet").classList.toggle("open", open); document.documentElement.classList.toggle("modal-open", open); }
+  var _sheetPrevFocus = null;
+  function setSheet(open) {
+    $("infoSheet").classList.toggle("open", open); document.documentElement.classList.toggle("modal-open", open);
+    // Modal focus management (audit): move focus in on open, restore it on close.
+    if (open) { _sheetPrevFocus = document.activeElement; var cb = $("infoClose"); if (cb) cb.focus(); }
+    else if (_sheetPrevFocus && _sheetPrevFocus.focus) { try { _sheetPrevFocus.focus(); } catch (e) {} _sheetPrevFocus = null; }
+  }
+  // Escape closes the sheet; Tab stays on the card's one focusable control (a minimal focus trap).
+  document.addEventListener("keydown", function (e) {
+    if (!$("infoSheet").classList.contains("open")) return;
+    if (e.key === "Escape") { e.preventDefault(); setSheet(false); }
+    else if (e.key === "Tab") { e.preventDefault(); var cb = $("infoClose"); if (cb) cb.focus(); }
+  });
   function openInfo(key) { var t = EXPLAIN[key]; if (!t) return; $("infoTitle").textContent = t.t; $("infoText").textContent = t.d; setSheet(true); }
   document.addEventListener("click", function (e) { var hit = e.target.closest && e.target.closest("[data-info]"); if (hit) openInfo(hit.getAttribute("data-info")); });
   $("infoClose").addEventListener("click", function () { setSheet(false); });
