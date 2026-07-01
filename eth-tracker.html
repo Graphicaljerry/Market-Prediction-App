@@ -173,6 +173,9 @@
   .pageGlow.g2 { width: 440px; height: 420px; left: -130px; bottom: 60px; animation: orbCircleA 52s linear infinite; }
   .pageGlow.g3 { width: 400px; height: 380px; right: -110px; bottom: 0; animation: orbCircleB 46s linear infinite; }
   @media (prefers-reduced-motion: reduce) { .pageGlow { animation: none; } .price.flash { animation: none; } }
+  /* Hidden tab → freeze the decorative ambient animations (they'd otherwise keep the style/animation
+     timelines warm for pixels nobody sees). Toggled by the visibilitychange handler. */
+  body.tab-idle .pageGlow, body.tab-idle .card.orb::before, body.tab-idle .card.orb::after { animation-play-state: paused; }
   /* Visually hidden but readable by screen readers — used for throttled live announcements. */
   .srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   /* on big screens the orbs are largest, so feather them even more to kill any visible edge */
@@ -3077,7 +3080,7 @@
   function drawMiniChart() {
     var cv = $("miniChart"); if (!cv || !cv.getContext) return;
     var W = cv.clientWidth || cv.offsetWidth || 300, H = cv.clientHeight || 120, dpr = window.devicePixelRatio || 1;
-    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }   // resize (and re-allocate) only when the pixel size actually changed
     state.chartPts = null;   // rebuilt by the draw fn below — the hit map the crosshair scrubs against
     if (state.chartTF && state.chartTF !== "live") {
       var ctx2 = cv.getContext("2d"); ctx2.setTransform(dpr, 0, 0, dpr, 0, 0); ctx2.clearRect(0, 0, W, H);
@@ -3088,7 +3091,7 @@
     drawSubPanes();
   }
   function drawLiveChart(cv, W, H, dpr) {
-    if (cv.width !== Math.round(W * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
     var ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, W, H);
     var strike = roundStrike(), hist = state.priceHist, lbl = $("miniChartLbl");
     if (strike == null || hist.length < 2) {
@@ -4658,7 +4661,7 @@
   });
   $("aiModel").addEventListener("change", function () { var m = $("aiModel").value; try { localStorage.setItem(AI_MODEL_KEY, m); } catch (e) {} state.lastAI = null; state.lastProvider = null; pushSharedModel(m); renderAIBadge(); renderBlend(); if (getWorkerUrl()) refreshCrowd(true); });   // switching models clears the previous model's read so the label can't show the wrong AI; shares the choice + free-refreshes
   (function () { var s = $("aiBudget"); if (s) s.addEventListener("change", function () { try { localStorage.setItem(AI_BUDGET_KEY, s.value); } catch (e) {} }); })();
-  document.addEventListener("visibilitychange", function () { if (!document.hidden) { syncSharedModel(); refreshCrowd(true); } });   // returning to the tab: re-sync the shared model + free market refresh
+  document.addEventListener("visibilitychange", function () { document.body.classList.toggle("tab-idle", document.hidden); if (!document.hidden) { syncSharedModel(); refreshCrowd(true); } });   // hidden → pause decorative animation; returning → re-sync the shared model + free market refresh
 
   loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog(); loadLockAB(); loadLockedNext(); loadCommitted();
   renderAccuracy(); renderRounds(); renderLateRecord(); tickTimer(); refresh(); connectWS();
