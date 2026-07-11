@@ -84,6 +84,29 @@ export default {
         }
         return json(body);
       }
+      // Permanent round archive: ?archive lists the available days; ?archive=YYYY-MM-DD returns that
+      // day's graded rounds for every coin (add &dl=1 to download the file). Unlike ?picks — which only
+      // holds the newest 300 rounds per coin — this survives forever (see archiveRounds).
+      if (u.searchParams.has("archive")) {
+        if (!env.CROWD_KV) return json({ error: "no KV namespace bound" }, 500);
+        const day = u.searchParams.get("archive") || "";
+        if (!day) {
+          const days = [];
+          let cursor;
+          do {
+            const l = await env.CROWD_KV.list({ prefix: "arch:", cursor });
+            for (const k of l.keys || []) days.push(k.name.slice(5));
+            cursor = l.list_complete ? null : l.cursor;
+          } while (cursor);
+          return json({ days: days.sort(), hint: "?archive=YYYY-MM-DD for a day's rounds (&dl=1 to download)" });
+        }
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: "use ?archive=YYYY-MM-DD" }, 400);
+        const raw = await env.CROWD_KV.get("arch:" + day);
+        if (!raw) return json({ error: "no archive for " + day }, 404);
+        const headers = { "Content-Type": "application/json", ...CORS };
+        if (u.searchParams.has("dl")) headers["Content-Disposition"] = 'attachment; filename="tracker-archive-' + day + '.json"';
+        return new Response(raw, { status: 200, headers });
+      }
       // Best bet across all coins right now — a compact ranked leaderboard for the app's footer ticker.
       if (u.searchParams.has("best")) {
         const st = await loadState(env);
@@ -269,9 +292,37 @@ export default {
       // Process the market leader (BTC) FIRST so the other coins' models can read its FRESH momentum
       // this same run as a cross-asset feature (crypto moves together, BTC leads). Order-only change.
       const coins = AUTO_COINS.filter((c) => CB_PRODUCT[c]).sort((a, b) => (a === "BTC" ? -1 : b === "BTC" ? 1 : 0));   // ALL coins log now: Kalshi-graded where a series exists, else self-graded on Coinbase (paid plan has the subrequest headroom)
+      const runStart = Date.now();
       for (const c of coins) { try { await runCoinPick(env, c, st); } catch (_) {} }
-      try { await notifyHotPicks(env, st); } catch (_) {}   // background phone push on a high-confidence pick (ntfy)
+      // SECOND CHANCE (2026-07 data audit): a round locked WITHOUT crowd input — usually because the cron
+      // fired inside a round's first ~2 minutes, when the fresh Kalshi market still shows TBD/junk quotes —
+      // used to stay blind for its whole 15 minutes. That was ~78% of all rounds, worst at :00 slots (9%
+      // Kalshi coverage). If a series-configured coin just self-anchored, wait ~75s for Kalshi's quotes to
+      // go live and re-lock that coin's pick WITH the crowd. "One pick per round" still holds — the round's
+      // single recorded pick becomes the better-informed one, taken minutes into a 15-minute round, never
+      // near the close (guarded: ≥10 min must remain before we even wait). A retry that can't lock anything
+      // keeps the original blind pick; one that lands a different ROUND is discarded outright.
+      const retry = coins.filter((c) => {
+        const p = st.coins[c] && st.coins[c].pending;
+        return env["KALSHI_SERIES_" + c] && p && p.self && typeof p.ts === "number" && p.ts >= runStart &&
+               typeof p.closeMs === "number" && (p.closeMs - Date.now()) >= 10 * 60000;
+      });
+      if (retry.length) {
+        await sleep(75000);
+        for (const c of retry) {
+          const rec = st.coins[c];
+          const old = rec && rec.pending;
+          if (!old || !old.self || !(old.ts >= runStart)) continue;   // something changed mid-wait — leave it alone
+          rec.pending = null;
+          try { await runCoinPick(env, c, st); } catch (_) {}
+          if (!rec.pending) rec.pending = old;                                              // retry locked nothing → keep the original
+          else if (Math.abs((rec.pending.closeMs || 0) - old.closeMs) > 90000) rec.pending = old;   // different round → never skip ahead
+          else if (rec.pending.ts !== old.ts) rec.pending.retried = true;                   // upgraded in place — marked for the record
+        }
+      }
+      try { await notifyHotPicks(env, st); } catch (_) {}   // background phone push on a high-confidence pick (ntfy) — runs AFTER the retry so upgraded picks ping correctly
       try { await maybeBackup(env, st); } catch (_) {}      // once-a-day rolling snapshot of the learned state (7-slot ring); never blocks the save
+      try { await archiveRounds(env, st); } catch (_) {}    // permanent per-day round archive (rounds >3h old, exactly once); never blocks the save
       await saveState(env, st);
     })());
   },
@@ -336,7 +387,7 @@ async function getKalshiCrowd(env, seriesTicker, persist = true) {
 
   try {
     const data = await fetchCrowd(seriesTicker);
-    if (data) {
+    if (data && typeof data.overPct === "number") {
       const entry = { t: now, data };
       crowdMem.set(seriesTicker, entry);
       // Persist successful fetches to the shared cache when persist=true. Both the live (app) path
@@ -344,6 +395,17 @@ async function getKalshiCrowd(env, seriesTicker, persist = true) {
       // data warm, so it persists its own fetches (a few KV writes/run, still far under the free-tier
       // budget). Shared across every Worker isolate so one success serves them all.
       if (env.CROWD_KV && persist) await kvPut(env, seriesTicker, entry);
+      return data;
+    }
+    if (data) {
+      // A quotes-less SHELL (fresh market identity, no usable price — typical in the first minute or two
+      // after a round opens). Never cached: it must not evict a last-good price. If the last good price
+      // still belongs to this same round (same closeTime), hand it back on the fresh shell; else return
+      // the shell as-is so callers at least know WHICH market this round is (ticker → Kalshi grading).
+      const stale = staleOrNull(cached, now);
+      if (stale && typeof stale.overPct === "number" && stale.closeTime === data.closeTime) {
+        return { ...data, overPct: stale.overPct, stale: true };
+      }
       return data;
     }
     return staleOrNull(cached, now);
@@ -363,7 +425,13 @@ async function fetchCrowd(seriesTicker) {
   markets.sort((a, b) => new Date(a.close_time) - new Date(b.close_time));
   const m = markets[0];
   const over = overFromMarket(m);
-  if (over == null) return null;   // quotes not posted yet (e.g. right at round open) → caller serves stale
+  // Quotes can lag a round's open by a minute or two (the fresh market shows "Target price: TBD" with a
+  // junk/pinned book). We used to return null here — throwing away the market's IDENTITY along with its
+  // unusable price — which left the whole round self-anchored with NO ticker, so it could never be
+  // reconciled to Kalshi's settled result (2026-07 audit: only 22% of rounds ended Kalshi-graded, worst
+  // at :00 slots). Now the SHELL (ticker/closeTime/strike) always comes back; overPct stays null until
+  // real quotes exist. Every caller that prices off the crowd already requires a numeric overPct, and
+  // getKalshiCrowd never caches a quotes-less shell over a last-good price.
   // Also surface the NEXT round's market — that's the one the client locks a bet on in the
   // final 2 minutes, when this round's price is already pinned near 0/100 and useless as a prior.
   const m1 = markets[1];
@@ -829,12 +897,13 @@ async function cbMicro(product) {
   // scarce-data model overfits on redundant inputs) — it's surfaced to the AI + panel as context.
   return { price: pN, mom, sig, rngClose, rsi, macdH, stochK: stoch ? stoch.k : null, stochD: stoch ? stoch.d : null };   // sig = per-minute log-return stdev
 }
-// The price AT a round's close. We grade on the finalized boundary CANDLE close (cbCloseAt) — the
-// definitive price at closeMs, which matches the close / next-round strike Robinhood shows and is
-// immune to a frozen or thinly-sampled feed. cbAvg60 (the ~60-sec average) is kept only as a
-// fallback: it sounds like Kalshi's CF-Benchmarks averaging, but over a volatile final minute (a dip
-// that recovers right at the bell) the average lands on the OPPOSITE side from the actual close —
-// which is exactly what logged rounds on the wrong side. Both return null if the window is incomplete.
+// The price AT a round's close. Provisional grading PREFERS cbAvg60 (the ~60-sec trade average
+// before closeMs) because that is HOW Kalshi settles — the simple average of the final minute of its
+// CF-Benchmarks index — with the finalized boundary CANDLE close (cbCloseAt) as the fallback when the
+// trade window is incomplete. Either way it's only a Coinbase PROXY for a multi-exchange index: on a
+// thin round the proxy can land on the wrong side (flagged `disputed` when avg-vs-candle disagree),
+// and reconcileKalshi upgrades every ticketed round to Kalshi's definitive result soon after.
+// Both return null if the window is incomplete.
 async function cbAvg60(product, closeMs) {
   if (!(closeMs > 0)) return null;
   const rows = await cbJson(`/products/${product}/trades?limit=400`).catch(() => null);
@@ -891,6 +960,7 @@ async function reconcileKalshi(rec, coinModel, global) {
     // Upgrade the displayed close + margin to Kalshi's REAL settled value (not the Coinbase proxy), so the
     // arrow / Recent-Rounds % match exactly what Kalshi paid. Sanity-gated to a sane band around the strike.
     if (kal.settle != null && typeof e.strike === "number" && e.strike > 0 && kal.settle > e.strike * 0.5 && kal.settle < e.strike * 2) {
+      if (e.pxClose == null && typeof e.close === "number") e.pxClose = e.close;   // keep the Coinbase proxy close — it measures proxy-vs-index divergence (2026-07 audit)
       e.close = kal.settle; e.kalshiClose = true;
       e.over = Math.round((kal.settle - e.strike) * 100) / 100;
       e.overPct = Math.round((kal.settle - e.strike) / e.strike * 1e5) / 1e3;
@@ -966,8 +1036,8 @@ async function ntfyPush(env, title, tag, body) {
 }
 // LATE-ROUND alert scanner — runs ~7 min before each close (the 8,23,38,53 cron). ONE read-only pass over
 // every coin's Kalshi crowd (persist=false → no KV writes), firing up to two kinds of ping:
-//   • NEAR-LOCK "bet while you can" — the market is clearly favored (>= LOCK_MIN_PROB, default 75%) but not
-//     yet locked (< LOCK_MAX_PROB, default 92%). High win rate, small payout — now shown WITH the multiplier.
+//   • STRONG FAVORITE "bet while you can" — the market clearly favors a side (>= LOCK_MIN_PROB, default 65%)
+//     but hasn't locked it (< LOCK_MAX_PROB, default 80%). The audited +EV band — shown WITH the multiplier.
 //   • VALUE ENTRY "longshot about to cross" — price is on one side, momentum is carrying it TOWARD the line,
 //     and the side it's heading to is still the big-multiplier underdog (>= 2.5x). Higher variance, real payout.
 //     (This is primeCheck's client-side cue, now pushed even with the app closed.)
@@ -975,10 +1045,11 @@ async function ntfyPush(env, title, tag, body) {
 // within one 15-min window) — so pings keep firing through Kalshi 429s without ever using last round's data.
 async function scanLateLocks(env) {
   if (!env.DISCORD_WEBHOOK && !env.NTFY_TOPIC) return;
-  // FORMING-FAVORITE band — a side that's clearly leaning but still PAYS (≈1.35x–1.6x), caught while there's
-  // time to act. Deliberately stops well below the near-locked zone (a side priced ≥ ~75% pays ≤1.3x and the
-  // round's nearly over — "too late"). Tune with LOCK_MIN_PROB / LOCK_MAX_PROB.
-  const lo = Number(env.LOCK_MIN_PROB) || 62, hi = Number(env.LOCK_MAX_PROB) || 74;
+  // STRONG-FAVORITE band — the one pattern the 2026-07 data audit found to be reliably +EV: favorites the
+  // crowd priced 65–80% went on to WIN ~82% of settled rounds (n=77) — ~+14% per bet net of the taker fee,
+  // the classic favorite-longshot bias. Below ~65% the edge fades into fees; above ~80% the payout is too
+  // thin for the risk. Band re-centered 62–74 → 65–80 on that evidence. Tune with LOCK_MIN_PROB / LOCK_MAX_PROB.
+  const lo = Number(env.LOCK_MIN_PROB) || 65, hi = Number(env.LOCK_MAX_PROB) || 80;
   const now = Date.now();
   const lockHot = [], valueHot = [];
   for (const c of AUTO_COINS) {
@@ -1234,6 +1305,58 @@ async function maybeBackup(env, st) {
   }
 }
 
+// --- Permanent round archive (data foundation, 2026-07 audit) ------------------------------------
+// The live state keeps only the newest 300 rounds per coin (~3 days at 96 rounds/day) — everything
+// older used to be DESTROYED, capping every analysis (and the model's evaluable record) at one short
+// market window. Now every graded round is appended, exactly once, to a permanent per-day KV key
+// (arch:YYYY-MM-DD, NO expiry) after a ~3h settling delay — long enough for reconcileKalshi to have
+// converged on Kalshi's definitive result for rounds that have a ticker. Rows carry the full round
+// record (incl. the raw crowd % at lock, kStrike, pxClose and src), so future audits can measure
+// EV, calibration and proxy-vs-index drift across months, not days. Read back with ?archive (list
+// of days) / ?archive=YYYY-MM-DD (&dl=1 downloads). Cost: ~1 extra KV write per cron (~96/day).
+// Purely additive: it only COPIES graded rounds — it never reads into, tunes, or touches a pick.
+const ARCH_DELAY_MS = 3 * 3600 * 1000;
+const ARCH_BATCH = 400;   // per-cron cap — the first few runs drain the pre-existing backlog gradually
+async function archiveRounds(env, st) {
+  if (!env.CROWD_KV || !st || !st.coins) return;
+  const cut = Date.now() - ARCH_DELAY_MS;
+  const byDay = new Map();   // "YYYY-MM-DD" -> [{ coin, e }]
+  let n = 0;
+  outer:
+  for (const coin of Object.keys(st.coins)) {
+    const rec = st.coins[coin];
+    if (!rec || !Array.isArray(rec.history)) continue;
+    for (const e of rec.history) {
+      if (!e || e.arch || !(e.ts > 0) || e.ts >= cut) continue;
+      const day = new Date(e.ts).toISOString().slice(0, 10);
+      let arr = byDay.get(day);
+      if (!arr) { arr = []; byDay.set(day, arr); }
+      arr.push({ coin, e });
+      if (++n >= ARCH_BATCH) break outer;
+    }
+  }
+  for (const [day, items] of byDay) {
+    const key = "arch:" + day;
+    let cur = null;
+    try { cur = JSON.parse((await env.CROWD_KV.get(key)) || "null"); } catch (_) { cur = null; }
+    const list = cur && Array.isArray(cur.rounds) ? cur.rounds : [];
+    const seen = new Set(list.map((r) => r.coin + ":" + r.ts));   // (coin, ts) is unique per round
+    let added = 0;
+    for (const it of items) {
+      if (seen.has(it.coin + ":" + it.e.ts)) { it.e.arch = 1; continue; }   // already archived (e.g. a restored backup re-surfaced it) — just re-flag
+      const row = { coin: it.coin, ...it.e };
+      delete row.arch; delete row.trained;   // internal bookkeeping — not data
+      list.push(row);
+      added++;
+    }
+    if (!added) continue;
+    try {
+      await env.CROWD_KV.put(key, JSON.stringify({ day, rounds: list, updated: Date.now() }));   // NO TTL — permanent
+      for (const it of items) it.e.arch = 1;   // flag ONLY after the write lands, so a failed put retries next cron
+    } catch (_) {}
+  }
+}
+
 // --- Online learning model (per-coin + pooled global) --------------------
 // A tiny online logistic regression that learns, per coin, how round-open signals map to the
 // chance price finishes OVER. Updated once per round from the graded outcome (free, no LLM).
@@ -1423,7 +1546,7 @@ async function runCoinPick(env, coin, st) {
   let crowd = null;
   if (series) for (let i = 0; i < 3; i++) {   // self-tracked coins (no series) skip straight to the fallback — zero Kalshi load
     crowd = await getKalshiCrowd(env, series, true).catch(() => null);
-    if (crowd && !crowd.stale) break;
+    if (crowd && !crowd.stale && typeof crowd.overPct === "number") break;   // hold out for a PRICED read; a quotes-less shell still helps the fallback below
     if (i < 2) await sleep(1000);
   }
   const rec = st.coins[coin] || (st.coins[coin] = { coin, pending: null, history: [], graded: 0, correct: 0 });
@@ -1454,7 +1577,13 @@ async function runCoinPick(env, coin, st) {
       const correct = bet ? (actual === p.side) : null;
       const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
       const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
-      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, feat: Array.isArray(p.feat) ? p.feat : null, caseMem: p.caseMem || null, disputed: disputed, trained: false, src: p.self ? "self" : "candle" });
+      rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, feat: Array.isArray(p.feat) ? p.feat : null, caseMem: p.caseMem || null, disputed: disputed, trained: false, src: p.self ? "self" : "candle",
+        // Data-quality fields (2026-07 audit): the crowd price the pick was made AT (crowdLean in feat is a
+        // squashed copy — this is the raw %), Kalshi's own posted strike when we self-anchored (to measure
+        // strike drift vs our price-now proxy), and whether the second-chance retry upgraded this pick.
+        crowd: p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null,
+        kStrike: typeof p.kStrike === "number" ? p.kStrike : null,
+        retried: p.retried ? true : undefined });
       if (rec.history.length > 300) rec.history.pop();
       rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
       rec.lastActual = actual;
@@ -1501,7 +1630,30 @@ async function runCoinPick(env, coin, st) {
     // makes a self-anchored round its cleanest case. Needs only Coinbase (micro), so it still records
     // while Kalshi is rate-limiting the server IP.
     if (!mkt && micro && typeof micro.price === "number") {
-      mkt = { ticker: null, strike: micro.price, overPct: null, closeTime: nextRoundClose(nowMs, 6), self: true };
+      // NEW (2026-07 audit): even when the crowd price is unusable, we often still know WHICH market this
+      // round is — a quotes-less shell from fetchCrowd (fresh markets show "Target price: TBD" for the
+      // first minute or two). Pin its ticker + close time to the self-anchored round so reconcileKalshi
+      // can later grade it against Kalshi's DEFINITIVE settled result. The pick itself still prices off
+      // Coinbase only (no crowd input → it can't commit a bet, see the crowd gate below); the strike stays
+      // our own price-now (self-consistent with the Coinbase settle proxy), and Kalshi's posted strike, if
+      // any, rides along as kStrike for the record. Before this, ~78% of rounds stayed permanently
+      // self-graded with no path back to the truth.
+      let shell = null;
+      if (crowd) {
+        for (const cnd of [crowd, crowd.next]) {
+          if (!cnd || !cnd.ticker || !cnd.closeTime) continue;
+          const left = (new Date(cnd.closeTime).getTime() - nowMs) / 60000;
+          if (left >= 6 && left <= 16.5) { shell = cnd; break; }
+        }
+      }
+      mkt = {
+        ticker: shell ? shell.ticker : null,
+        strike: micro.price,
+        kStrike: shell && typeof shell.strike === "number" ? shell.strike : null,
+        overPct: null,
+        closeTime: shell ? shell.closeTime : nextRoundClose(nowMs, 6),
+        self: true,
+      };
     }
     if (mkt) {
       const marketMom = otherCoinsMom(st, coin);   // net momentum of the OTHER coins (cross-asset beta / BTC lead-lag); null until peers have data
@@ -1512,11 +1664,16 @@ async function runCoinPick(env, coin, st) {
       const modelOver = predictBlend(coinModel, global, feat);      // learned P(OVER) for this round
       const cmem = caseMemory(st, feat, 20);                        // case memory: nearest past setups → outcome (measurement-only, NOT in the blend below)
       const fp = freePick(mkt.overPct, micro && micro.mom, obi, modelOver, micro && micro.sig, rec.calib);
+      // CROWD GATE (2026-07 data audit): never COMMIT a bet without a live crowd price. Committed picks
+      // made with the crowd present hit 40/50 (80%); the ones made blind (momentum+model only) went 6/12 —
+      // a coin flip. The round still logs its lean (shadow record) and still trains the model; it just
+      // can't claim a bet on the scoreboard. Only ever makes it skip MORE, like the band gate below.
+      if (fp && fp.side !== "SKIP" && typeof mkt.overPct !== "number") fp.side = "SKIP";
       if (fp && fp.side !== "SKIP" && !bandEdgeOK(rec.history, fp.pRaw)) fp.side = "SKIP";   // accuracy #2: this band hasn't beaten break-even on record → pass (measured on the 24/7 scoreboard)
       if (fp) {
         const d = new Date(nowTs);
         rec.pending = {
-          coin, ticker: mkt.ticker || null, self: mkt.self || false, strike: mkt.strike, openPrice: micro ? micro.price : mkt.strike, side: fp.side,
+          coin, ticker: mkt.ticker || null, self: mkt.self || false, strike: mkt.strike, kStrike: typeof mkt.kStrike === "number" ? mkt.kStrike : null, openPrice: micro ? micro.price : mkt.strike, side: fp.side,
           pOver: Math.round(fp.pOver * 100),
           pRaw: Math.round(fp.pRaw * 100),                          // pre-calibration blend — fit the calibrator on this, never on itself
           prob: Math.round((fp.side === "UNDER" ? 1 - fp.pOver : fp.pOver) * 100),

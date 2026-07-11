@@ -19,6 +19,8 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **⚠️ Data-audit build (r85) — the Kalshi feed fixed, blind bets stopped, rounds archived forever, and a ⭐ Favorite-zone cue.** A full statistical audit of the tracker's own 2,100-round record (July 2026) found the app's biggest problems weren't in the model — they were in the *data supply*. Four changes, all evidence-first. **(1) Kalshi pipeline fixed — the headline problem.** The Worker was only reaching Kalshi on **~22% of rounds** (worst at :00 slots, 9%): a fresh 15-min market shows "Target price: TBD" junk quotes for its first minute or two, and the code treated that as "no market at all," self-anchoring the whole round with no ticker — unpriceable *and* ungradeable forever. Now the Worker keeps the market's **identity** (ticker/close) even when quotes aren't live, waits ~75s and **re-locks the pick with the crowd** once quotes post (guarded: only when ≥10 min still remain — never near a close), and even a failed retry still attaches the ticker so `reconcileKalshi` grades the round against Kalshi's definitive result. **⚠️ Changes pick behavior — for the better:** the crowd (the only input the audit found carries real signal — 60.6% directional, p<0.001) is now present for most rounds instead of ~1 in 5. **(2) No more blind bets.** Committed picks made *with* the crowd hit **80%** (40/50); the ones made blind went **6/12 — a coin flip**. The Worker now **never commits a bet without a live crowd price** (the round still logs its lean and trains the model — it just can't claim a bet). **⚠️ Changes pick behavior:** strictly *more* skipping, never less. **(3) Permanent round archive.** The state kept only the newest 300 rounds per coin (~3 days) and **destroyed everything older** — capping every future audit at one market window. Every graded round now also lands in a permanent per-day KV archive (`?archive`, `?archive=YYYY-MM-DD&dl=1`), with new per-round fields (raw crowd %, Kalshi's posted strike, the preserved Coinbase proxy close). Log-only. **(4) The ⭐ Favorite zone.** The audit's single clearly profitable pattern: crowd favorites priced **65–80%** went on to win **~82%** of settled rounds (n=77) — **≈+14% per bet after fees**, the classic favorite-longshot bias (blind favorites ≈ break-even; longshots −9%/bet). The app now shows a **read-only ⭐ note** under the payout line whenever the live market enters that band (small-sample caveat included, and it warns when the app's own pick leans the other way), and the Worker's "forming favorite" phone-alert band re-centered from 62–74 to **65–80** to match. The audit also *cleared* some suspects: order-book, momentum, RSI/MACD, case-memory and cross-coin-momentum signals all tested ≈ coin-flip at this horizon (the learned model had already down-weighted them), and BTC co-movement is real (74–82%) but **same-round only** — BTC's *previous* round predicts nothing about the next. (`fetchCrowd`/`getKalshiCrowd`/second-chance retry/crowd gate/`archiveRounds` in `worker.js`; `renderFavZone` in `eth-tracker.html`.)
+
 - **Market-lead read — \"is ETH in step with BTC?\" (r84).** The empirical audit's biggest finding was that the coins trade as **one market**: an alt settles the *same* direction as BTC **~80%** of rounds, and BTC leads the pack. Turned that into a live judgment aid under the pick (shown on any alt; hidden when you're on BTC itself): **In step with the market** — BTC agrees with your pick, a tailwind; **Fighting the market** — your pick opposes BTC's lean, the higher-risk ~20% case (demand extra edge or sit out); or a neutral read when BTC is ~flat or you're a coin-flip. It reads BTC's current lean from the best-coin feed the app already fetches (~1×/min) — prefers BTC's live Kalshi crowd %, falls back to BTC's 24/7 pick — so **no new requests, no new sockets**. **Strictly read-only — it reflects existing state and never changes, commits, or tempers the pick** (mirrors the existing \"Which to follow\" read; verified across all nine states incl. the crowd-absent fallback). Built for the single-coin ETH bettor: the co-movement insight becomes \"is the whole market moving with me right now?\" (`renderMarketLead` in `eth-tracker.html`.)
 
 - **⚠️ Worker picker: order-book weight demoted 0.15 → 0.05 (empirical audit follow-up).** The data audit of 2,324 graded rounds found the order-book imbalance signal's direction predicted the outcome only **47.2%** of the time — slightly *inverted*, and statistically solid (p<0.01) — while it held a fixed **15% vote** in the 24/7 tracker's picker. Demoted to a 5% whisper rather than flipped or removed: it's one ~3-day market window, and the learned model's own order-book feature can still earn weight back if the signal proves real later. **Changes pick behavior** — the Worker's scoreboard picks, from the next cron run; go-forward only (nothing re-graded). The in-app live pick is untouched (its order-book slice was already just 0.07). One-line revert if the next audit disagrees. (`freePick` in `worker.js`.)
@@ -556,13 +558,13 @@ A **scheduled** Worker (`crons = ["*/15 * * * *"]`) keeps an independent, always
 even when no tab is open — using **only free data and no LLM**, so it adds nothing to AI spend.
 Each run, per coin with a Kalshi series:
 
-1. Grades the previous round's pick on the **finalized boundary candle close** (`cbCloseAt` →
-   `cbAvg60`) — fast and Kalshi-free so grading can never stall — then **reconciles** it to Kalshi's
-   own settled result (`result: yes/no` → OVER/UNDER, literally what you bet on), kept off the
-   critical path (`reconcileKalshi`). It upgrades a few un-confirmed rounds per cron (**capped at ~4
-   /coin** — each Kalshi call competes with the essential crowd-odds fetch for a tight free-tier
-   subrequest + rate-limit budget, so this stays cheap); a backlog still clears over a few crons and
-   every round converges to Kalshi. A separate **confirmed hit-rate** counts *only* Kalshi-settled
+1. Grades the previous round's pick on the **~60-second Coinbase trade average at the boundary**
+   (`cbAvg60`, matching how Kalshi's CF-Benchmarks index settles; the finalized boundary candle
+   `cbCloseAt` is the fallback) — fast and Kalshi-free so grading can never stall — then **reconciles**
+   it to Kalshi's own settled result (`result: yes/no` → OVER/UNDER, literally what you bet on), kept
+   off the critical path (`reconcileKalshi`). It upgrades a few un-confirmed rounds per cron (**capped
+   at ~8/coin** — kept moderate to stay polite to Kalshi's per-IP rate limit); a backlog still clears
+   over a few crons and every round converges to Kalshi. A separate **confirmed hit-rate** counts *only* Kalshi-settled
    rounds — the definitive number, exactly what Robinhood paid.
 2. Locks **one** pick per round and **won't overwrite it** once made (a `!rec.pending` same-round
    guard) — so the tracked side can't drift to the near-certain outcome before grading. It only
@@ -578,12 +580,23 @@ Each run, per coin with a Kalshi series:
    rate-limits the server's IP, mostly while the app is closed), *or* a late cron leaving no market in
    the 6–16.5-min window, *or* the only open market already decided — a **Kalshi-independent fallback**
    self-anchors the round from the clock + the live Coinbase price — strike = the price at the round's
-   open, close = the next 15-min boundary — and picks from momentum + book + the learned model alone
+   open, close = the next 15-min boundary — and logs the lean from momentum + book + the learned model alone
    (`nextRoundClose` + a `self: true` market). This is **purely additive**: a normal Kalshi-reachable
    pick is unchanged; the fallback only fires when the tracker would otherwise log nothing, so **any
-   cron that runs records a round** (this closed the ~30%-of-rounds-dropped gap — earlier the fallback
-   was gated on stale crowd, so a late cron with fresh-but-unusable Kalshi data recorded nothing). Self-anchored rounds carry **no
-   ticker** (never counted as Kalshi-confirmed) and are flagged **· self-tracked** in the app. The pick
+   cron that runs records a round**. **Since r85 the fallback is much rarer and much smarter.** The
+   2026-07 audit found ~78% of rounds ended up self-anchored — a fresh Kalshi market shows "Target
+   price: TBD" junk quotes for its first minute or two, and the old code treated that as "no market at
+   all". Three fixes: **(a)** `fetchCrowd` now keeps the market's **identity** (a quotes-less *shell*:
+   ticker/close/strike) even when the price is unusable, so a self-anchored round still gets its
+   **ticker attached** and `reconcileKalshi` later grades it against Kalshi's definitive result;
+   **(b)** if any series-coin self-anchored, the cron waits **~75s** for quotes to go live and
+   **re-locks that pick with the crowd** — guarded so it only ever happens minutes into a round
+   (≥10 min must remain), never near a close, and a retry that fails keeps the original; **(c)** a
+   **crowd gate**: the tracker **never commits a bet without a live crowd price** — audited blind
+   commits went 6/12 (a coin flip) vs 40/50 (80%) with the crowd; crowd-less rounds still log their
+   lean (the shadow record) and still train the model, they just can't claim a bet. Self-anchored
+   rounds are flagged **· self-tracked** in the app (and are never Kalshi-confirmed unless
+   reconciliation upgrades them). The pick
    itself is the simple blend: the
    **Kalshi market price** nudged by **1-min momentum**, **order-book imbalance** and the learned
    model, with **SKIP** near 50/50 (`freePick`). The commit is **confluence-gated** — it only fires
@@ -824,7 +837,8 @@ Server-side, in Worker **KV** (`CROWD_KV`):
 | Key | Holds |
 |---|---|
 | `crowd:<series>` | shared Kalshi crowd-odds cache (stale-serve through 429s) |
-| `auto:state` | the entire 24/7 auto-tracker in **one** record — every coin's pick/history/hit-rate/learned model **and** the pooled global model. Written once per cron run (a single KV write, to stay under the free tier's 1,000/day); read back per-coin via `?picks=COIN`. Seeds itself from the older `picks:<COIN>` + `model:global` keys on first run, then they expire. |
+| `auto:state` | the entire 24/7 auto-tracker in **one** record — every coin's pick/history/hit-rate/learned model **and** the pooled global model. Written once per cron run (a single KV write, to stay under the free tier's 1,000/day); read back per-coin via `?picks=COIN`. Seeds itself from the older `picks:<COIN>` + `model:global` keys on first run, then they expire. **Only the newest 300 rounds per coin live here** — older rounds survive in the archive below. |
+| `arch:<YYYY-MM-DD>` | **permanent round archive (r85)** — every graded round, appended exactly once ~3h after it settles (so Kalshi reconciliation has converged), no expiry. Rows carry the full round record plus the raw **crowd %** at lock, Kalshi's posted **kStrike**, and the preserved Coinbase proxy close (`pxClose`). List days with `?archive`; fetch one with `?archive=YYYY-MM-DD` (`&dl=1` downloads). ~1 extra KV write per cron. |
 
 ---
 

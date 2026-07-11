@@ -160,11 +160,15 @@ where `z = mom·3.16/sig` (momentum in σ units) and `s = min(1, (|z|−2)/2)`.
 
 So fully-aligned reads commit past **±0.10**; fully-split reads need **±0.20**. It SKIPs the majority *by design* — that selectivity is the edge.
 
+**Crowd gate (r85, from the 2026-07 data audit):** a non-SKIP side is only kept if the pick was made **with a live crowd price**. Audited: commits made with the crowd present hit **40/50 (80%)**; blind commits (momentum + model only) went **6/12 — a coin flip**. A crowd-less round still logs its lean (the shadow record) and still trains the model — it just can't claim a bet. Like the band gate below, it can only ever skip *more*.
+
 **Calibration-band skip gate (`bandEdgeOK`, accuracy #2):** after the commit gate above, a non-SKIP side is *only kept* if **this coin's graded rounds whose `pRaw` sat in the same ±8-pt band have actually cleared ~break-even** — `(hit + 0.5) / (n + 1) ≥ 0.515`. A band that's only ever been a coin-flip is downgraded to **SKIP** (its "edge" was noise). Inert until a band has **≥ 15** graded rounds, so it never fires on thin evidence; it can only ever skip *more*, so it can't hurt the measured record. Mirrors the app's `bandEdgeOK`, so the scoreboard measures the same discipline the live pick uses. *(The app's two other accuracy passes are deliberately app-only: #1 settlement-aware sharpens the live final-2-min read but the Worker locks at open and never re-picks; #3 regime needs the live tick stream the Worker doesn't have.)*
 
 **Output:** `{ side, prob = round(pRaw·100), conf, agree }`.
 
-**Lock & grade (the honesty layer):** one pick per round, never overwritten (`!rec.pending`); only locks a still-open round (≥ 6 min left **and** odds 3–97%); graded on the finalized boundary candle, then **reconciled to Kalshi's settled result** — the definitive outcome, exactly what Robinhood pays (a separate **confirmed hit-rate** counts only Kalshi-settled rounds). If Kalshi is unreachable, a self-anchored fallback grades on the Coinbase close vs the round's open (flagged *self-tracked*, never counted as confirmed).
+**Lock & grade (the honesty layer):** one pick per round, never overwritten (`!rec.pending`); only locks a still-open round (≥ 6 min left **and** odds 3–97%); graded on the ~60-sec Coinbase trade average at the boundary (candle close as fallback), then **reconciled to Kalshi's settled result** — the definitive outcome, exactly what Robinhood pays (a separate **confirmed hit-rate** counts only Kalshi-settled rounds). If Kalshi is unreachable, a self-anchored fallback grades on the Coinbase close vs the round's open (flagged *self-tracked*, never counted as confirmed).
+
+**Second chance + shells (r85):** a brand-new Kalshi market often shows junk/TBD quotes for its first minute or two, which used to strand ~78% of rounds on the self-anchored path (2026-07 audit; worst at :00 slots — 9% Kalshi coverage). Now: `fetchCrowd` returns the market's **shell** (ticker/close/strike, `overPct: null`) instead of nothing, so a self-anchored round still gets its **ticker attached** and reconciles to Kalshi later; and if any series-coin locked without a crowd price, the cron waits **~75s** and **re-locks that pick with the crowd** (only when ≥10 min still remain — never near a close; a failed retry keeps the original pick; a retry that lands a different round is discarded). Shells are never cached over a last-good price. New per-round record fields: `crowd` (raw crowd % at lock), `kStrike` (Kalshi's posted strike when we self-anchored), `pxClose` (the Coinbase proxy close, preserved when Kalshi's settle overwrites `close`), `retried`.
 
 *(Source of truth: `freePick`, `bandEdgeOK`, `favLongshotAdj`, `reconcileKalshi` in `worker.js` — update this table if those change.)*
 
@@ -186,6 +190,21 @@ against the free tier's **1,000/day**. (Storage: ~32 copies of a small record �
 - **Lock them down:** both honor `ACCESS_TOKEN` exactly like `?reset` — set that secret and pass `&token=…`, especially for `?restore`.
 - Purely protective: the backup path only ever **copies** the record — it never reads into, tunes, or touches a pick. (`maybeBackup` in `worker.js`.)
 
+### Permanent round archive (r85) — nothing is destroyed anymore
+
+The live record keeps only the newest **300 rounds per coin** (~3 days) — the 2026-07 audit had to work
+inside that single window because everything older had been silently deleted. Now every graded round is
+**appended exactly once to a permanent per-day KV key** (`arch:YYYY-MM-DD`, no expiry), ~3 hours after it
+settles so Kalshi reconciliation has converged first. Rows are the full round record plus the audit's new
+fields (`crowd`, `kStrike`, `pxClose`, `retried`) — everything a future audit needs to measure calibration,
+EV net of fees, and proxy-vs-index drift over months instead of days.
+
+- **List days:** `…workers.dev/?archive` → `{ days: ["2026-07-11", …] }`
+- **Fetch a day:** `…workers.dev/?archive=2026-07-11` (add `&dl=1` to download the `.json`)
+- **Cost:** ~1 extra KV write per cron (~96/day; the first few runs also drain the pre-existing backlog in
+  400-round batches). Purely additive: it only **copies** graded rounds — never reads into or touches a pick.
+  (`archiveRounds` in `worker.js`.)
+
 ## Phone alerts on a high-confidence pick (optional, free)
 Get a push **on your phone even when the app is closed** the moment a coin opens a
 **high-confidence, non-SKIP** pick (≥75% and ≥3 independent reads agreeing).
@@ -197,7 +216,7 @@ Cloudflare Workers (shared IPs) *even with a token*, so Discord is the dependabl
 3. Test: open `…workers.dev/?testpush=discord` — it posts to your channel and returns `{"discord":{"sent":true}}`. Real pings then arrive automatically. (`pushDiscord` in `worker.js`.)
 
 **Three kinds of ping fire automatically** once a channel is set (all from one read-only `scanLateLocks` pass on the `:08/:23/:38/:53` cron, except the open-pick one):
-- **Forming favorite — "time to act"** — ≈7 min before each close, pings when a side is in the **forming-favorite band that still PAYS — `LOCK_MIN_PROB` (default 62% ≈ 1.6x) to `LOCK_MAX_PROB` (default 74% ≈ 1.35x)**. This was deliberately moved **down** from the old 75–92% near-lock band: a side priced ≥ ~75% pays ≤1.3x **and** the round's nearly over — "too late, too little." The new band catches a side **while it's still forming AND still pays**, with time to place it. Skimmable message — *"Predict (ETH - Over 1.5x)"*. (`scanLateLocks`.)
+- **Strong favorite — "time to act"** — ≈7 min before each close, pings when a side is in the **audited +EV band — `LOCK_MIN_PROB` (default 65% ≈ 1.54x) to `LOCK_MAX_PROB` (default 80% ≈ 1.25x)**. Re-centered from 62–74 (r85): the 2026-07 audit of 464 crowd-priced rounds found favorites priced **65–80% went on to win ~82%** (n=77) — **≈+14% per bet net of the taker fee**, the classic favorite-longshot bias — while below ~65% the edge fades into fees and blind favorite-buying is ≈ break-even (longshots lose ~9%/bet). Skimmable message — *"Predict (ETH - Over 1.5x)"*. (`scanLateLocks`.)
 - **Value entry "longshot about to cross"** — same scan: pings when price is on one side, **momentum is carrying it toward the line**, and the side it's heading to is still a **big-multiplier underdog (≥ 2.0x)**. This is the *profit* signal — higher variance, so size small. (Mirrors the app's `primeCheck` cue, pushed even with the app closed.)
 - **Open pick (earliest)** — the regular 15-min cron pings the **moment a round opens** with the tracker's committed pick (≈13 min to act). Loosened so it actually fires: **`NTFY_MIN_PROB` default 68%** and **`NTFY_MIN_AGREE` default 2** (was 75% / 3 — too strict, almost never qualified). Still **skips dead-money** sides (≥ `NTFY_DEAD_PCT`, default 90%) and shows the multiplier. (`notifyHotPicks`.)
 - **STRONG — BET** — a louder variant of the open-pick ping: when that strong pick is **also momentum-confirmed** (short-term move already heading the pick's way — the server-side analog of the app's "app + AI + momentum all line up"), it goes out as a distinct **"🔥 STRONG — BET (SOL - Over)"** alert instead of the normal "Predict (…)". This is the native notification the **app shows phones/tablets in place of the desktop banner**, and it reaches you even with the app closed. (`notifyHotPicks`.)
