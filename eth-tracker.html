@@ -1390,10 +1390,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r86</span><span class="buildSep">·</span><span>2026-07-18</span>
+        <span class="buildVer">build r87</span><span class="buildSep">·</span><span>2026-07-18</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>One voice + star-only pings (r87).</b> Fixes the mixed messages from the Jul-18 screens ("STRONG — worth betting / BUY OVER" above a "−EV after fees — skip" payout line while the tracker said SKIP). The headline verdict and the strength banner now <b>defer to the same after-fee edge the payout line prints</b>: when the price is a losing buy, the card says <b>"OVER likely — but overpriced"</b> (right direction, wrong price) and the banner says <b>"OVERPRICED — don't buy"</b> — no more BUY shouting over a skip. Display-only; the committed side and the round log are unchanged. Discord/ntfy also go <b>star-only by default</b>: one ping type, the ⭐ A-grade star bet (set <code>PING_MODE=all</code> in the Worker to restore the old pings).</p>
         <p><b>Week-2 audit — smarter star, dead-market kill switch, off-book guardrail (r86).</b> A second audit (4,466 archived rounds) found the raw favorite band ran ≈ break-even (72.7%) with brutal dead-chop days, while the 24/7 tracker's own commits hit 78% — so the ⭐ is now <b>A-grade only when the tracker committed the same side</b> (dimmed to "watch-only" otherwise), it turns into a 💤 <b>dead-market note</b> when recent rounds keep settling a hair from the line, and a ⛔ <b>off-book line</b> appears whenever the app's call is SKIP (skipped rounds settled ~50/50 — betting them is a coin flip). Phone alerts follow the same rules: fewer pings, better pings. The Worker also gained optional <b>Kalshi API-key auth</b> — add a key and crowd coverage rises from ~43% toward full.</p>
         <p><b>Data-audit build — the Kalshi feed fixed, blind bets stopped, rounds archived forever, and a ⭐ Favorite-zone cue (r85).</b> A 2,100-round audit of the tracker's own record drove four changes. <b>(1)</b> The Worker was only reaching Kalshi on ~22% of rounds (fresh markets show junk quotes for a minute after open, and the code gave up for the whole round) — it now keeps the market's identity, retries ~75s later, and re-locks the pick WITH the crowd, so most rounds are crowd-priced and Kalshi-graded again. <b>(2)</b> The tracker never commits a bet without a live crowd price anymore — blind commits were a 50/50 coin flip (6/12) vs 80% with the crowd. <b>(3)</b> Every graded round is now archived permanently on the server (the old 300-round cap silently destroyed history). <b>(4)</b> The audit's one clearly profitable pattern — crowd favorites priced 65–80% went on to win ~82%, +EV after fees — now shows as a read-only ⭐ Favorite-zone note under the payout line, and the phone-alert band re-centered onto it.</p>
         <p><b>Market-lead read — is your alt in step with BTC? (r84).</b> The data audit found the coins move together: an alt settles the same direction as BTC ~80% of rounds, and BTC leads. So on ETH (or any alt) there's now a small read under the pick: <b>In step with the market</b> (BTC agrees — tailwind), <b>Fighting the market</b> (your pick opposes BTC — the higher-risk 20%, demand more edge or sit out), or BTC ~flat / leaning while you're a coin-flip. It reads BTC's live lean from the best-coin feed you already pull. Purely a judgment aid — it does NOT change the pick.</p>
@@ -1999,6 +2000,18 @@
   // constant is the only thing to change (verify against the fee column on your own fills).
   var KALSHI_FEE_RATE = 0.07;
   function takerFee(p) { return KALSHI_FEE_RATE * p * (1 - p); }   // fee in $ per contract at price p (0–1)
+  // ONE fee-honest edge for a side, shared by the headline verdict, the strength banner and the payout
+  // line — so they can never contradict each other again (r87 "one voice": the Jul-18 screenshots showed
+  // "STRONG / BUY OVER" above a "−EV after fees — skip" payout line). Returns null when the market price
+  // or the blend isn't available; edge = ourP − price − fee on the SAME side the headline shows.
+  function feeEdgeFor(dir) {
+    if (dir !== "OVER" && dir !== "UNDER") return null;
+    var mpct = marketPct(dir); if (mpct == null) return null;
+    var reco = state.lastRecoObj; if (!reco) return null;
+    var o = combinedOdds(reco), appP = dir === "OVER" ? o.pOver : 1 - o.pOver, mp = mpct / 100;
+    if (!(mp > 0.02 && mp <= 0.999)) return null;
+    return { edge: appP - mp - takerFee(mp), appP: appP, mpct: mpct };
+  }
   function marketPct(dir) {
     var c = activeCrowd();
     if (!c || typeof c.overPct !== "number" || (dir !== "OVER" && dir !== "UNDER")) return null;
@@ -2407,6 +2420,21 @@
       pctEl.textContent = mpct + "%"; lblEl.textContent = "already priced in";
       return;
     }
+    // "One voice" guard (r87): when the payout line's after-fee math says this price is a losing buy
+    // (edge ≤ −1¢ — the exact threshold that prints "−EV after fees — skip" below), the headline must not
+    // shout BUY above it. Same side, same math, one message: right direction, wrong price. Display-only —
+    // the committed side, grading and the round log are untouched.
+    var fe = nextMode ? null : feeEdgeFor(call.dir);
+    if (fe && fe.edge <= -0.01) {
+      el.className = "reco skip"; setGlow("SKIP");
+      scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
+      buyEl.className = "buyLine skip";
+      buyEl.innerHTML = call.dir + " likely — but overpriced" +
+        '<span class="buySub">the market wants ' + fe.mpct + '¢ (+fee) for a side the app rates ' + Math.round(fe.appP * 100) + '% — a losing price. Wait for better or sit out.</span>';
+      hintEl.textContent = "Right direction, wrong price: after the fee, buying " + call.dir + " at " + fe.mpct + "¢ loses money on average. The payout line below has the numbers.";
+      pctEl.textContent = fe.mpct + "%"; lblEl.textContent = "overpriced";
+      return;
+    }
     if (pcard && hiConv) pcard.classList.add("highConv");   // strong/edge committed pick → glowing card
     var cls = call.dir === "OVER" ? "over" : "under";
     el.className = "reco " + cls;
@@ -2460,6 +2488,12 @@
     if (my === "SKIP") return { tier: "sit", label: "— SIT OUT", sub: "no clear edge — best to pass this round" };
     var reco = state.lastRecoObj, edge = reco ? Math.abs(combinedOdds(reco).pOver - 0.5) : 0;
     var nextMode = (state.remaining == null ? 999 : state.remaining) <= BET_WINDOW;
+    // "One voice" guard (r87): a price the after-fee math calls a losing buy can never be labeled
+    // STRONG/BET/LEAN — the banner defers to the same edge the payout line prints.
+    if (!nextMode) {
+      var fe = feeEdgeFor(my);
+      if (fe && fe.edge <= -0.01) return { tier: "flip", label: "OVERPRICED — don't buy", sub: "the app likes " + my + " but not at this price — after the fee it's a losing buy (payout line has the math)" };
+    }
     var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
     var style = getPlayStyle(), aggressive = style !== "disciplined", minEdge = style === "active" ? 0.04 : 0.06;
     if (nextMode) {

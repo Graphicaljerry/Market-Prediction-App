@@ -1021,6 +1021,10 @@ async function pushDiscord(env, text) {
 }
 async function notifyHotPicks(env, st) {
   if (!env.NTFY_TOPIC && !env.DISCORD_WEBHOOK) return;
+  // STAR-ONLY MODE (default, r86.1): the user asked to be pinged ONLY on the ⭐ star bet — the
+  // audited A-grade setup (favorite 65–80% + tracker committed + live market, sent by scanLateLocks).
+  // So the round-open pick ping and STRONG—BET below are OFF unless PING_MODE=all restores them.
+  if ((env.PING_MODE || "star").toLowerCase() !== "all") return;
   // Fired at ROUND OPEN — the EARLIEST, edge-based alert (you get ~13 min to act). Loosened so it
   // actually fires on the tracker's committed pick, rather than waiting for a near-locked favorite.
   const minProb = Number(env.NTFY_MIN_PROB) || 68;
@@ -1089,6 +1093,9 @@ async function scanLateLocks(env) {
   // One read-only state load powers both; if it fails, pings stay gated OFF for safety (a missed ping
   // costs nothing; a bad ping costs money). The value-entry longshot ping is unchanged.
   const deadPct = Number(env.DEAD_MARGIN_PCT) || 0.08;
+  // PING_MODE (r86.1): "star" (default) sends ONLY the ⭐ star-bet ping below; "all" also restores the
+  // value-entry longshot ping here and the round-open pick pings in notifyHotPicks.
+  const mode = (env.PING_MODE || "star").toLowerCase();
   let st = null;
   try { st = await loadState(env); } catch (_) {}
   const now = Date.now();
@@ -1122,7 +1129,9 @@ async function scanLateLocks(env) {
       else if (op <= 100 - lo && op > 100 - hi && committedSide === "UNDER") lockHot.push(`${c} - Under ${(100 / (100 - op)).toFixed(1)}x`);
     }
     // (2) VALUE ENTRY — the big-payout longshot the price is racing toward (needs live Coinbase momentum).
-    if (stillThisRound && op > 2 && op < 98 && crowd.strike > 0) {
+    // OFF by default since r86.1 (PING_MODE=all restores it): longshots lost ~9%/bet in the audit, and
+    // the user asked for star-bet pings only.
+    if (mode === "all" && stillThisRound && op > 2 && op < 98 && crowd.strike > 0) {
       let micro = null;
       try { micro = await cbMicro(CB_PRODUCT[c]); } catch (_) {}
       if (micro && typeof micro.price === "number" && micro.price > 0 && typeof micro.mom === "number") {
@@ -1140,9 +1149,9 @@ async function scanLateLocks(env) {
     }
   }
   if (lockHot.length) {
-    const msg = "Predict (" + lockHot.join(", ") + ")";
-    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🎯 " + msg);
-    await ntfyPush(env, "Predict — pick forming, time to act", "dart", msg);
+    const msg = "Star bet (" + lockHot.join(", ") + ")";
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "⭐ " + msg);
+    await ntfyPush(env, "Star bet — A-grade setup, time to act", "star", msg);
   }
   if (valueHot.length) {
     const msg = "Predict (" + valueHot.join(", ") + ")";
