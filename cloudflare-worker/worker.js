@@ -60,7 +60,7 @@ export default {
         const kv = env.CROWD_KV ? await kvGet(env, t) : null;
         const kvCached = kv ? { overPct: kv.data && kv.data.overPct, ageSec: Math.round((Date.now() - kv.t) / 1000) } : null;
         try {
-          const r = await kalshiFetch(`${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(t)}&status=open&limit=200`);
+          const r = await kalshiFetch(env, `${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(t)}&status=open&limit=200`);
           const b = await r.json().catch(() => ({}));
           const ms = (b.markets || []).filter((m) => m.close_time).sort((a, c) => new Date(a.close_time) - new Date(c.close_time));
           const m = ms[0];
@@ -386,7 +386,7 @@ async function getKalshiCrowd(env, seriesTicker, persist = true) {
   if (cached && now - cached.t < FRESH_MS) return cached.data;   // fresh enough, no fetch
 
   try {
-    const data = await fetchCrowd(seriesTicker);
+    const data = await fetchCrowd(env, seriesTicker);
     if (data && typeof data.overPct === "number") {
       const entry = { t: now, data };
       crowdMem.set(seriesTicker, entry);
@@ -415,9 +415,9 @@ async function getKalshiCrowd(env, seriesTicker, persist = true) {
 }
 
 // One Kalshi round-trip → implied OVER probability (or null). Throws on hard HTTP error.
-async function fetchCrowd(seriesTicker) {
+async function fetchCrowd(env, seriesTicker) {
   const url = `${KALSHI_BASE}/markets?series_ticker=${encodeURIComponent(seriesTicker)}&status=open&limit=200`;
-  const r = await kalshiFetch(url);
+  const r = await kalshiFetch(env, url);
   if (!r.ok) throw new Error("kalshi " + r.status);
   const data = await r.json();
   const markets = (data.markets || []).filter((m) => m.close_time);
@@ -455,11 +455,39 @@ function staleOrNull(cached, now) {
   return null;
 }
 
+// --- Optional Kalshi API-key auth (r86) -----------------------------------------------------------
+// Kalshi rate-limits Cloudflare's SHARED egress IPs — the cause of the ~55% of rounds that still fetch
+// no crowd even after the r85 retry (16% coverage at :00 slots). Authenticated requests are limited
+// per ACCOUNT instead of per IP. Create a key at kalshi.com → Account → API keys, then add two
+// Secrets: KALSHI_API_KEY_ID (the key's UUID) and KALSHI_PRIVATE_KEY (the RSA private key PEM it gives
+// you once). Every Kalshi request is then signed (RSA-PSS/SHA-256 over timestamp+method+path, per
+// Kalshi's API docs). No key set → anonymous fetch exactly as before; a bad key falls back to
+// anonymous (sentinel "" stops it re-trying a broken import on every call) so a misconfigured secret
+// can never stall a pick.
+let _kalshiKey = null;   // cached CryptoKey per isolate; "" = import failed, stay anonymous
+async function kalshiAuthHeaders(env, method, url) {
+  if (!env || !env.KALSHI_API_KEY_ID || !env.KALSHI_PRIVATE_KEY || _kalshiKey === "") return null;
+  try {
+    if (!_kalshiKey) {
+      const pem = String(env.KALSHI_PRIVATE_KEY).replace(/-----(BEGIN|END)[^-]+-----/g, "").replace(/\s+/g, "");
+      const der = Uint8Array.from(atob(pem), (ch) => ch.charCodeAt(0));
+      _kalshiKey = await crypto.subtle.importKey("pkcs8", der.buffer, { name: "RSA-PSS", hash: "SHA-256" }, false, ["sign"]);
+    }
+    const ts = String(Date.now());
+    const path = new URL(url).pathname;                       // Kalshi signs ts + METHOD + path (no query string)
+    const sig = await crypto.subtle.sign({ name: "RSA-PSS", saltLength: 32 }, _kalshiKey, new TextEncoder().encode(ts + method + path));
+    let bin = ""; const bytes = new Uint8Array(sig);
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return { "KALSHI-ACCESS-KEY": env.KALSHI_API_KEY_ID, "KALSHI-ACCESS-SIGNATURE": btoa(bin), "KALSHI-ACCESS-TIMESTAMP": ts };
+  } catch (_) { _kalshiKey = ""; return null; }
+}
 // Kalshi's rate limit is bursty; a couple of short retries usually clears a 429.
-async function kalshiFetch(url) {
+async function kalshiFetch(env, url) {
+  const auth = await kalshiAuthHeaders(env, "GET", url);
+  const headers = auth ? { ...KALSHI_HEADERS, ...auth } : KALSHI_HEADERS;
   let r;
   for (let i = 0; i < 3; i++) {
-    r = await fetch(url, { headers: KALSHI_HEADERS });
+    r = await fetch(url, { headers });
     if (r.status !== 429) return r;
     await sleep(300 * (i + 1));   // 300ms, 600ms, 900ms
   }
@@ -928,10 +956,10 @@ async function cbCloseAt(product, closeMs) {
 // "yes" (closed above the strike → OVER) or "no" (→ UNDER) — literally what you bet on, so grading
 // against it can't disagree with Robinhood, even on a razor-thin round. Returns null until it has
 // actually resolved (so callers fall back to the candle close in the meantime).
-async function kalshiResult(ticker) {
+async function kalshiResult(env, ticker) {
   if (!ticker) return null;
   try {
-    const r = await kalshiFetch(`${KALSHI_BASE}/markets/${encodeURIComponent(ticker)}`);
+    const r = await kalshiFetch(env, `${KALSHI_BASE}/markets/${encodeURIComponent(ticker)}`);
     if (!r || !r.ok) return null;
     const m = (await r.json()).market;
     const res = m && typeof m.result === "string" ? m.result.toLowerCase() : "";
@@ -948,13 +976,13 @@ async function kalshiResult(ticker) {
 // single Coinbase candle close can land on the OPPOSITE side on a thin round — only Kalshi's own
 // result is guaranteed to match Robinhood. We now reconcile several recent rounds per cron so the
 // arrows converge to Kalshi within one cycle instead of trickling one at a time.
-async function reconcileKalshi(rec, coinModel, global) {
+async function reconcileKalshi(env, rec, coinModel, global) {
   const h = rec.history || [];
   for (let i = 0, checked = 0; i < h.length && checked < 8; i++) {   // Paid plan lifted the free-tier subrequest budget, so that's no longer the cap. The remaining limit is being POLITE to Kalshi's per-IP rate limit (external — paid doesn't change it), so keep this moderate. The crowd fetch runs FIRST so picks are unaffected; any backlog still converges to Kalshi within a cron or two. Bumped 4→8 on the paid plan for firmer/faster grade convergence.
     const e = h[i];
     if (e.src === "kalshi" || !e.ticker) continue;
     checked++;
-    const kal = await kalshiResult(e.ticker);
+    const kal = await kalshiResult(env, e.ticker);
     if (!kal) continue;                                   // not settled yet — retried next cron
     e.src = "kalshi"; e.actual = kal.actual;              // row-level truth; the caller recomputes all aggregates from history
     // Upgrade the displayed close + margin to Kalshi's REAL settled value (not the Coinbase proxy), so the
@@ -1037,7 +1065,8 @@ async function ntfyPush(env, title, tag, body) {
 // LATE-ROUND alert scanner — runs ~7 min before each close (the 8,23,38,53 cron). ONE read-only pass over
 // every coin's Kalshi crowd (persist=false → no KV writes), firing up to two kinds of ping:
 //   • STRONG FAVORITE "bet while you can" — the market clearly favors a side (>= LOCK_MIN_PROB, default 65%)
-//     but hasn't locked it (< LOCK_MAX_PROB, default 80%). The audited +EV band — shown WITH the multiplier.
+//     but hasn't locked it (< LOCK_MAX_PROB, default 80%) — AND (r86) the market isn't dead-chop AND the
+//     24/7 tracker committed the same side this round. Only that star-plus-commit subset carried the edge.
 //   • VALUE ENTRY "longshot about to cross" — price is on one side, momentum is carrying it TOWARD the line,
 //     and the side it's heading to is still the big-multiplier underdog (>= 2.5x). Higher variance, real payout.
 //     (This is primeCheck's client-side cue, now pushed even with the app closed.)
@@ -1050,6 +1079,18 @@ async function scanLateLocks(env) {
   // the classic favorite-longshot bias. Below ~65% the edge fades into fees; above ~80% the payout is too
   // thin for the risk. Band re-centered 62–74 → 65–80 on that evidence. Tune with LOCK_MIN_PROB / LOCK_MAX_PROB.
   const lo = Number(env.LOCK_MIN_PROB) || 65, hi = Number(env.LOCK_MAX_PROB) || 80;
+  // Week-2 audit (r86): the RAW favorite band ran ≈ break-even (72.7% of 524), while the tracker's own
+  // gated commits hit 78.0% at the same prices — and the band was outright −EV on dead-chop days
+  // (Jul 14: 57.6%, Jul 18: 66.7% with 44% photo-finishes). So the favorite ping now requires BOTH:
+  //   (a) NOT a dead market — the coin's last ~8 graded rounds must NOT all be settling a hair from the
+  //       line (median |margin| >= DEAD_MARGIN_PCT, default 0.08%); and
+  //   (b) the 24/7 tracker COMMITTED the same side this round — pinging only the star-plus-commit
+  //       subset that actually carried the edge. Fewer pings, better pings.
+  // One read-only state load powers both; if it fails, pings stay gated OFF for safety (a missed ping
+  // costs nothing; a bad ping costs money). The value-entry longshot ping is unchanged.
+  const deadPct = Number(env.DEAD_MARGIN_PCT) || 0.08;
+  let st = null;
+  try { st = await loadState(env); } catch (_) {}
   const now = Date.now();
   const lockHot = [], valueHot = [];
   for (const c of AUTO_COINS) {
@@ -1062,9 +1103,24 @@ async function scanLateLocks(env) {
     const stillThisRound = closeMs > now && (closeMs - now) <= 16.5 * 60000;   // an open, current 15-min round
     if (crowd.stale && !stillThisRound) continue;   // fresh is always ok; stale only while it's still this round
     const op = crowd.overPct;
-    // (1) NEAR-LOCK band — clearly favored but still bettable (shown with the payout multiplier).
-    if (op >= lo && op < hi) lockHot.push(`${c} - Over ${(100 / op).toFixed(1)}x`);
-    else if (op <= 100 - lo && op > 100 - hi) lockHot.push(`${c} - Under ${(100 / (100 - op)).toFixed(1)}x`);
+    // (1) STRONG-FAVORITE band — gated on market pulse + tracker commitment (see header comment).
+    const rec = st && st.coins && st.coins[c];
+    let pulse = null;
+    if (rec && Array.isArray(rec.history)) {
+      const m = [];
+      for (const e of rec.history) {
+        if (e && typeof e.overPct === "number" && (e.actual === "OVER" || e.actual === "UNDER")) { m.push(Math.abs(e.overPct)); if (m.length >= 8) break; }
+      }
+      if (m.length >= 4) { m.sort((a, b) => a - b); pulse = m.length % 2 ? m[(m.length - 1) / 2] : (m[m.length / 2 - 1] + m[m.length / 2]) / 2; }
+    }
+    const dead = pulse != null && pulse < deadPct;
+    const pnd = rec && rec.pending;
+    const sameRound = pnd && typeof pnd.closeMs === "number" && closeMs > 0 && Math.abs(pnd.closeMs - closeMs) <= 90000;
+    const committedSide = sameRound && (pnd.side === "OVER" || pnd.side === "UNDER") ? pnd.side : null;
+    if (!dead) {
+      if (op >= lo && op < hi && committedSide === "OVER") lockHot.push(`${c} - Over ${(100 / op).toFixed(1)}x`);
+      else if (op <= 100 - lo && op > 100 - hi && committedSide === "UNDER") lockHot.push(`${c} - Under ${(100 / (100 - op)).toFixed(1)}x`);
+    }
     // (2) VALUE ENTRY — the big-payout longshot the price is racing toward (needs live Coinbase momentum).
     if (stillThisRound && op > 2 && op < 98 && crowd.strike > 0) {
       let micro = null;
@@ -1692,7 +1748,7 @@ async function runCoinPick(env, coin, st) {
   rec.model = coinModel;
   // Kalshi upgrade runs LAST and wrapped — off the critical path, so a Kalshi hiccup can't stall the
   // grade/pick above or get us rate-limited into a failed crowd fetch next cron.
-  try { await reconcileKalshi(rec, coinModel, global); } catch (_) {}
+  try { await reconcileKalshi(env, rec, coinModel, global); } catch (_) {}
   // Recompute ALL scoreboard stats from history — one source of truth, no counter drift through
   // reconcile or shadow-grading. bet = committed OVER/UNDER; shadow = EVERY round by the side it
   // leaned (so we can show "if it bet every round" + how often it actually bets / coverage).

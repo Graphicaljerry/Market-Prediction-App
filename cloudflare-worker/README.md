@@ -91,6 +91,20 @@ Spend is small by design, but cap it anyway:
   Net: identical AI input on every device, still **one paid call per round**. (`noAI` branch +
   `airead:` write in `worker.js`; `applyCrowd` in `eth-tracker.html`.)
 
+## (Recommended) Kalshi API key — lift the rate limit that still hides the crowd
+
+Kalshi rate-limits Cloudflare's **shared** egress IPs, and that is now the main data bottleneck: even
+after the r85 retry, the crowd is present on only ~43% of rounds (16% at :00 slots). Authenticated
+requests are limited **per account**, not per IP — so a free API key takes coverage toward full:
+
+1. On kalshi.com: **Account → Settings → API keys → Create key**. Save the **Key ID** and download the
+   **RSA private key** (`.pem` — shown once).
+2. Worker → **Settings → Variables and Secrets** → add two **Secrets**:
+   `KALSHI_API_KEY_ID` = the key ID, and `KALSHI_PRIVATE_KEY` = the full PEM text (BEGIN/END lines included).
+3. Done — no redeploy needed. Every Kalshi request is now signed (RSA-PSS/SHA-256 over
+   timestamp+method+path, Kalshi's standard scheme). No key → anonymous requests exactly as before; a
+   malformed key falls back to anonymous rather than ever stalling a pick. (`kalshiAuthHeaders` in `worker.js`.)
+
 ## (Optional) Crowd odds — Kalshi series tickers
 Without these, the AI still works; the **Crowd** line just shows `n/a`.
 Add Text vars `KALSHI_SERIES_ETH`, `KALSHI_SERIES_BTC`, `KALSHI_SERIES_SOL` set to the
@@ -216,7 +230,7 @@ Cloudflare Workers (shared IPs) *even with a token*, so Discord is the dependabl
 3. Test: open `…workers.dev/?testpush=discord` — it posts to your channel and returns `{"discord":{"sent":true}}`. Real pings then arrive automatically. (`pushDiscord` in `worker.js`.)
 
 **Three kinds of ping fire automatically** once a channel is set (all from one read-only `scanLateLocks` pass on the `:08/:23/:38/:53` cron, except the open-pick one):
-- **Strong favorite — "time to act"** — ≈7 min before each close, pings when a side is in the **audited +EV band — `LOCK_MIN_PROB` (default 65% ≈ 1.54x) to `LOCK_MAX_PROB` (default 80% ≈ 1.25x)**. Re-centered from 62–74 (r85): the 2026-07 audit of 464 crowd-priced rounds found favorites priced **65–80% went on to win ~82%** (n=77) — **≈+14% per bet net of the taker fee**, the classic favorite-longshot bias — while below ~65% the edge fades into fees and blind favorite-buying is ≈ break-even (longshots lose ~9%/bet). Skimmable message — *"Predict (ETH - Over 1.5x)"*. (`scanLateLocks`.)
+- **Strong favorite — "time to act"** — ≈7 min before each close, pings when a side is in the favorite band — `LOCK_MIN_PROB` (default 65% ≈ 1.54x) to `LOCK_MAX_PROB` (default 80% ≈ 1.25x) — **AND (r86) the 24/7 tracker committed that same side this round AND the market isn't dead-chop**. The week-2 audit (4,466 rounds) showed why the extra gates earn their keep: the raw band alone ran ≈ break-even (72.7% of 524, with outright −EV dead days), while the tracker's gated commits hit **78.0%** at the same prices — so the ping now fires only on that star-plus-commit subset. The dead-market gate skips a coin whose last ~8 graded rounds settled with a median |margin| below **`DEAD_MARGIN_PCT`** (default `0.08`%). One read-only state load powers both gates; if it fails, favorite pings stay off (a missed ping costs nothing; a bad ping costs money). Skimmable message — *"Predict (ETH - Over 1.5x)"*. (`scanLateLocks`.)
 - **Value entry "longshot about to cross"** — same scan: pings when price is on one side, **momentum is carrying it toward the line**, and the side it's heading to is still a **big-multiplier underdog (≥ 2.0x)**. This is the *profit* signal — higher variance, so size small. (Mirrors the app's `primeCheck` cue, pushed even with the app closed.)
 - **Open pick (earliest)** — the regular 15-min cron pings the **moment a round opens** with the tracker's committed pick (≈13 min to act). Loosened so it actually fires: **`NTFY_MIN_PROB` default 68%** and **`NTFY_MIN_AGREE` default 2** (was 75% / 3 — too strict, almost never qualified). Still **skips dead-money** sides (≥ `NTFY_DEAD_PCT`, default 90%) and shows the multiplier. (`notifyHotPicks`.)
 - **STRONG — BET** — a louder variant of the open-pick ping: when that strong pick is **also momentum-confirmed** (short-term move already heading the pick's way — the server-side analog of the app's "app + AI + momentum all line up"), it goes out as a distinct **"🔥 STRONG — BET (SOL - Over)"** alert instead of the normal "Predict (…)". This is the native notification the **app shows phones/tablets in place of the desktop banner**, and it reaches you even with the app closed. (`notifyHotPicks`.)
