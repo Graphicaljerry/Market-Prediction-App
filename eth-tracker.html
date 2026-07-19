@@ -539,6 +539,11 @@
   .moveStrip .msDot.down { background: rgba(255,69,58,.16); color: var(--red); border: 1px solid rgba(255,69,58,.4); }
   .moveStrip .msDot.flat { background: rgba(118,118,128,.18); color: var(--label-2); border: 1px solid rgba(118,118,128,.4); }
   .moveStrip .msDot.est { opacity: .4; background: transparent; border-style: dashed; }
+  /* Pending slot — the just-closed round still confirming its exact close. Hollow + gentle pulse; it
+     becomes a real frozen arrow the moment the grade lands. Pulse honors reduced-motion. */
+  .moveStrip .msDot.pending { background: transparent; border: 1px dashed rgba(255,255,255,.35); color: var(--label-3); animation: msPulse 1.6s ease-in-out infinite; }
+  @keyframes msPulse { 0%, 100% { opacity: .35; } 50% { opacity: .85; } }
+  @media (prefers-reduced-motion: reduce) { .moveStrip .msDot.pending { animation: none; opacity: .6; } }
   /* collapsible secondary panels — keep the betting signal the focus, detail one tap away */
   details.collapsePanel { margin: 0; }
   .secToggle { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; -webkit-tap-highlight-color: transparent; }
@@ -1390,10 +1395,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r87</span><span class="buildSep">·</span><span>2026-07-18</span>
+        <span class="buildVer">build r88</span><span class="buildSep">·</span><span>2026-07-18</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>More arrows + a pending slot (r88).</b> The "Recent 15-min" row on phones showed only ~6 arrows because the long text label ate the space — it now shrinks to a small "15m" chip on narrow screens, fitting ~10 arrows. And the just-closed round shows a <b>pulsing hollow slot</b> while its exact close is being confirmed, so the row never looks like it's missing one — it becomes a real frozen arrow the moment the grade lands (arrows still never guess). Display-only.</p>
         <p><b>One voice + star-only pings (r87).</b> Fixes the mixed messages from the Jul-18 screens ("STRONG — worth betting / BUY OVER" above a "−EV after fees — skip" payout line while the tracker said SKIP). The headline verdict and the strength banner now <b>defer to the same after-fee edge the payout line prints</b>: when the price is a losing buy, the card says <b>"OVER likely — but overpriced"</b> (right direction, wrong price) and the banner says <b>"OVERPRICED — don't buy"</b> — no more BUY shouting over a skip. Display-only; the committed side and the round log are unchanged. Discord/ntfy also go <b>star-only by default</b>: one ping type, the ⭐ A-grade star bet (set <code>PING_MODE=all</code> in the Worker to restore the old pings).</p>
         <p><b>Week-2 audit — smarter star, dead-market kill switch, off-book guardrail (r86).</b> A second audit (4,466 archived rounds) found the raw favorite band ran ≈ break-even (72.7%) with brutal dead-chop days, while the 24/7 tracker's own commits hit 78% — so the ⭐ is now <b>A-grade only when the tracker committed the same side</b> (dimmed to "watch-only" otherwise), it turns into a 💤 <b>dead-market note</b> when recent rounds keep settling a hair from the line, and a ⛔ <b>off-book line</b> appears whenever the app's call is SKIP (skipped rounds settled ~50/50 — betting them is a coin flip). Phone alerts follow the same rules: fewer pings, better pings. The Worker also gained optional <b>Kalshi API-key auth</b> — add a key and crowd coverage rises from ~43% toward full.</p>
         <p><b>Data-audit build — the Kalshi feed fixed, blind bets stopped, rounds archived forever, and a ⭐ Favorite-zone cue (r85).</b> A 2,100-round audit of the tracker's own record drove four changes. <b>(1)</b> The Worker was only reaching Kalshi on ~22% of rounds (fresh markets show junk quotes for a minute after open, and the code gave up for the whole round) — it now keeps the market's identity, retries ~75s later, and re-locks the pick WITH the crowd, so most rounds are crowd-priced and Kalshi-graded again. <b>(2)</b> The tracker never commits a bet without a live crowd price anymore — blind commits were a 50/50 coin flip (6/12) vs 80% with the crowd. <b>(3)</b> Every graded round is now archived permanently on the server (the old 300-round cap silently destroyed history). <b>(4)</b> The audit's one clearly profitable pattern — crowd favorites priced 65–80% went on to win ~82%, +EV after fees — now shows as a read-only ⭐ Favorite-zone note under the payout line, and the phone-alert band re-centered onto it.</p>
@@ -3539,6 +3545,7 @@
     pr.tries = 0;
     state.gradePending = pr;
     renderLastClose();                        // "closing near $X · confirming…"
+    renderMoveStrip();                        // show the pulsing PENDING slot for this round right away (r88)
     settleGrades();                           // maybe the candle is already loaded
   }
   function candleCloseAt(t) {
@@ -3566,9 +3573,10 @@
       if (gp.tries < 6) return;               // wait for the finalized candle (the definitive close)
       close = gp.provClose; src = "live";      // only if the candle never posts — last-resort boundary tick
     }
-    if (close == null) { state.gradePending = null; renderLastClose(); return; }
+    if (close == null) { state.gradePending = null; renderLastClose(); renderMoveStrip(); return; }
     finalizeGrade(gp, close, src);
     state.gradePending = null;
+    renderMoveStrip();                        // drop the pending slot now that the real arrow is frozen (r88)
   }
   function finalizeGrade(pr, close, src) {
     var ref = pr.marketStrike != null ? pr.marketStrike : pr.openPrice;
@@ -3708,19 +3716,27 @@
     var avail = el.clientWidth || (el.parentElement && el.parentElement.clientWidth) || 0;
     if ((!avail || avail < 90) && !el._msRetry) { el._msRetry = 1; requestAnimationFrame(function () { el._msRetry = 0; renderMoveStrip(); }); }
     if (!avail || avail < 90) avail = 300;                 // not laid out yet — safe default this pass; the rAF re-fits once measured
-    // Reserve enough for the "RECENT 15-MIN" label (wider in Geist than the old font) + the ▾ button + gaps,
-    // so the last dot and the button ALWAYS fully fit — never clipped by overflow:hidden (which read as the
-    // arrows "not lining up", especially on the narrow desktop column).
-    var fit = Math.max(4, Math.min(10, Math.floor((avail - 158) / 25)));
+    // Reserve enough for the label + the ▾ button + gaps, so the last dot and the button ALWAYS fully
+    // fit — never clipped by overflow:hidden. On NARROW screens (phones / the tight desktop column) the
+    // "RECENT 15-MIN" text costs ~4 arrows of room, so it shrinks to a compact "15m" chip there (r88 —
+    // "why aren't all the arrows showing?"): same row, ~10 arrows instead of ~6 on a phone.
+    var compact = avail < 430;
+    var gp = state.gradePending;                            // a just-closed round still confirming → pulsing pending slot (never a guessed arrow)
+    if (gp && gp.openTime && log[Math.floor(gp.openTime / 900000)]) gp = null;   // its arrow already landed — no duplicate slot
+    var reserve = (compact ? 96 : 158) + (gp ? 25 : 0);
+    var fit = Math.max(4, Math.min(12, Math.floor((avail - reserve) / 25)));
     var open = !!state.moveOpen, keys = open ? allKeys.slice(-24) : allKeys.slice(-fit);
     el.className = "moveStrip" + (open ? " open" : "");
     if (!keys.length) { if (el._html) { el._html = ""; el.innerHTML = ""; } return; }
-    var html = '<span class="msLbl">Recent 15-min</span>', k, d, cls, ar, verdict;
+    var html = '<span class="msLbl"' + (compact ? ' title="Recent 15-min rounds"' : '') + '>' + (compact ? "15m" : "Recent 15-min") + '</span>', k, d, cls, ar, verdict;
     for (k = 0; k < keys.length; k++) {
       d = byBucket[keys[k]]; cls = (d.dir > 0 ? "up" : d.dir < 0 ? "down" : "flat") + (d.graded ? "" : " est"); ar = d.dir > 0 ? "↑" : d.dir < 0 ? "↓" : "·";
       verdict = d.dir > 0 ? "OVER / up" : d.dir < 0 ? "UNDER / down" : "flat";
       html += '<span class="msDot ' + cls + '" title="' + hma(new Date(d.t)) + " — " + verdict + (d.graded ? (d.confirmed ? " · confirmed vs Kalshi" : " · graded vs the line") : " · estimate (ungraded)") + '">' + ar + '</span>';
     }
+    // The confirming round gets a visible PENDING slot (hollow, pulsing) instead of silently missing —
+    // it turns into a real frozen arrow the moment the grade lands. Arrows themselves never guess.
+    if (gp) html += '<span class="msDot pending" title="Round ' + (gp.endLabel ? disp12(gp.endLabel) : "") + ' — confirming the exact close…">◌</span>';
     if (allKeys.length > fit) html += '<button class="msMore" id="msMoreBtn" title="' + (open ? "Show fewer" : "Show more rounds") + '">' + (open ? "▴" : "▾") + '</button>';
     if (el._html === html) return;   // only touch the DOM when an outcome actually changed
     el._html = html; el.innerHTML = html;
