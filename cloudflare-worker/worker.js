@@ -130,7 +130,9 @@ export default {
           meaning: status === 200 ? "Key works — Kalshi requests are now authenticated (per-account rate limits instead of the shared-IP ones)."
             : status === 401 ? "Signature rejected — the key ID and private key don't match. Re-create the key and paste both halves again."
             : "Unexpected response from Kalshi; the raw reply is below.",
-          reply: body,
+          // Only echo Kalshi's body on FAILURE (it's diagnostic then). On success this endpoint is a
+          // balance read, so echoing it would put account figures in the response for no reason.
+          reply: status === 200 ? undefined : body,
         });
       }
       // Best bet across all coins right now — a compact ranked leaderboard for the app's footer ticker.

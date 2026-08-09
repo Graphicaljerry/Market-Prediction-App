@@ -590,6 +590,53 @@
   .payout { margin: 9px 0 2px; padding: 9px 13px; border-radius: 11px; background: rgba(255,255,255,.04); border: 1px solid var(--separator); font-size: 13px; font-weight: 600; color: var(--label-2); line-height: 1.4; }
   /* Favorite-zone note — the audited favorite band (65–80%). Read-only. Full star = amber (A-grade,
      tracker committed); .dim = neutral watch-only; .dead = dead-market kill switch. */
+  /* ---- DECISION HERO (r90) — the verdict owns the top of the card ---- */
+  .hero { padding: 2px 0 4px; text-align: left; }
+  .heroKicker { font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--label-3); margin-bottom: 8px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .heroCall { font-size: 34px; line-height: .98; font-weight: 750; letter-spacing: -.035em; margin: 0; display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+  .heroCall .hcOver { color: var(--green); }
+  .heroCall .hcUnder { color: var(--red); }
+  .heroCall .hcSkip { color: var(--label-2); }
+  .heroCall .hcQual { font-size: 19px; font-weight: 650; letter-spacing: -.02em; color: var(--label-2); }
+  .heroStar { display: inline-flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 11px; background: rgba(255,196,66,.13); border: 1px solid rgba(255,196,66,.4); box-shadow: inset 0 1px 0 rgba(255,255,255,.09); flex: none; }
+  .heroStar svg { width: 16px; height: 16px; fill: #ffc442; }
+  .heroWhy { margin: 11px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--label-2); max-width: 42ch; }
+  .heroWhy b { color: var(--label); font-weight: 650; }
+  .heroChips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
+  .heroChips span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; padding: 3.5px 8px; border: 1px solid var(--hair); border-radius: 7px; color: var(--label-3); white-space: nowrap; }
+  .heroChips .cPos { color: var(--green); border-color: rgba(52,199,123,.32); background: rgba(52,199,123,.09); }
+  .heroChips .cNeg { color: var(--red); border-color: rgba(255,92,110,.32); background: rgba(255,92,110,.09); }
+  .heroChips .cStar { color: #ffc442; border-color: rgba(255,196,66,.34); background: rgba(255,196,66,.1); }
+  .heroMeter { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--hair); }
+  .hmHead { display: flex; justify-content: space-between; align-items: baseline; }
+  .hmHead span { display: block; font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--label-3); margin-bottom: 2px; }
+  .hmHead .hmNow b { font-size: 21px; font-weight: 650; letter-spacing: -.01em; }
+  .hmHead .hmLine { text-align: right; }
+  .hmHead .hmLine b { font-size: 14px; font-weight: 550; color: var(--label-2); }
+  .hmTrack { position: relative; height: 30px; margin-top: 9px; }
+  .hmRail { position: absolute; left: 0; right: 0; top: 13px; height: 4px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,92,110,.42), rgba(255,255,255,.13) 42%, rgba(255,255,255,.13) 58%, rgba(52,199,123,.42)); }
+  .hmMid { position: absolute; left: 50%; top: 6px; width: 1.5px; height: 19px; background: var(--label-2); opacity: .8; }
+  .hmPuck { position: absolute; top: 7px; width: 16px; height: 16px; border-radius: 50%; transform: translateX(-50%); border: 2px solid var(--card); transition: left .55s cubic-bezier(.16,1,.3,1); background: var(--label-3); box-shadow: 0 0 0 4px rgba(140,148,164,.14); }
+  .hmPuck.over { background: var(--green); box-shadow: 0 0 0 4px rgba(52,199,123,.15); }
+  .hmPuck.under { background: var(--red); box-shadow: 0 0 0 4px rgba(255,92,110,.15); }
+  .hmFoot { display: flex; justify-content: space-between; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; color: var(--label-3); }
+  .hmFoot b { font-weight: 650; }
+  .heroCost { display: flex; margin-top: 13px; padding-top: 12px; border-top: 1px solid var(--hair); }
+  .heroCost > div { flex: 1; min-width: 0; }
+  .heroCost > div + div { border-left: 1px solid var(--hair); padding-left: 13px; }
+  .heroCost b { display: block; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 15px; font-weight: 650; }
+  .heroCost span { display: block; font-size: 9.5px; letter-spacing: .11em; text-transform: uppercase; color: var(--label-3); margin-top: 2px; }
+  .heroCost .good b { color: var(--green); }
+  .heroCost .bad b { color: var(--red); }
+  .heroDetails { margin: 10px 0 2px; }
+  .heroDetails > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--label-3); padding: 7px 0; position: relative; }
+  .heroDetails > summary::-webkit-details-marker { display: none; }
+  .heroDetails > summary::after { content: ""; position: absolute; inset: -6px; }
+  .heroDetails .hdChev { margin-left: auto; transition: transform .2s ease; }
+  .heroDetails[open] .hdChev { transform: rotate(90deg); }
+  .heroDetails .hdBody { padding-top: 4px; }
+  @media (max-width: 380px) { .heroCall { font-size: 28px; } .heroCall .hcQual { font-size: 16px; } }
+  @media (prefers-reduced-motion: reduce) { .hmPuck { transition: none; } }
   .favZone { margin: 7px 0 2px; padding: 8px 13px; border-radius: 11px; background: rgba(255,196,66,.06); border: 1px solid rgba(255,196,66,.22); font-size: 12.5px; font-weight: 600; color: var(--label-2); line-height: 1.45; }
   .favZone b { color: var(--label); }
   .favZone.dim { background: rgba(255,255,255,.03); border-color: var(--separator); color: var(--label-3); }
@@ -1216,6 +1263,25 @@
   <div class="card orb">
     <div class="aiBadgeRow"><span class="aiBadge" id="aiBadge" hidden></span></div>
     <div id="reco" class="reco skip">
+      <!-- DECISION HERO (r90) — one answer, at the top, in one voice. Everything in here is rendered by
+           renderHero() from the SAME values the rows below already computed (state.shownDir, pickStrength,
+           feeEdgeFor, marketPct, activeCrowd) — it derives no pick of its own, so it cannot disagree with
+           them. The older stacked rows still exist, demoted into the "details" drawer further down. -->
+      <div class="hero" id="hero" hidden>
+        <div class="heroKicker" id="heroKicker"></div>
+        <h2 class="heroCall" id="heroCall"></h2>
+        <p class="heroWhy" id="heroWhy"></p>
+        <div class="heroChips" id="heroChips"></div>
+        <div class="heroMeter" id="heroMeter" hidden>
+          <div class="hmHead">
+            <div class="hmNow"><span id="hmNowLbl">Now</span><b class="mono" id="hmNowVal">—</b></div>
+            <div class="hmLine"><span>The line</span><b class="mono" id="hmLineVal">—</b></div>
+          </div>
+          <div class="hmTrack"><div class="hmRail"></div><div class="hmMid"></div><div class="hmPuck" id="hmPuck"></div></div>
+          <div class="hmFoot"><span id="hmFootL"></span><b id="hmFootR"></b></div>
+        </div>
+        <div class="heroCost" id="heroCost" hidden></div>
+      </div>
       <div id="pickStrength" class="pickStrength"></div>
       <div id="dualPick" class="dualPick">
         <div class="dpCol" id="dpThisCol" data-side="wait">
@@ -1233,13 +1299,20 @@
       <div class="scopeTag" id="recoScope">Waiting for round…</div>
       <div class="buyLine skip" id="buyLine" aria-live="polite">Analyzing…</div>
       <div class="buyHint" id="buyHint">Loading live market data…</div>
-      <div class="oddsRow"><span class="oddsPct mono" id="oddsPct">—</span><span class="oddsLbl" id="oddsLbl"></span></div>
-      <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
-      <div class="tally mono" id="recoTally">—</div>
-      <div class="conf" id="recoConf">Loading live indicators</div>
       <div class="payout" id="payout" hidden></div>
       <div class="favZone" id="favZone" hidden></div>
       <div class="offBook" id="offBook" hidden></div>
+      <!-- The evidence, one tap away (r90). Same elements and IDs as before — only their position changed,
+           so every renderer that writes into them is untouched. -->
+      <details class="heroDetails" id="heroDetails">
+        <summary><span class="hdIcon" aria-hidden="true"></span>Show the numbers behind this<span class="hdChev" aria-hidden="true">▸</span></summary>
+        <div class="hdBody">
+          <div class="oddsRow"><span class="oddsPct mono" id="oddsPct">—</span><span class="oddsLbl" id="oddsLbl"></span></div>
+          <div class="meter"><div class="mbull" id="mBull" style="width:0"></div><div class="mbear" id="mBear" style="width:0"></div></div>
+          <div class="tally mono" id="recoTally">—</div>
+          <div class="conf" id="recoConf">Loading live indicators</div>
+        </div>
+      </details>
       <div class="playbook" id="playbook" hidden>
         <div class="consensus" id="consensus"></div>
         <div class="marketLead" id="marketLead"></div>
@@ -1395,10 +1468,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r89</span><span class="buildSep">·</span><span>2026-08-09</span>
+        <span class="buildVer">build r90</span><span class="buildSep">·</span><span>2026-08-09</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>One screen, one answer — the pick card redesigned (r90).</b> The card used to stack seven voices down the screen (banner, two-column pick, buy line, hint, odds, tally, payout, favorite zone, off-book) and you had to assemble the verdict yourself — which is how the Jul-18 "bet up / says under / says skip" confusion happened in the first place. Now the <b>verdict owns the top</b>: one headline (<b>Bet Over ⭐</b> / <b>Sit this one out</b> / <b>Under — but overpriced</b>), the reason in one plain sentence, then the few numbers worth seeing — after-fee edge, the crowd's price, the app's %. Below that, <b>price vs the line as a single dot on a rail</b> (grey when it's inside the "too close to call" zone), and <b>what it costs and returns after the fee</b>. All the old rows still exist, one tap away under <b>"Show the numbers behind this."</b> The hero invents nothing — it renders the same values the rows below already computed, so it cannot disagree with them. Also fixed properly this time: the payout line was still doing <i>its own copy</i> of the after-fee maths instead of calling the shared function r87 added — two copies that agreed only by luck. Now there is one. <b>Display-only: no pick, commitment, alert or grade changed.</b></p>
         <p><b>Month audit — the star moves to where the money is (r89).</b> A full month of recorded rounds (21,412, of which 7,349 had a crowd price) showed the old ⭐ band straddled a losing half and a winning half: favorites priced <b>65–70¢ won 67.5% and still lost money after fees</b>, while 75–90¢ won ~84%. So the star band moves <b>65–80 → 73–90</b>: the star now hits 82.9% and roughly <b>doubles its edge</b> (+1.7¢ → +3.7¢ per dollar), at ~30 alerts a day instead of ~48. Three more changes ride along. The <b>commit bar</b> rises a notch (the weakest slice of bets hit just 54.7% — dropping it costs 3.8% of volume and lifts the record 75.8% → 76.3%). The 💤 <b>dead-market kill switch is retired</b>: over the month quiet chop did <i>not</i> hurt favorites (74.9% vs 74.2%), so it was muting good stars for nothing. And rounds that settle a hair from the line are now marked <b>"too close to call" (void)</b> instead of guessed — inside ±0.02% our price feed disagrees with Kalshi about a quarter of the time, and that sliver carried <b>60% of all our grading errors</b>; voiding it keeps both the record and what the model learns honest. <b>Heads up: the band, the commit bar and the star alerts all change what you're told to bet.</b></p>
         <p><b>More arrows + a pending slot (r88).</b> The "Recent 15-min" row on phones showed only ~6 arrows because the long text label ate the space — it now shrinks to a small "15m" chip on narrow screens, fitting ~10 arrows. And the just-closed round shows a <b>pulsing hollow slot</b> while its exact close is being confirmed, so the row never looks like it's missing one — it becomes a real frozen arrow the moment the grade lands (arrows still never guess). Display-only.</p>
         <p><b>One voice + star-only pings (r87).</b> Fixes the mixed messages from the Jul-18 screens ("STRONG — worth betting / BUY OVER" above a "−EV after fees — skip" payout line while the tracker said SKIP). The headline verdict and the strength banner now <b>defer to the same after-fee edge the payout line prints</b>: when the price is a losing buy, the card says <b>"OVER likely — but overpriced"</b> (right direction, wrong price) and the banner says <b>"OVERPRICED — don't buy"</b> — no more BUY shouting over a skip. Display-only; the committed side and the round log are unchanged. Discord/ntfy also go <b>star-only by default</b>: one ping type, the ⭐ A-grade star bet (set <code>PING_MODE=all</code> in the Worker to restore the old pings).</p>
@@ -4699,6 +4773,108 @@
     renderPayout();
     renderFavZone();
     renderOffBook();
+    renderHero();
+  }
+  // DECISION HERO (r90) — the single answer at the top of the pick card.
+  // STRICTLY DERIVED, NEVER DECIDED: every value here comes from something the card already computed —
+  // `state.shownDir` (the committed side), `pickStrength()` (the same tier the banner shows), and
+  // `feeEdgeFor()` (the same after-fee number the payout line prints). It therefore CANNOT contradict the
+  // rows below it, which was the whole point of r87's "one voice" fix — this just gives that one voice the
+  // top of the screen instead of the bottom. It changes no pick, no commitment and no grade.
+  var STAR_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.9 6.26 6.6.72-4.9 4.5 1.35 6.52L12 16.77 6.05 20l1.35-6.52-4.9-4.5 6.6-.72z"/></svg>';
+  function heroStarState() {
+    // Mirrors renderFavZone's A-grade test exactly (band + same-round tracker commit on our side), so the
+    // ⭐ in the headline and the ⭐ in the favorite-zone line can never disagree.
+    var crowd = activeCrowd();
+    if (!crowd || typeof crowd.overPct !== "number") return null;
+    var favSide = crowd.overPct >= 50 ? "OVER" : "UNDER";
+    var favPct = Math.max(crowd.overPct, 100 - crowd.overPct);
+    if (favPct < FAV_ZONE_LO || favPct > FAV_ZONE_HI) return null;
+    var ap = state.lastAuto && state.lastAuto.pending;
+    var agrees = !!(ap && ap.side === favSide);
+    if (agrees && ap.closeMs && crowd.closeTime) agrees = Math.abs(new Date(crowd.closeTime).getTime() - ap.closeMs) <= 90000;
+    return { side: favSide, pct: favPct, agrees: agrees };
+  }
+  function renderHero() {
+    var el = $("hero"); if (!el) return;
+    var dir = state.shownDir || "SKIP";
+    var s = pickStrength();                       // the SAME tier the strength banner renders
+    var nextMode = (state.remaining == null ? 999 : state.remaining) <= BET_WINDOW;
+    var star = heroStarState();
+    var isStar = !!(star && star.agrees && star.side === dir && !nextMode);
+    var fe = (dir === "OVER" || dir === "UNDER") ? feeEdgeFor(dir) : null;
+    // NOTE: marketPct() returns a WHOLE percent (0–100); everything below wants a probability, so
+    // normalize once here. (takerFee and the payout maths are all 0–1.)
+    var mRaw = (dir === "OVER" || dir === "UNDER") ? marketPct(dir) : null;
+    var mp = (typeof mRaw === "number") ? mRaw / 100 : null;
+    el.hidden = false;
+
+    // 1) Kicker — which round, and how long you have to act.
+    var mins = state.remaining != null ? Math.max(0, Math.floor(state.remaining / 60)) : null;
+    var secs = state.remaining != null ? Math.max(0, Math.floor(state.remaining % 60)) : null;
+    var clock = mins != null ? (mins + ":" + ("0" + secs).slice(-2) + " left") : "";
+    $("heroKicker").textContent = (nextMode ? "Next round" : "This round") + (clock ? " · " + clock : "");
+
+    // 2) The verdict itself. One headline per tier — the qualifier lives INSIDE it (never a separate,
+    //    contradicting line), which is how "right side, wrong price" reads as one sentence.
+    var head = "", qual = "", cls = "hcSkip";
+    if (dir !== "OVER" && dir !== "UNDER") { head = "Sit this one out"; }
+    else if (s.tier === "flip" && /OVERPRICED/.test(s.label)) { head = dir === "OVER" ? "Over" : "Under"; qual = "— but overpriced"; cls = dir === "OVER" ? "hcOver" : "hcUnder"; }
+    else if (s.tier === "flip") { head = "Too close — pass"; }
+    else if (nextMode) { head = dir === "OVER" ? "Over" : "Under"; qual = "— next-round preview"; cls = "hcSkip"; }
+    else if (s.tier === "lean") { head = "Lean " + (dir === "OVER" ? "Over" : "Under"); cls = dir === "OVER" ? "hcOver" : "hcUnder"; }
+    else { head = "Bet " + (dir === "OVER" ? "Over" : "Under"); cls = dir === "OVER" ? "hcOver" : "hcUnder"; }
+    $("heroCall").innerHTML = '<span class="' + cls + '">' + head + '</span>' +
+      (qual ? '<span class="hcQual">' + qual + '</span>' : "") +
+      (isStar ? '<span class="heroStar" title="A-grade: the crowd\'s favorite is in the 73-90c band AND the 24/7 tracker committed the same side.">' + STAR_SVG + '</span>' : "");
+
+    // 3) Why, in one plain sentence — the strength tier's own reasoning, upgraded when it's a star.
+    $("heroWhy").innerHTML = isStar
+      ? 'Crowd has <b>' + (star.side === "OVER" ? "Over" : "Under") + ' at ' + Math.round(star.pct) + '¢</b> and the tracker committed the same side. This setup hit <b>83%</b> over the last month.'
+      : s.sub;
+
+    // 4) Chips — the few numbers worth seeing without tapping anything.
+    var chips = [];
+    if (isStar) chips.push('<span class="cStar">A-GRADE</span>');
+    if (fe) chips.push('<span class="' + (fe.edge >= 0.01 ? "cPos" : fe.edge <= -0.01 ? "cNeg" : "") + '">edge ' + (fe.edge >= 0 ? "+" : "−") + Math.abs(fe.edge * 100).toFixed(1) + '¢ after fees</span>');
+    if (mp != null) chips.push('<span>crowd ' + Math.round(mp * 100) + '¢</span>');
+    if (fe && fe.appP != null) chips.push('<span>app ' + Math.round(fe.appP * 100) + '%</span>');
+    $("heroChips").innerHTML = chips.join("");
+
+    // 5) Price vs the line — the one chart that matters, as a single dot on a rail.
+    var meter = $("heroMeter"), strike = roundStrike(), px = state.lastPrice;
+    if (typeof strike === "number" && strike > 0 && typeof px === "number") {
+      meter.hidden = false;
+      var relPct = (px - strike) / strike * 100;
+      var SCALE = 0.35;                                   // ±0.35% covers ~all 15-min moves (median |margin| ≈ 0.09%)
+      var pos = 50 + Math.max(-1, Math.min(1, relPct / SCALE)) * 42;
+      var puck = $("hmPuck");
+      puck.style.left = pos.toFixed(1) + "%";
+      // Neutral grey inside ±VOID_MARGIN_PCT — the exact zone r89 refuses to grade ("too close to call"),
+      // so the dot stops claiming a side precisely where the app stops claiming one.
+      puck.className = "hmPuck" + (relPct > VOID_MARGIN_PCT ? " over" : relPct < -VOID_MARGIN_PCT ? " under" : "");
+      $("hmNowLbl").textContent = state.coin + " now";
+      $("hmNowVal").textContent = fmtMoney(px);
+      $("hmLineVal").textContent = fmtMoney(strike);
+      $("hmFootL").textContent = relPct >= 0 ? "below wins" : (Math.abs(relPct).toFixed(3) + "% below");
+      $("hmFootR").textContent = relPct >= 0 ? ("+" + relPct.toFixed(3) + "% above") : "above wins";
+      // The rail's halves always carry their side's colour — left = below the line (UNDER wins),
+      // right = above it (OVER wins) — so the picture reads the same way round after round.
+      $("hmFootL").style.color = "var(--red)";
+      $("hmFootR").style.color = "var(--green)";
+    } else meter.hidden = true;
+
+    // 6) What it costs and what it returns — after the fee, so it matches the payout line exactly.
+    var cost = $("heroCost");
+    if (mp != null && dir !== "SKIP" && !nextMode) {
+      var fee = takerFee(mp), ret = (1 - mp - fee) / (mp + fee);
+      cost.hidden = false;
+      cost.innerHTML =
+        '<div><b>' + Math.round(mp * 100) + '¢</b><span>' + (dir === "OVER" ? "Over" : "Under") + ' costs</span></div>' +
+        '<div><b>' + (fee * 100).toFixed(1) + '¢</b><span>Taker fee</span></div>' +
+        '<div class="' + (fe && fe.edge >= 0.01 ? "good" : fe && fe.edge <= -0.01 ? "bad" : "") + '"><b>' +
+          (ret >= 0 ? "+" : "") + Math.round(ret * 100) + '%</b><span>If it hits</span></div>';
+    } else cost.hidden = true;
   }
   // "Who's calling it better" — a running scoreboard of the AI Co-Pilot vs the 24/7 tracker, by hit-rate on
   // the rounds each actually committed to (skips never count). A diverging meter leans toward whoever's ahead.
@@ -4746,8 +4922,13 @@
     if (mktProb >= DEAD_MONEY_PCT / 100) { el.innerHTML = 'Payout ≈ <b>~' + (1 / mktProb).toFixed(2) + 'x</b> · <b style="color:var(--label-3)">barely beats your stake</b> — ' + dir + ' is near-certain; the value (if any) is the longshot side.'; return; }
     var mult = 1 / mktProb;                                        // gross multiple — matches what the exchange quotes
     var fee = takerFee(mktProb);                                   // the EV math, though, is AFTER the taker fee
-    var reco = state.lastRecoObj, appP = reco ? (dir === "OVER" ? combinedOdds(reco).pOver : 1 - combinedOdds(reco).pOver) : null;
-    var edge = appP != null ? appP - mktProb - fee : null;         // net edge: what's left once the fee is paid
+    // Use the SHARED feeEdgeFor (r90) rather than a second copy of the same arithmetic. r87 made the
+    // verdict and the strength banner defer to this number, but this line still recomputed it — two
+    // copies of "our % − price − fee" that agreed only by construction. One function now, so the
+    // headline, the banner, the hero chips and this line are literally the same value.
+    var fe2 = feeEdgeFor(dir);
+    var appP = fe2 ? fe2.appP : null;
+    var edge = fe2 ? fe2.edge : null;                              // net edge: what's left once the fee is paid
     var tag = edge == null ? "" : edge >= 0.01 ? ' · <b style="color:var(--green)">+EV after fees — app rates it above price + fee</b>' : edge <= -0.01 ? ' · <b style="color:var(--red)">−EV after fees — skip</b>' : ' · <b style="color:var(--label-3)">≈ fair after fees · ~break-even</b>';
     el.innerHTML = 'Payout ≈ <b>' + mult.toFixed(2) + 'x</b>' + (appP != null ? ' · app ' + Math.round(appP * 100) + '% vs market ' + Math.round(mktProb * 100) + '%' : '') + ' · fee ~' + (fee * 100).toFixed(1) + '¢' + tag;
   }
@@ -4765,6 +4946,8 @@
   // STRICTLY READ-ONLY: reads activeCrowd() + the already-fetched 24/7 state; never computes, commits,
   // or tempers a pick.
   var FAV_ZONE_LO = 73, FAV_ZONE_HI = 90, DEAD_MARGIN_PCT = 0;
+  // Mirrors the Worker's VOID_MARGIN_PCT (r89): inside this margin a round is "too close to call".
+  var VOID_MARGIN_PCT = 0.02;
   // Trailing market "pulse": median |settle margin| of this coin's newest ~8 graded 24/7 rounds.
   // Small on purpose (~2h of rounds) so it reacts within a couple of rounds when the market goes quiet.
   function marketPulse() {
