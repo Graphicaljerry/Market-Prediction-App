@@ -91,19 +91,47 @@ Spend is small by design, but cap it anyway:
   Net: identical AI input on every device, still **one paid call per round**. (`noAI` branch +
   `airead:` write in `worker.js`; `applyCrowd` in `eth-tracker.html`.)
 
-## (Recommended) Kalshi API key — lift the rate limit that still hides the crowd
+## ⚠️ (Do this first) Kalshi API key — the single biggest accuracy lever
 
-Kalshi rate-limits Cloudflare's **shared** egress IPs, and that is now the main data bottleneck: even
-after the r85 retry, the crowd is present on only ~43% of rounds (16% at :00 slots). Authenticated
-requests are limited **per account**, not per IP — so a free API key takes coverage toward full:
+**The key is free.** Kalshi charges nothing for API access — it comes with the account you already
+have, and **read-only access doesn't even require the account to be funded**. You only ever pay the
+normal per-trade fee on trades *you* place; this Worker never places one (it only reads prices and
+settled results). The free "Basic" tier allows ~200 reads/second — the tracker uses roughly 1 per
+15 minutes per coin.
 
-1. On kalshi.com: **Account → Settings → API keys → Create key**. Save the **Key ID** and download the
-   **RSA private key** (`.pem` — shown once).
-2. Worker → **Settings → Variables and Secrets** → add two **Secrets**:
-   `KALSHI_API_KEY_ID` = the key ID, and `KALSHI_PRIVATE_KEY` = the full PEM text (BEGIN/END lines included).
-3. Done — no redeploy needed. Every Kalshi request is now signed (RSA-PSS/SHA-256 over
-   timestamp+method+path, Kalshi's standard scheme). No key → anonymous requests exactly as before; a
-   malformed key falls back to anonymous rather than ever stalling a pick. (`kalshiAuthHeaders` in `worker.js`.)
+**Why it matters more than anything else in the app.** Kalshi rate-limits Cloudflare's **shared**
+egress IPs, and it tightened that throttling around **Jul 31, 2026**: crowd coverage fell from ~50%
+of rounds to **~25%**, and because the tracker refuses to bet without a live crowd price (r85), its
+commit rate fell **14% → 8%**. It is starving. Worse, without Kalshi's own settled result **63% of
+rounds get graded by our Coinbase proxy**, which the month audit measured as calling the wrong side
+**5.8% of the time overall** (12.4% on BNB). Authenticated requests are limited **per account**
+instead of per IP, which fixes both at once.
+
+1. On **kalshi.com** → **Account → Settings → API keys → Create key** (on some builds: **Profile →
+   API**). It shows you two things: a **Key ID** (a UUID) and an **RSA private key** file (`.pem`).
+   **Download the private key — Kalshi shows it exactly once.**
+2. In Cloudflare: **Workers & Pages → your Worker → Settings → Variables and Secrets → Add**, type
+   **Secret** (not Text — Secrets are write-only and never readable back), twice:
+   - `KALSHI_API_KEY_ID` = the Key ID
+   - `KALSHI_PRIVATE_KEY` = the **entire** PEM text, including the
+     `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines. Paste it as-is; line breaks
+     are fine.
+3. **Verify it: open `…workers.dev/?authcheck`.** It signs a request to a private Kalshi endpoint —
+   which only succeeds if the signature genuinely verifies — and reports back:
+   - `{"ok":true, …}` → the key works; requests are authenticated from now on.
+   - `"importFailed":true` → the PEM was pasted wrong (usually a missing BEGIN/END line).
+   - `httpStatus: 401` → the Key ID and private key aren't from the same key pair; re-create and
+     re-paste both.
+   - `secrets:{…false}` → that Secret didn't save. `?authcheck` **never returns the key itself** — only
+     booleans for whether each secret exists.
+
+No redeploy is needed; the next cron picks it up. Every Kalshi request is then signed (RSA-PSS/SHA-256
+over timestamp+method+path, Kalshi's standard scheme). No key → anonymous requests exactly as before;
+a malformed key **falls back to anonymous** rather than ever stalling a pick.
+(`kalshiAuthHeaders` + the `?authcheck` route in `worker.js`.)
+
+**Keep the key out of Git.** It belongs only in the Cloudflare dashboard as a Secret — never in
+`wrangler.toml`, never in a commit. If it ever leaks, delete the key on kalshi.com and make a new one.
 
 ## (Optional) Crowd odds — Kalshi series tickers
 Without these, the AI still works; the **Crowd** line just shows `n/a`.
@@ -169,10 +197,21 @@ where `z = mom·3.16/sig` (momentum in σ units) and `s = min(1, (|z|−2)/2)`.
 
 **Confluence:** `dir = sign(pRaw − 0.5)`; `conf =` (weight of reads leaning the same way as `dir`, past a 0.005 margin) ÷ (total weight); `agree =` how many reads do.
 
-**Commit / SKIP gate:** `band = 0.10 + 0.10·(1 − conf)`
+**Commit / SKIP gate:** `band = 0.12 + 0.10·(1 − conf)`
 - `pRaw ≥ 0.5 + band` → **OVER**  ·  `pRaw ≤ 0.5 − band` → **UNDER**  ·  otherwise → **SKIP**
 
-So fully-aligned reads commit past **±0.10**; fully-split reads need **±0.20**. It SKIPs the majority *by design* — that selectivity is the edge.
+So fully-aligned reads commit past **±0.12**; fully-split reads need **±0.22**. It SKIPs the majority *by design* — that selectivity is the edge.
+
+**Floor raised 0.10 → 0.12 (r89)** on the full-month audit of 2,290 committed picks. Sorted by how far the blend sat from 50/50, the bottom slice was noise and everything above it was not:
+
+| edge \|p−50\| | hit rate | n |
+|---|---|---|
+| **10–12** | **54.7%** — a coin flip, loses to fees | 86 |
+| 12–16 | 69.5% | 810 |
+| 16–22 | 77.3% | 862 |
+| 22+ | 86.0% | 477 |
+
+Dropping the 10–12 slice costs **3.8% of bet volume** and lifts the committed record **75.8% → 76.3%**. It's a small sample (n=86), so this is a deliberately modest, reversible trim — restore `0.10` to revert exactly.
 
 **Crowd gate (r85, from the 2026-07 data audit):** a non-SKIP side is only kept if the pick was made **with a live crowd price**. Audited: commits made with the crowd present hit **40/50 (80%)**; blind commits (momentum + model only) went **6/12 — a coin flip**. A crowd-less round still logs its lean (the shadow record) and still trains the model — it just can't claim a bet. Like the band gate below, it can only ever skip *more*.
 
@@ -181,6 +220,18 @@ So fully-aligned reads commit past **±0.10**; fully-split reads need **±0.20**
 **Output:** `{ side, prob = round(pRaw·100), conf, agree }`.
 
 **Lock & grade (the honesty layer):** one pick per round, never overwritten (`!rec.pending`); only locks a still-open round (≥ 6 min left **and** odds 3–97%); graded on the ~60-sec Coinbase trade average at the boundary (candle close as fallback), then **reconciled to Kalshi's settled result** — the definitive outcome, exactly what Robinhood pays (a separate **confirmed hit-rate** counts only Kalshi-settled rounds). If Kalshi is unreachable, a self-anchored fallback grades on the Coinbase close vs the round's open (flagged *self-tracked*, never counted as confirmed).
+
+**"Too close to call" — void grading (r89, `VOID_MARGIN_PCT`, default `0.02`%).** A round whose proxy settle lands within that % of the line is recorded **void** (`void: true`, `actual: null`, the side it *would* have said kept as `provisional`) instead of graded. The month audit measured the proxy against the 7,378 rounds Kalshi later confirmed and found the error is overwhelmingly concentrated in that sliver:
+
+| \|margin\| we saw at grade time | proxy called the WRONG side | n |
+|---|---|---|
+| 0.00–0.01% | **38.8%** | 400 |
+| 0.01–0.02% | **24.7%** | 397 |
+| 0.02–0.03% | 14.0% | 449 |
+| 0.05–0.10% | 1.9% | 1,619 |
+| 0.10%+ | 0.3% | 3,691 |
+
+Those ±0.02% rounds are ~11% of the record but carry **60% of every grading error**; excluding them takes the proxy's error rate from **5.8% → 2.6%**. A void round is skipped by every tally (**not** counted as a loss) and by `learnFromRound`, so the model never trains on a label that's wrong a quarter of the time; the app shows it as a *"Too close · void"* row. A round with a Kalshi ticker is still upgraded later — `reconcileKalshi` clears the void and grades it definitively. Set `VOID_MARGIN_PCT=0` to grade everything the old way.
 
 **Second chance + shells (r85):** a brand-new Kalshi market often shows junk/TBD quotes for its first minute or two, which used to strand ~78% of rounds on the self-anchored path (2026-07 audit; worst at :00 slots — 9% Kalshi coverage). Now: `fetchCrowd` returns the market's **shell** (ticker/close/strike, `overPct: null`) instead of nothing, so a self-anchored round still gets its **ticker attached** and reconciles to Kalshi later; and if any series-coin locked without a crowd price, the cron waits **~75s** and **re-locks that pick with the crowd** (only when ≥10 min still remain — never near a close; a failed retry keeps the original pick; a retry that lands a different round is discarded). Shells are never cached over a last-good price. New per-round record fields: `crowd` (raw crowd % at lock), `kStrike` (Kalshi's posted strike when we self-anchored), `pxClose` (the Coinbase proxy close, preserved when Kalshi's settle overwrites `close`), `retried`.
 
@@ -210,8 +261,9 @@ The live record keeps only the newest **300 rounds per coin** (~3 days) — the 
 inside that single window because everything older had been silently deleted. Now every graded round is
 **appended exactly once to a permanent per-day KV key** (`arch:YYYY-MM-DD`, no expiry), ~3 hours after it
 settles so Kalshi reconciliation has converged first. Rows are the full round record plus the audit's new
-fields (`crowd`, `kStrike`, `pxClose`, `retried`) — everything a future audit needs to measure calibration,
-EV net of fees, and proxy-vs-index drift over months instead of days.
+fields (`crowd`, `kStrike`, `pxClose`, `retried`, and since r89 `void`/`provisional`) — everything a future
+audit needs to measure calibration, EV net of fees, and proxy-vs-index drift over months instead of days.
+The Aug-2026 month audit ran off exactly these files: 40 days, **21,412 rounds**.
 
 - **List days:** `…workers.dev/?archive` → `{ days: ["2026-07-11", …] }`
 - **Fetch a day:** `…workers.dev/?archive=2026-07-11` (add `&dl=1` to download the `.json`)
@@ -232,7 +284,8 @@ Cloudflare Workers (shared IPs) *even with a token*, so Discord is the dependabl
 **By default (r86.1) exactly ONE kind of ping fires: the ⭐ star bet** — the user asked for star-only
 notifications. The other ping types below stay in the code but are OFF unless you set a Text var
 **`PING_MODE`** = `all` (default `star`):
-- **⭐ Star bet — "A-grade setup, time to act" (the default, and the only default ping)** — ≈7 min before each close, fires when a side is in the favorite band — `LOCK_MIN_PROB` (default 65% ≈ 1.54x) to `LOCK_MAX_PROB` (default 80% ≈ 1.25x) — **AND (r86) the 24/7 tracker committed that same side this round AND the market isn't dead-chop**. Message: *"⭐ Star bet (ETH - Over 1.5x)"*. The week-2 audit (4,466 rounds) showed why the extra gates earn their keep: the raw band alone ran ≈ break-even (72.7% of 524, with outright −EV dead days), while the tracker's gated commits hit **78.0%** at the same prices — so the ping now fires only on that star-plus-commit subset. The dead-market gate skips a coin whose last ~8 graded rounds settled with a median |margin| below **`DEAD_MARGIN_PCT`** (default `0.08`%). One read-only state load powers both gates; if it fails, favorite pings stay off (a missed ping costs nothing; a bad ping costs money). Skimmable message — *"Predict (ETH - Over 1.5x)"*. (`scanLateLocks`.)
+- **⭐ Star bet — "A-grade setup, time to act" (the default, and the only default ping)** — ≈7 min before each close, fires when a side is in the favorite band — **`LOCK_MIN_PROB` (default 73% ≈ 1.37x) to `LOCK_MAX_PROB` (default 90% ≈ 1.11x), bounds inclusive** — **AND the 24/7 tracker committed that same side this round**. Message: *"⭐ Star bet (ETH - Over 1.5x)"*. **Band re-centered 65–80 → 73–90 in r89** on the full-month audit (21,412 rounds; 7,349 crowd-priced): the old band's lower half *lost money* — favorites bought at 65–70¢ won only 67.5% and went **−1.4¢ per $** after fees — while 75–90¢ won ~84%. Star-plus-commit went **74.4% / +1.7¢ per $ → 82.9% / +3.7¢ per $**, firing ~30×/day instead of ~48×. Above 90¢ stays excluded: the payout is too thin (90–100¢ ran −8.5¢ per $). The tracker-commit gate is what separates the star from the raw band, which without it managed only 65.7% at the same prices. One read-only state load powers the gate; if it fails, favorite pings stay off (a missed ping costs nothing; a bad ping costs money). (`scanLateLocks`.)
+  - **Dead-market gate — retired in r89, default OFF.** `DEAD_MARGIN_PCT` now defaults to `0`. It was added in r86 on two bad days' evidence; across the full month, band favorites won **74.9% in "dead" markets vs 74.2% in "alive"** ones — quiet chop simply didn't hurt them, so the gate was only suppressing good stars. Set `DEAD_MARGIN_PCT=0.08` (a Text var — no deploy needed) to bring it back: it then skips a coin whose last ~8 graded rounds settled with a median |margin| below that value.
 - **Value entry "longshot about to cross"** *(`PING_MODE=all` only — the audit found longshots lose ~9%/bet)* — same scan: pings when price is on one side, **momentum is carrying it toward the line**, and the side it's heading to is still a **big-multiplier underdog (≥ 2.0x)**. This is the *profit* signal — higher variance, so size small. (Mirrors the app's `primeCheck` cue, pushed even with the app closed.)
 - **Open pick (earliest)** *(`PING_MODE=all` only)* — the regular 15-min cron pings the **moment a round opens** with the tracker's committed pick (≈13 min to act). Loosened so it actually fires: **`NTFY_MIN_PROB` default 68%** and **`NTFY_MIN_AGREE` default 2** (was 75% / 3 — too strict, almost never qualified). Still **skips dead-money** sides (≥ `NTFY_DEAD_PCT`, default 90%) and shows the multiplier. (`notifyHotPicks`.)
 - **STRONG — BET** *(`PING_MODE=all` only)* — a louder variant of the open-pick ping: when that strong pick is **also momentum-confirmed** (short-term move already heading the pick's way — the server-side analog of the app's "app + AI + momentum all line up"), it goes out as a distinct **"🔥 STRONG — BET (SOL - Over)"** alert instead of the normal "Predict (…)". This is the native notification the **app shows phones/tablets in place of the desktop banner**, and it reaches you even with the app closed. (`notifyHotPicks`.)

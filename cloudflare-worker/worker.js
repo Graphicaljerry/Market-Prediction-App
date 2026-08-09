@@ -107,6 +107,32 @@ export default {
         if (u.searchParams.has("dl")) headers["Content-Disposition"] = 'attachment; filename="tracker-archive-' + day + '.json"';
         return new Response(raw, { status: 200, headers });
       }
+      // Kalshi API-key self-test: open ?authcheck after adding the two Secrets. Proves the whole chain
+      // (secrets present → PEM imports → signature accepted) WITHOUT revealing the key: it signs a request
+      // to a private endpoint, which only returns 200 if the signature actually verifies. A 401 means the
+      // key ID and the private key don't match each other; "importFailed" means the PEM was pasted wrong
+      // (must be the whole -----BEGIN PRIVATE KEY----- … -----END PRIVATE KEY----- block).
+      if (u.searchParams.has("authcheck")) {
+        const have = { KALSHI_API_KEY_ID: !!env.KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY: !!env.KALSHI_PRIVATE_KEY };
+        if (!have.KALSHI_API_KEY_ID || !have.KALSHI_PRIVATE_KEY) {
+          return json({ ok: false, secrets: have, hint: "Add BOTH Secrets in Workers → Settings → Variables and Secrets, then redeploy is not needed — just reload this URL." });
+        }
+        _kalshiKey = null;                                   // re-import on every check so a fixed key is picked up without waiting for a new isolate
+        const auth = await kalshiAuthHeaders(env, "GET", `${KALSHI_BASE}/portfolio/balance`);
+        if (!auth) return json({ ok: false, secrets: have, importFailed: true, hint: "The private key didn't parse. Paste the ENTIRE PEM including the BEGIN/END lines." });
+        let status = 0, body = "";
+        try {
+          const r = await fetch(`${KALSHI_BASE}/portfolio/balance`, { headers: { ...KALSHI_HEADERS, ...auth } });
+          status = r.status; body = (await r.text()).slice(0, 200);
+        } catch (e) { return json({ ok: false, secrets: have, error: String(e && e.message || e) }, 502); }
+        return json({
+          ok: status === 200, secrets: have, signed: true, httpStatus: status,
+          meaning: status === 200 ? "Key works — Kalshi requests are now authenticated (per-account rate limits instead of the shared-IP ones)."
+            : status === 401 ? "Signature rejected — the key ID and private key don't match. Re-create the key and paste both halves again."
+            : "Unexpected response from Kalshi; the raw reply is below.",
+          reply: body,
+        });
+      }
       // Best bet across all coins right now — a compact ranked leaderboard for the app's footer ticker.
       if (u.searchParams.has("best")) {
         const st = await loadState(env);
@@ -985,6 +1011,7 @@ async function reconcileKalshi(env, rec, coinModel, global) {
     const kal = await kalshiResult(env, e.ticker);
     if (!kal) continue;                                   // not settled yet — retried next cron
     e.src = "kalshi"; e.actual = kal.actual;              // row-level truth; the caller recomputes all aggregates from history
+    if (e.void) { delete e.void; delete e.provisional; }  // (r89) Kalshi read the photo-finish for us — the round is scoreable again
     // Upgrade the displayed close + margin to Kalshi's REAL settled value (not the Coinbase proxy), so the
     // arrow / Recent-Rounds % match exactly what Kalshi paid. Sanity-gated to a sane band around the strike.
     if (kal.settle != null && typeof e.strike === "number" && e.strike > 0 && kal.settle > e.strike * 0.5 && kal.settle < e.strike * 2) {
@@ -1068,9 +1095,9 @@ async function ntfyPush(env, title, tag, body) {
 }
 // LATE-ROUND alert scanner — runs ~7 min before each close (the 8,23,38,53 cron). ONE read-only pass over
 // every coin's Kalshi crowd (persist=false → no KV writes), firing up to two kinds of ping:
-//   • STRONG FAVORITE "bet while you can" — the market clearly favors a side (>= LOCK_MIN_PROB, default 65%)
-//     but hasn't locked it (< LOCK_MAX_PROB, default 80%) — AND (r86) the market isn't dead-chop AND the
-//     24/7 tracker committed the same side this round. Only that star-plus-commit subset carried the edge.
+//   • STRONG FAVORITE "bet while you can" — the market clearly favors a side (>= LOCK_MIN_PROB, default 73%)
+//     but isn't a near-lock (<= LOCK_MAX_PROB, default 90%) — AND (r86) the 24/7 tracker committed the
+//     same side this round. Only that star-plus-commit subset carried the edge.
 //   • VALUE ENTRY "longshot about to cross" — price is on one side, momentum is carrying it TOWARD the line,
 //     and the side it's heading to is still the big-multiplier underdog (>= 2.5x). Higher variance, real payout.
 //     (This is primeCheck's client-side cue, now pushed even with the app closed.)
@@ -1078,21 +1105,29 @@ async function ntfyPush(env, title, tag, body) {
 // within one 15-min window) — so pings keep firing through Kalshi 429s without ever using last round's data.
 async function scanLateLocks(env) {
   if (!env.DISCORD_WEBHOOK && !env.NTFY_TOPIC) return;
-  // STRONG-FAVORITE band — the one pattern the 2026-07 data audit found to be reliably +EV: favorites the
-  // crowd priced 65–80% went on to WIN ~82% of settled rounds (n=77) — ~+14% per bet net of the taker fee,
-  // the classic favorite-longshot bias. Below ~65% the edge fades into fees; above ~80% the payout is too
-  // thin for the risk. Band re-centered 62–74 → 65–80 on that evidence. Tune with LOCK_MIN_PROB / LOCK_MAX_PROB.
-  const lo = Number(env.LOCK_MIN_PROB) || 65, hi = Number(env.LOCK_MAX_PROB) || 80;
-  // Week-2 audit (r86): the RAW favorite band ran ≈ break-even (72.7% of 524), while the tracker's own
-  // gated commits hit 78.0% at the same prices — and the band was outright −EV on dead-chop days
-  // (Jul 14: 57.6%, Jul 18: 66.7% with 44% photo-finishes). So the favorite ping now requires BOTH:
-  //   (a) NOT a dead market — the coin's last ~8 graded rounds must NOT all be settling a hair from the
-  //       line (median |margin| >= DEAD_MARGIN_PCT, default 0.08%); and
-  //   (b) the 24/7 tracker COMMITTED the same side this round — pinging only the star-plus-commit
-  //       subset that actually carried the edge. Fewer pings, better pings.
-  // One read-only state load powers both; if it fails, pings stay gated OFF for safety (a missed ping
-  // costs nothing; a bad ping costs money). The value-entry longshot ping is unchanged.
-  const deadPct = Number(env.DEAD_MARGIN_PCT) || 0.08;
+  // STRONG-FAVORITE band — the one pattern every audit has found reliably +EV: the favorite-longshot bias.
+  // BAND RE-CENTERED 65–80 → 73–90 (r89, full-month audit over 21,412 rounds / 7,349 with a crowd price).
+  // Splitting the month finely by price shows the old band straddled a losing half and a winning half:
+  //     favP 0.65–0.70  win 67.5%  ret/$ −0.014      <- was inside the old band, LOSES after fees
+  //     favP 0.70–0.75  win 73.0%  ret/$ −0.003      <- break-even
+  //     favP 0.75–0.80  win 81.9%  ret/$ +0.049
+  //     favP 0.80–0.90  win 86.2%  ret/$ +0.021
+  //     favP 0.90–1.00  win 84.5%  ret/$ −0.085      <- payout too thin, still excluded
+  // Star (band + tracker commit) at 65–80: 74.4% / +0.017 per $. At 73–90: 82.9% / +0.037 per $ — roughly
+  // double the edge on ~30 alerts a day instead of ~48. Honest caveat recorded here for the next audit: even
+  // the good zone decayed over the month (+0.10/$ in week 1 → ≈0 in weeks 4–5) as the market sharpened, so
+  // re-measure before trusting it further. Tune with LOCK_MIN_PROB / LOCK_MAX_PROB (bounds are INCLUSIVE).
+  const lo = Number(env.LOCK_MIN_PROB) || 73, hi = Number(env.LOCK_MAX_PROB) || 90;
+  // The favorite ping requires the 24/7 tracker to have COMMITTED the same side this round — pinging only
+  // the star-plus-commit subset that carried the edge. One read-only state load powers it; if it fails,
+  // pings stay gated OFF for safety (a missed ping costs nothing; a bad ping costs money).
+  //
+  // DEAD-MARKET KILL SWITCH — RETIRED (r89), default OFF. r86 added it on two bad days (Jul 14/18) worth of
+  // evidence. Over the full month it simply wasn't real: band favorites won 74.9% in "dead" markets vs 74.2%
+  // in "alive" ones — i.e. quiet chop did NOT hurt favorites, and the switch was muting good stars for
+  // nothing. The plumbing stays so it can be revived from the dashboard with no deploy: set DEAD_MARGIN_PCT
+  // to e.g. 0.08 to gate again. 0 / unset = off.
+  const deadPct = (env.DEAD_MARGIN_PCT == null || env.DEAD_MARGIN_PCT === "") ? 0 : Number(env.DEAD_MARGIN_PCT) || 0;
   // PING_MODE (r86.1): "star" (default) sends ONLY the ⭐ star-bet ping below; "all" also restores the
   // value-entry longshot ping here and the round-open pick pings in notifyHotPicks.
   const mode = (env.PING_MODE || "star").toLowerCase();
@@ -1120,13 +1155,13 @@ async function scanLateLocks(env) {
       }
       if (m.length >= 4) { m.sort((a, b) => a - b); pulse = m.length % 2 ? m[(m.length - 1) / 2] : (m[m.length / 2 - 1] + m[m.length / 2]) / 2; }
     }
-    const dead = pulse != null && pulse < deadPct;
+    const dead = deadPct > 0 && pulse != null && pulse < deadPct;   // retired by default (r89) — see deadPct above
     const pnd = rec && rec.pending;
     const sameRound = pnd && typeof pnd.closeMs === "number" && closeMs > 0 && Math.abs(pnd.closeMs - closeMs) <= 90000;
     const committedSide = sameRound && (pnd.side === "OVER" || pnd.side === "UNDER") ? pnd.side : null;
     if (!dead) {
-      if (op >= lo && op < hi && committedSide === "OVER") lockHot.push(`${c} - Over ${(100 / op).toFixed(1)}x`);
-      else if (op <= 100 - lo && op > 100 - hi && committedSide === "UNDER") lockHot.push(`${c} - Under ${(100 / (100 - op)).toFixed(1)}x`);
+      if (op >= lo && op <= hi && committedSide === "OVER") lockHot.push(`${c} - Over ${(100 / op).toFixed(1)}x`);
+      else if (op <= 100 - lo && op >= 100 - hi && committedSide === "UNDER") lockHot.push(`${c} - Under ${(100 / (100 - op)).toFixed(1)}x`);
     }
     // (2) VALUE ENTRY — the big-payout longshot the price is racing toward (needs live Coinbase momentum).
     // OFF by default since r86.1 (PING_MODE=all restores it): longshots lost ~9%/bet in the audit, and
@@ -1264,10 +1299,17 @@ function freePick(crowdOverPct, mom, obi, modelOver, sig, calib) {
   let agreeW = 0, agreeN = 0, totW = 0;
   for (const x of parts) { totW += x.w; if ((x.p - 0.5) * dir > 0.005) { agreeW += x.w; agreeN++; } }
   const conf = totW ? agreeW / totW : 0;
-  // Commit threshold widens as the reads split: ±0.10 when fully aligned up to ±0.20 when they're at
-  // odds — tightened from ±0.08 so it bets LESS but only on stronger, more-aligned setups (discipline
-  // over coverage). Validate via bet-rate vs hit-rate-on-bets in the now-complete record.
-  const band = 0.10 + 0.10 * (1 - conf);
+  // Commit threshold widens as the reads split: ±0.12 when fully aligned up to ±0.22 when they're at
+  // odds — it bets LESS but only on stronger, more-aligned setups (discipline over coverage).
+  // FLOOR RAISED 0.10 → 0.12 (r89, full-month audit of 2,290 committed picks). The bottom slice of
+  // commits was pure noise and nothing else came close to it:
+  //     edge |p−50| 10–12  hit 54.7%  (n=86)   <- barely better than a coin flip, LOSES after fees
+  //     edge        12–16  hit 69.5%  (n=810)
+  //     edge        16–22  hit 77.3%  (n=862)
+  //     edge          22+  hit 86.0%  (n=477)
+  // Dropping that slice costs 3.8% of bet volume and lifts the committed record 75.8% → 76.3%. Small
+  // sample (n=86) so this is a modest, reversible trim, not a rewrite: restore 0.10 to revert exactly.
+  const band = 0.12 + 0.10 * (1 - conf);
   const side = pOver >= 0.5 + band ? "OVER" : pOver <= 0.5 - band ? "UNDER" : "SKIP";
   return { pOver, pRaw, side, conf: Math.round(conf * 100) / 100, agree: agreeN };
 }
@@ -1633,13 +1675,33 @@ async function runCoinPick(env, coin, st) {
     const candle = await cbCloseAt(product, p.closeMs);
     let settle = avg60 != null ? avg60 : candle;
     if (settle == null && micro && typeof micro.price === "number") settle = micro.price;   // last resort if both are missing
-    const actual = (typeof settle === "number" ? (settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT") : null);
+    const graded = (typeof settle === "number" ? (settle > p.strike ? "OVER" : settle < p.strike ? "UNDER" : "FLAT") : null);
     const candleSide = (typeof candle === "number") ? (candle > p.strike ? "OVER" : candle < p.strike ? "UNDER" : "FLAT") : null;
-    const disputed = (actual === "OVER" || actual === "UNDER") && !!candleSide && candleSide !== actual;   // 60-sec avg vs single candle disagree → photo-finish
-    if (actual && actual !== "FLAT") {
+    const disputed = (graded === "OVER" || graded === "UNDER") && !!candleSide && candleSide !== graded;   // 60-sec avg vs single candle disagree → photo-finish
+    // TOO CLOSE TO CALL (r89) — when our Coinbase proxy lands a hair from the line, it is NOT evidence,
+    // it's a guess. Measured against the 7,378 rounds Kalshi later confirmed (proxy close kept as pxClose):
+    //     |margin| we saw   proxy graded the WRONG side
+    //       0.00–0.01%              38.8%   (n=400)   <- a coin flip
+    //       0.01–0.02%              24.7%   (n=397)
+    //       0.02–0.03%              14.0%   (n=449)
+    //       0.05–0.10%               1.9%   (n=1619)
+    //       0.10%+                   0.3%   (n=3691)
+    // The ±0.02% zone is ~11% of rounds but carries 60% of ALL grading errors; excluding it drops the
+    // proxy's error rate 5.8% → 2.6%. So a round inside it is recorded VOID (actual: null): it keeps its
+    // numbers for display but is skipped by every hit-rate tally AND by the learning model (learnFromRound
+    // already ignores a null actual), instead of teaching the model a label that's wrong a quarter of the
+    // time. This is a LOG/MEASUREMENT change only — the pick was already locked and its money already
+    // decided by Kalshi; we simply refuse to score ourselves on a number we can't read. A round with a
+    // Kalshi ticker is still upgraded to the definitive result by reconcileKalshi, which clears the void.
+    // Tune with VOID_MARGIN_PCT (0 = off, grade everything the old way).
+    const voidPct = (env.VOID_MARGIN_PCT == null || env.VOID_MARGIN_PCT === "") ? 0.02 : Number(env.VOID_MARGIN_PCT) || 0;
+    const marginPct = (typeof settle === "number" && p.strike > 0) ? Math.abs(settle - p.strike) / p.strike * 100 : null;
+    const tooClose = voidPct > 0 && marginPct != null && marginPct <= voidPct;
+    const actual = tooClose ? null : graded;
+    if (graded && graded !== "FLAT") {
       const bet = (p.side === "OVER" || p.side === "UNDER");
       const lean = bet ? p.side : (p.pOver >= 50 ? "OVER" : "UNDER");          // the side it leaned, even on a SKIP
-      const correct = bet ? (actual === p.side) : null;
+      const correct = (bet && actual) ? (actual === p.side) : null;            // void round → no verdict, not a loss
       const over$ = (typeof settle === "number") ? Math.round((settle - p.strike) * 100) / 100 : null;
       const overPct = (over$ != null && p.strike > 0) ? Math.round((settle - p.strike) / p.strike * 1e5) / 1e3 : null;
       rec.history.unshift({ time: p.label, ts: p.ts || null, side: p.side, lean, actual, correct, skipped: !bet, prob: p.prob, pOver: typeof p.pOver === "number" ? p.pOver : null, pRaw: typeof p.pRaw === "number" ? p.pRaw : null, strike: p.strike, close: typeof settle === "number" ? settle : null, over: over$, overPct: overPct, ticker: p.ticker || null, self: p.self || false, feat: Array.isArray(p.feat) ? p.feat : null, caseMem: p.caseMem || null, disputed: disputed, trained: false, src: p.self ? "self" : "candle",
@@ -1648,7 +1710,12 @@ async function runCoinPick(env, coin, st) {
         // strike drift vs our price-now proxy), and whether the second-chance retry upgraded this pick.
         crowd: p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null,
         kStrike: typeof p.kStrike === "number" ? p.kStrike : null,
-        retried: p.retried ? true : undefined });
+        retried: p.retried ? true : undefined,
+        // Void bookkeeping (r89): `void` marks a round too close for the proxy to call; `provisional`
+        // keeps the side it WOULD have said, so the app can show "too close to call" honestly and a
+        // later audit can still measure how those guesses would have scored.
+        void: tooClose ? true : undefined,
+        provisional: tooClose ? graded : undefined });
       if (rec.history.length > 300) rec.history.pop();
       rec.lastMargin = overPct;   // signed % the last round settled past its line (mean-reversion / momentum tell)
       rec.lastActual = actual;

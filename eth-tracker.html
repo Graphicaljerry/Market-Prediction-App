@@ -1395,10 +1395,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r88</span><span class="buildSep">·</span><span>2026-07-18</span>
+        <span class="buildVer">build r89</span><span class="buildSep">·</span><span>2026-08-09</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Month audit — the star moves to where the money is (r89).</b> A full month of recorded rounds (21,412, of which 7,349 had a crowd price) showed the old ⭐ band straddled a losing half and a winning half: favorites priced <b>65–70¢ won 67.5% and still lost money after fees</b>, while 75–90¢ won ~84%. So the star band moves <b>65–80 → 73–90</b>: the star now hits 82.9% and roughly <b>doubles its edge</b> (+1.7¢ → +3.7¢ per dollar), at ~30 alerts a day instead of ~48. Three more changes ride along. The <b>commit bar</b> rises a notch (the weakest slice of bets hit just 54.7% — dropping it costs 3.8% of volume and lifts the record 75.8% → 76.3%). The 💤 <b>dead-market kill switch is retired</b>: over the month quiet chop did <i>not</i> hurt favorites (74.9% vs 74.2%), so it was muting good stars for nothing. And rounds that settle a hair from the line are now marked <b>"too close to call" (void)</b> instead of guessed — inside ±0.02% our price feed disagrees with Kalshi about a quarter of the time, and that sliver carried <b>60% of all our grading errors</b>; voiding it keeps both the record and what the model learns honest. <b>Heads up: the band, the commit bar and the star alerts all change what you're told to bet.</b></p>
         <p><b>More arrows + a pending slot (r88).</b> The "Recent 15-min" row on phones showed only ~6 arrows because the long text label ate the space — it now shrinks to a small "15m" chip on narrow screens, fitting ~10 arrows. And the just-closed round shows a <b>pulsing hollow slot</b> while its exact close is being confirmed, so the row never looks like it's missing one — it becomes a real frozen arrow the moment the grade lands (arrows still never guess). Display-only.</p>
         <p><b>One voice + star-only pings (r87).</b> Fixes the mixed messages from the Jul-18 screens ("STRONG — worth betting / BUY OVER" above a "−EV after fees — skip" payout line while the tracker said SKIP). The headline verdict and the strength banner now <b>defer to the same after-fee edge the payout line prints</b>: when the price is a losing buy, the card says <b>"OVER likely — but overpriced"</b> (right direction, wrong price) and the banner says <b>"OVERPRICED — don't buy"</b> — no more BUY shouting over a skip. Display-only; the committed side and the round log are unchanged. Discord/ntfy also go <b>star-only by default</b>: one ping type, the ⭐ A-grade star bet (set <code>PING_MODE=all</code> in the Worker to restore the old pings).</p>
         <p><b>Week-2 audit — smarter star, dead-market kill switch, off-book guardrail (r86).</b> A second audit (4,466 archived rounds) found the raw favorite band ran ≈ break-even (72.7%) with brutal dead-chop days, while the 24/7 tracker's own commits hit 78% — so the ⭐ is now <b>A-grade only when the tracker committed the same side</b> (dimmed to "watch-only" otherwise), it turns into a 💤 <b>dead-market note</b> when recent rounds keep settling a hair from the line, and a ⛔ <b>off-book line</b> appears whenever the app's call is SKIP (skipped rounds settled ~50/50 — betting them is a coin flip). Phone alerts follow the same rules: fewer pings, better pings. The Worker also gained optional <b>Kalshi API-key auth</b> — add a key and crowd coverage rises from ~43% toward full.</p>
@@ -4501,7 +4502,22 @@
       var b = h.ts ? Math.floor(h.ts / 900000) : null;
       if (clrB && b != null && b < clrB) return "";                                   // hide rounds from before the last Clear
       var e = (b != null) ? log[b] : null;
-      var actual = e ? (e.d > 0 ? "OVER" : "UNDER") : h.actual;                       // moveLog (Kalshi-priority) wins
+      var eConfirmed = e && (e.lvl != null ? e.lvl : 1) >= 2;                          // only a Kalshi-confirmed local grade outranks a server VOID
+      var actual = e ? (e.d > 0 ? "OVER" : "UNDER") : h.actual;                        // moveLog (Kalshi-priority) wins
+      // TOO CLOSE TO CALL (r89) — the round settled a hair from the line and only our Coinbase proxy saw
+      // it, so the tracker refuses to call it. Shown as its own row (not silently dropped) and scored by
+      // nobody: it counts toward neither wins, losses, nor the rounds-seen denominator. If Kalshi later
+      // confirms the round, the server clears the void and it grades normally on the next refresh.
+      if (h["void"] && !eConfirmed) {
+        var vp = (typeof h.strike === "number" && typeof h.close === "number" && h.strike > 0)
+          ? Math.abs((h.close - h.strike) / h.strike * 100).toFixed(3) + "%" : "a hair";
+        var vd = h.ts ? new Date(h.ts) : null;
+        var vlabel = vd ? (("0" + vd.getHours()).slice(-2) + ":" + ("0" + vd.getMinutes()).slice(-2)) : disp12(h.time);
+        return '<div class="hrow s" title="Too close to call — settled ' + vp + ' from the line, inside the zone where our price feed disagrees with Kalshi about a quarter of the time. Not scored either way; waiting on Kalshi to confirm.">' +
+          '<span class="htime">' + vlabel + '</span>' +
+          '<span class="hpred skip">Too close</span>' +
+          '<span class="hres s">void</span></div>';
+      }
       if (actual !== "OVER" && actual !== "UNDER") return "";                          // not graded yet
       var isKalshi = (e && (e.lvl != null ? e.lvl : 1) >= 2) || h.src === "kalshi";    // confirmed against Kalshi's settled result
       // The round's price move vs the line (strike), signed by the outcome — the Figma's "±%".
@@ -4735,18 +4751,20 @@
     var tag = edge == null ? "" : edge >= 0.01 ? ' · <b style="color:var(--green)">+EV after fees — app rates it above price + fee</b>' : edge <= -0.01 ? ' · <b style="color:var(--red)">−EV after fees — skip</b>' : ' · <b style="color:var(--label-3)">≈ fair after fees · ~break-even</b>';
     el.innerHTML = 'Payout ≈ <b>' + mult.toFixed(2) + 'x</b>' + (appP != null ? ' · app ' + Math.round(appP * 100) + '% vs market ' + Math.round(mktProb * 100) + '%' : '') + ' · fee ~' + (fee * 100).toFixed(1) + '¢' + tag;
   }
-  // FAVORITE ZONE — the crowd-favorite band (65–80%) the 2026-07 audits track. Week 1 (n=77): favorites
-  // won ~82%, ≈+14%/bet after fees. Week 2 (n=524): only 72.7% ≈ BREAK-EVEN, with brutal dead-chop days
-  // (Jul 14: 57.6%, Jul 18: 66.7%) — so the star is now conditioned on two things the data backs:
-  //   (1) DEAD-MARKET KILL SWITCH: when this coin's last ~8 graded rounds settled a hair from the line
-  //       (median |margin| < DEAD_MARGIN_PCT), favorites are unreliable (dead-tercile band ≈ −EV) → the
-  //       star is replaced by a "dead market" note.
-  //   (2) A-GRADE = STAR + TRACKER COMMIT: the 24/7 tracker's gated commits beat the raw band by ~5 pts
-  //       (78.0% vs 72.7% at the same prices, n=519). Full star only when the tracker committed the SAME
-  //       side this round; otherwise a dimmed "watch-only" variant.
+  // FAVORITE ZONE — the crowd-favorite band the audits track (favorite-longshot bias).
+  // BAND RE-CENTERED 65–80 → 73–90 (r89, full-month audit: 21,412 rounds, 7,349 with a crowd price). The
+  // old band straddled a losing half and a winning half — priced 65–70 the favorite WON 67.5% and still
+  // lost money after fees, while 75–90 won ~84%. Star (band + tracker commit) went 74.4% / +1.7¢ per $ at
+  // 65–80 → 82.9% / +3.7¢ per $ at 73–90, on ~30 alerts a day instead of ~48. Caveat kept in view: the
+  // edge decayed through the month as the market sharpened, so it is re-measured every audit.
+  //   A-GRADE = STAR + TRACKER COMMIT: full star only when the 24/7 tracker committed the SAME side this
+  //   round; otherwise a dimmed "watch-only" variant (the raw band alone ran ≈ break-even).
+  // DEAD-MARKET KILL SWITCH — RETIRED (r89), DEAD_MARGIN_PCT = 0. It was added on two bad days of evidence;
+  // over the full month quiet markets did NOT hurt favorites (74.9% "dead" vs 74.2% "alive"), so it was
+  // only muting good stars. Set it back to 0.08 to restore the old behavior.
   // STRICTLY READ-ONLY: reads activeCrowd() + the already-fetched 24/7 state; never computes, commits,
   // or tempers a pick.
-  var FAV_ZONE_LO = 65, FAV_ZONE_HI = 80, DEAD_MARGIN_PCT = 0.08;
+  var FAV_ZONE_LO = 73, FAV_ZONE_HI = 90, DEAD_MARGIN_PCT = 0;
   // Trailing market "pulse": median |settle margin| of this coin's newest ~8 graded 24/7 rounds.
   // Small on purpose (~2h of rounds) so it reacts within a couple of rounds when the market goes quiet.
   function marketPulse() {
@@ -4771,7 +4789,7 @@
     var actable = leftMin == null || (leftMin >= 3 && leftMin <= 16.5);   // needs time to actually place it
     if (favPct < FAV_ZONE_LO || favPct > FAV_ZONE_HI || !actable) { el.hidden = true; el.textContent = ""; el.className = "favZone"; return; }
     var pulse = marketPulse();
-    if (pulse != null && pulse < DEAD_MARGIN_PCT) {
+    if (DEAD_MARGIN_PCT > 0 && pulse != null && pulse < DEAD_MARGIN_PCT) {
       el.hidden = false; el.className = "favZone dead";
       el.innerHTML = '💤 <b>Dead market</b> — recent rounds are settling a hair from the line (median move ' + pulse.toFixed(3) + '%). Favorites are unreliable in this chop (they ran ≈ −EV on dead days) — <b>sitting out is the play</b>.';
       return;
@@ -4784,10 +4802,10 @@
     el.hidden = false;
     if (agrees) {
       el.className = "favZone";
-      el.innerHTML = '⭐ <b>Favorite zone · A-grade</b> — crowd has <b>' + favSide + ' ' + Math.round(favPct) + '%</b> (pays ~' + mult.toFixed(2) + 'x) <b>and the 24/7 tracker committed ' + favSide + '</b> this round. Star-plus-commit is the strongest read on record (tracker commits: 78% of 519 rounds last week · +EV after fees).';
+      el.innerHTML = '⭐ <b>Favorite zone · A-grade</b> — crowd has <b>' + favSide + ' ' + Math.round(favPct) + '%</b> (pays ~' + mult.toFixed(2) + 'x) <b>and the 24/7 tracker committed ' + favSide + '</b> this round. Star-plus-commit is the strongest read on record (82.9% of 1,037 rounds over the last month · +3.7¢ per $ after fees).';
     } else {
       el.className = "favZone dim";
-      el.innerHTML = '☆ Favorite zone (weaker) — crowd has ' + favSide + ' ' + Math.round(favPct) + '% (~' + mult.toFixed(2) + 'x) but the 24/7 tracker has <b>not committed</b> this side. The raw band ran ≈ break-even after fees last week — treat as watch-only.'
+      el.innerHTML = '☆ Favorite zone (weaker) — crowd has ' + favSide + ' ' + Math.round(favPct) + '% (~' + mult.toFixed(2) + 'x) but the 24/7 tracker has <b>not committed</b> this side. The raw band without a commit ran well below the star (65.7% at these prices, −4.9¢ per $) — treat as watch-only.'
         + (against ? ' · <b style="color:var(--label-3)">the app leans the other way</b>' : '');
     }
   }
