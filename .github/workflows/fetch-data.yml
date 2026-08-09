@@ -2,7 +2,11 @@
 # (current per-coin state + every permanent daily archive) and commits them to
 # this branch under data-audit/. Manual trigger only; safe to delete after use.
 name: fetch-tracker-data
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/prediction-market-app-review-bfkk10]
+    paths: ['.github/workflows/fetch-data.yml']
 
 permissions:
   contents: write
