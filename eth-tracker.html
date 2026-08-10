@@ -345,8 +345,11 @@
     .m-chart .miniChart { height: 264px; }   /* taller on phones — easier to read & scrub */
     /* DOM order is grouped into stacks, so use flex + order to restore the single-column reading order */
     .layout { display: flex; flex-direction: column; }
-    .m-hero { order: 1; } .m-timer { order: 2; } .m-signal { order: 3; } .m-chart { order: 4; }
-    .m-read { order: 5; } .m-indicators { order: 6; } .m-autotracker { order: 7; }
+    /* (r91) Ordered by the questions you actually ask, in order: what do I do -> how long have I got
+       -> how has this been going -> why does it think that. The chart was 4th, above the record; it is
+       the least decision-relevant thing on the page, so it drops below. */
+    .m-signal { order: 1; } .m-hero { order: 2; } .m-timer { order: 3; } .m-autotracker { order: 4; }
+    .m-read { order: 5; } .m-chart { order: 6; } .m-indicators { order: 7; }
     .layout .module { margin-top: 18px; }
     .layout .m-hero { margin-top: 0; }
     /* Comfortable touch targets on phones (these are ~26-28px on desktop — fine for a mouse, small for a thumb) */
@@ -370,8 +373,8 @@
   @media (min-width: 768px) and (max-width: 1199px) {
     .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start;
       grid-template-areas:
-        "hero   timer"
         "signal signal"
+        "hero   timer"
         "chart  chart"
         "read   read"
         "ind    ind"
@@ -590,6 +593,35 @@
   .payout { margin: 9px 0 2px; padding: 9px 13px; border-radius: 11px; background: rgba(255,255,255,.04); border: 1px solid var(--separator); font-size: 13px; font-weight: 600; color: var(--label-2); line-height: 1.4; }
   /* Favorite-zone note — the audited favorite band (65–80%). Read-only. Full star = amber (A-grade,
      tracker committed); .dim = neutral watch-only; .dead = dead-market kill switch. */
+  /* ---- UX PASS (r91) ---- */
+  /* (5) Glance vs Study. Default is Glance: the decision and the record only. */
+  body:not(.study) .m-chart, body:not(.study) .m-read, body:not(.study) .m-indicators { display: none; }
+  .modeBtn { float: right; font: inherit; font-size: 11px; letter-spacing: .04em; color: var(--label-2);
+             background: transparent; border: 1px solid var(--hair); border-radius: 999px; padding: 3px 11px; cursor: pointer;
+             transition: transform .12s ease, border-color .2s ease; }
+  .modeBtn:active { transform: scale(.96); }
+  .modeBtn[aria-pressed="true"] { color: var(--label); border-color: var(--label-3); }
+  /* (4) The outcome of the round you were just watching. */
+  .heroOutcome { font-size: 12px; color: var(--label-3); margin-bottom: 10px; line-height: 1.45; }
+  .heroOutcome b { font-weight: 650; }
+  .heroOutcome .won { color: var(--green); } .heroOutcome .lost { color: var(--red); }
+  /* (1) Logging the bet you actually placed. */
+  .heroAct { margin-top: 14px; padding-top: 13px; border-top: 1px solid var(--hair); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .tookBtn { font: inherit; font-size: 13px; font-weight: 600; color: var(--label); background: var(--hair2, rgba(255,255,255,.06));
+             border: 1px solid var(--hair); border-radius: 10px; padding: 9px 15px; cursor: pointer;
+             transition: transform .12s ease, background .2s ease; }
+  .tookBtn:active { transform: translateY(1px) scale(.985); }
+  .tookBtn.on { color: var(--green); border-color: rgba(52,199,123,.45); background: rgba(52,199,123,.1); }
+  .myRec { font-size: 12px; color: var(--label-3); line-height: 1.45; flex: 1; min-width: 150px; }
+  .myRec b { color: var(--label-2); }
+  .myRec .warn { color: var(--red); font-weight: 600; }
+  /* (3) The clock belongs to the decision, and the card should feel the round running out. */
+  .heroKicker .kClock { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
+  .hero.act .heroKicker { color: #ffc442; }
+  .hero.act .heroKicker .kClock { font-weight: 700; }
+  /* (2) A star on another coin is the whole product — mark it in the all-coins board. */
+  .blRow .blStar { color: #ffc442; margin-right: 4px; }
+  .bestBar[data-star="1"] { border-color: rgba(255,196,66,.45); }
   /* ---- DECISION HERO (r90) — the verdict owns the top of the card ---- */
   .hero { padding: 2px 0 4px; text-align: left; }
   .heroKicker { font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--label-3); margin-bottom: 8px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
@@ -1253,7 +1285,9 @@
   </div>
 
   <div class="module m-signal">
-  <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span> <button class="ihelp" data-info="autopick">?</button>
+  <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span>
+    <button type="button" class="modeBtn" id="modeBtn" aria-pressed="false" title="Glance shows just the decision; Study adds the chart, indicators and AI.">Study</button>
+<button class="ihelp" data-info="autopick">?</button>
     <div class="playStyle" id="playStyle" role="group" aria-label="Play style — how often to bet">
       <button type="button" data-style="disciplined">Disciplined</button>
       <button type="button" data-style="balanced">Balanced</button>
@@ -1268,6 +1302,8 @@
            feeEdgeFor, marketPct, activeCrowd) — it derives no pick of its own, so it cannot disagree with
            them. The older stacked rows still exist, demoted into the "details" drawer further down. -->
       <div class="hero" id="hero" hidden>
+        <!-- (r91) Closing the loop: what happened to the round you were just looking at. -->
+        <div class="heroOutcome" id="heroOutcome" hidden></div>
         <div class="heroKicker" id="heroKicker"></div>
         <h2 class="heroCall" id="heroCall"></h2>
         <p class="heroWhy" id="heroWhy"></p>
@@ -1281,6 +1317,12 @@
           <div class="hmFoot"><span id="hmFootL"></span><b id="hmFootR"></b></div>
         </div>
         <div class="heroCost" id="heroCost" hidden></div>
+        <!-- (r91) The app finally listens: tell it what you actually did, so it can score YOU, not just
+             itself. Everything about the July losses had to come from screenshots because this was missing. -->
+        <div class="heroAct" id="heroAct" hidden>
+          <button type="button" class="tookBtn" id="tookBtn">I took this bet</button>
+          <div class="myRec" id="myRec"></div>
+        </div>
       </div>
       <div id="pickStrength" class="pickStrength"></div>
       <div id="dualPick" class="dualPick">
@@ -1468,10 +1510,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r90</span><span class="buildSep">·</span><span>2026-08-09</span>
+        <span class="buildVer">build r91</span><span class="buildSep">·</span><span>2026-08-10</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>The app finally listens — plus Glance mode and a star that finds you (r91).</b> Six workflow fixes. <b>(1) "I took this bet"</b> — one tap logs what you actually placed, so the app can score <i>you</i>, not just itself, and call out the pattern that cost real money in July: <i>"you're 1 of 5 on rounds the app skipped."</i> Stored on your device only. <b>(2) The star finds you</b> — an A-grade setup on any coin now leads the all-coins ticker instead of hiding behind a tap on a coin you'd have to think to check. <b>(3) The clock moved into the verdict</b> (it sat four screens below it) and the card turns amber for <b>Act now</b> in the last 5 minutes. <b>(4) Last round's result</b> is shown at the top instead of making you scroll and match timestamps. <b>(5) Glance mode</b> is the new default — decision and record only; one tap for <b>Study</b> (chart, indicators, AI). <b>(6) The page reorders</b> to the order you ask things: what do I do → how long → how's it going → why. The chart drops below the record. <b>All display-only — no pick, alert or grade changed.</b></p>
         <p><b>One screen, one answer — the pick card redesigned (r90).</b> The card used to stack seven voices down the screen (banner, two-column pick, buy line, hint, odds, tally, payout, favorite zone, off-book) and you had to assemble the verdict yourself — which is how the Jul-18 "bet up / says under / says skip" confusion happened in the first place. Now the <b>verdict owns the top</b>: one headline (<b>Bet Over ⭐</b> / <b>Sit this one out</b> / <b>Under — but overpriced</b>), the reason in one plain sentence, then the few numbers worth seeing — after-fee edge, the crowd's price, the app's %. Below that, <b>price vs the line as a single dot on a rail</b> (grey when it's inside the "too close to call" zone), and <b>what it costs and returns after the fee</b>. All the old rows still exist, one tap away under <b>"Show the numbers behind this."</b> The hero invents nothing — it renders the same values the rows below already computed, so it cannot disagree with them. Also fixed properly this time: the payout line was still doing <i>its own copy</i> of the after-fee maths instead of calling the shared function r87 added — two copies that agreed only by luck. Now there is one. <b>Display-only: no pick, commitment, alert or grade changed.</b></p>
         <p><b>Month audit — the star moves to where the money is (r89).</b> A full month of recorded rounds (21,412, of which 7,349 had a crowd price) showed the old ⭐ band straddled a losing half and a winning half: favorites priced <b>65–70¢ won 67.5% and still lost money after fees</b>, while 75–90¢ won ~84%. So the star band moves <b>65–80 → 73–90</b>: the star now hits 82.9% and roughly <b>doubles its edge</b> (+1.7¢ → +3.7¢ per dollar), at ~30 alerts a day instead of ~48. Three more changes ride along. The <b>commit bar</b> rises a notch (the weakest slice of bets hit just 54.7% — dropping it costs 3.8% of volume and lifts the record 75.8% → 76.3%). The 💤 <b>dead-market kill switch is retired</b>: over the month quiet chop did <i>not</i> hurt favorites (74.9% vs 74.2%), so it was muting good stars for nothing. And rounds that settle a hair from the line are now marked <b>"too close to call" (void)</b> instead of guessed — inside ±0.02% our price feed disagrees with Kalshi about a quarter of the time, and that sliver carried <b>60% of all our grading errors</b>; voiding it keeps both the record and what the model learns honest. <b>Heads up: the band, the commit bar and the star alerts all change what you're told to bet.</b></p>
         <p><b>More arrows + a pending slot (r88).</b> The "Recent 15-min" row on phones showed only ~6 arrows because the long text label ate the space — it now shrinks to a small "15m" chip on narrow screens, fitting ~10 arrows. And the just-closed round shows a <b>pulsing hollow slot</b> while its exact close is being confirmed, so the row never looks like it's missing one — it becomes a real frozen arrow the moment the grade lands (arrows still never guess). Display-only.</p>
@@ -3910,6 +3953,25 @@
   }
 
   // ---------- Init ----------
+  // (r91) Glance vs Study. Glance is the default — the decision and the record. Study adds the chart,
+  // the read and the indicators back. Remembered per device.
+  (function () {
+    var b = $("modeBtn"); if (!b) return;
+    var on = false;
+    try { on = localStorage.getItem("studyMode") === "1"; } catch (_) {}
+    var apply = function () {
+      document.body.classList.toggle("study", on);
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+      b.textContent = on ? "Glance" : "Study";
+      try { localStorage.setItem("studyMode", on ? "1" : "0"); } catch (_) {}
+    };
+    apply();
+    b.addEventListener("click", function (e) { e.stopPropagation(); on = !on; apply(); if (on) drawMiniChart(); });
+  })();
+  // (r91) "I took this bet" — the app's only channel for learning what YOU actually did.
+  (function () {
+    var b = $("tookBtn"); if (b) b.addEventListener("click", function (e) { e.stopPropagation(); toggleMyBet(); });
+  })();
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) {
     b.addEventListener("click", function () { setCoin(b.getAttribute("data-coin")); });
   });
@@ -4413,14 +4475,27 @@
     var el = $("bestBar"); if (!el) return;
     var list = state.best || [];
     if (!getWorkerUrl() || !list.length) { el.classList.add("hidden"); document.body.classList.remove("has-bestbar"); state.bestOpen = false; renderBestList(); renderPrimeAlert(); return; }
+    // (r91) A star anywhere outranks "strongest by our score" — it's the only setup with a measured
+    // edge, so it leads the ticker and the board instead of hiding behind a tap on a coin you'd have
+    // to think to check. Sorting only; no coin's pick is altered.
+    var starred = [];
+    for (var si = 0; si < list.length; si++) if (bestStar(list[si])) starred.push(list[si]);
+    if (starred.length) {
+      list = starred.concat(list.filter(function (x) { return starred.indexOf(x) < 0; }));
+      state.best = list;
+    }
+    el.setAttribute("data-star", starred.length ? "1" : "0");
     var top = list[0];
+    var topStar = bestStar(top);
     var arrow = top.side === "OVER" ? "↑" : "↓", sideCls = top.side === "OVER" ? "o" : "u";
     var strongConfirmed = !!top.confirm && (top.agree || 0) >= 3;   // momentum confirms the call + several reads agree → an obvious side to bet
     var bsub = (top.confirm ? "heading " + top.side + " · " : "") + ((top.hitRatePct != null && top.graded >= 5) ? top.hitRatePct + "% hit · " : "");
     var rpTop = rowPayout(top);
     if (rpTop) bsub += "~" + rpTop.mult.toFixed(2) + "x" + (rpTop.ev ? " +EV" : rpTop.dead ? " (dead money)" : "") + " · ";
-    $("bbTop").innerHTML = (strongConfirmed ? ICON.flame + "<b>BET " + top.coin + "</b> " : "Best now: <b>" + top.coin + "</b> ") + "<span class=\"" + sideCls + "\">" + top.side + " " + arrow + "</span> · " + top.prob + "%";
-    $("bbSub").textContent = bsub + (strongConfirmed ? "strong, confirmed pick" : "strongest of " + list.length + " coins this round");
+    $("bbTop").innerHTML = (topStar ? '<span class="blStar">★</span><b>Star: ' + top.coin + "</b> " : strongConfirmed ? ICON.flame + "<b>BET " + top.coin + "</b> " : "Best now: <b>" + top.coin + "</b> ") + "<span class=\"" + sideCls + "\">" + top.side + " " + arrow + "</span> · " + top.prob + "%";
+    $("bbSub").textContent = topStar
+      ? ("A-grade · crowd " + Math.round(topStar.pct) + "¢ · pays ~" + topStar.mult.toFixed(2) + "x" + (starred.length > 1 ? " · " + starred.length + " stars now" : ""))
+      : bsub + (strongConfirmed ? "strong, confirmed pick" : "strongest of " + list.length + " coins this round");
     var others = list.slice(1, 4);
     $("bbRank").textContent = others.length ? "then " + others.map(function (x) { return x.coin + (x.side === "OVER" ? "↑" : x.side === "UNDER" ? "↓" : "·"); }).join("  ") : "";
     $("bbGo").textContent = state.bestOpen ? "⌃" : "⌄";
@@ -4450,7 +4525,7 @@
       html += '<div class="blRow' + (x.coin === state.coin ? " active" : "") + '" data-coin="' + x.coin + '">' +
         '<span class="blPos">' + (idx + 1) + '</span>' +
         (ico ? '<img class="blIco" alt="" src="' + ico + '">' : '<span class="blIco"></span>') +
-        '<span class="blCoin">' + x.coin + '</span>' +
+        '<span class="blCoin">' + (bestStar(x) ? '<span class="blStar">★</span>' : "") + x.coin + '</span>' +
         '<span class="blSide ' + sc + '">' + x.side + ' ' + arrow + ' ' + x.prob + '%</span>' +
         '<span class="blMeta">' + (meta.length ? meta.join(" · ") : "new") + '</span>' +
         '</div>';
@@ -4795,6 +4870,94 @@
     if (agrees && ap.closeMs && crowd.closeTime) agrees = Math.abs(new Date(crowd.closeTime).getTime() - ap.closeMs) <= 90000;
     return { side: favSide, pct: favPct, agrees: agrees };
   }
+  // ---- YOUR bets (r91) -------------------------------------------------------------------------
+  // Until now the app scored ITSELF and had no idea what you actually did — which is why the only
+  // evidence about the July losing streak was phone screenshots. One tap records the bet; when that
+  // round settles we resolve it against the graded outcome and can finally answer "how am *I* doing",
+  // and specifically "how do I do on rounds the app told me to skip" (the ones that cost real money).
+  // Stored locally on the device only. Nothing here influences a pick — it is pure record-keeping.
+  var MYBETS_KEY = "myBets.v1", MYBETS_CAP = 400;
+  function myBets() {
+    try { var a = JSON.parse(localStorage.getItem(MYBETS_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (_) { return []; }
+  }
+  function saveMyBets(a) {
+    try { localStorage.setItem(MYBETS_KEY, JSON.stringify(a.slice(0, MYBETS_CAP))); } catch (_) {}
+  }
+  function betKeyFor() {
+    if (!currentRoundEnd) return null;
+    return state.coin + ":" + Math.floor(currentRoundEnd.getTime() / 900000);
+  }
+  function myBetFor(key) { if (!key) return null; var a = myBets(); for (var i = 0; i < a.length; i++) if (a[i].k === key) return a[i]; return null; }
+  function toggleMyBet() {
+    var key = betKeyFor(); if (!key) return;
+    var a = myBets(), i;
+    for (i = 0; i < a.length; i++) if (a[i].k === key) { a.splice(i, 1); saveMyBets(a); renderHero(); return; }   // tapped again = undo
+    var dir = state.shownDir, fe = (dir === "OVER" || dir === "UNDER") ? feeEdgeFor(dir) : null;
+    a.unshift({
+      k: key, coin: state.coin, side: (dir === "OVER" || dir === "UNDER") ? dir : "OTHER",
+      // onBook = the app was actually recommending this side when you took it. The off-book ones are
+      // the ones worth counting separately — the 2,100-round audit had them settling ~50/50.
+      onBook: dir === "OVER" || dir === "UNDER",
+      priceCents: fe ? Math.round(fe.mpct) : null,   // whole cents (feeEdgeFor.mpct is 0-100), for the record only
+      ts: Date.now(), endMs: currentRoundEnd.getTime(), res: null,
+    });
+    saveMyBets(a); renderHero();
+  }
+  // Resolve logged bets against whatever the app already knows settled (moveLog is Kalshi-priority).
+  function resolveMyBets() {
+    var a = myBets(), log = state.moveLog || {}, changed = false;
+    for (var i = 0; i < a.length; i++) {
+      var b = a[i];
+      if (b.res != null || !b.endMs) continue;
+      var e = log[Math.floor((b.endMs - 900000) / 900000)];
+      if (!e) continue;
+      var actual = e.d > 0 ? "OVER" : "UNDER";
+      b.res = (b.side === actual) ? "W" : "L"; changed = true;
+    }
+    if (changed) saveMyBets(a);
+    return a;
+  }
+  function myRecordLine() {
+    var a = resolveMyBets(), done = [], i;
+    for (i = 0; i < a.length; i++) if (a[i].res) done.push(a[i]);
+    if (!done.length) return a.length ? "Logged — I'll score it once the round settles." : "";
+    var w = 0, off = 0, offW = 0;
+    for (i = 0; i < done.length; i++) {
+      if (done[i].res === "W") w++;
+      if (!done[i].onBook) { off++; if (done[i].res === "W") offW++; }
+    }
+    var out = "Your record: <b>" + w + " of " + done.length + "</b> (" + Math.round(w / done.length * 100) + "%)";
+    // The pattern that actually cost money in July: betting rounds the app had skipped or opposed.
+    if (off >= 3 && offW / off < 0.5) out += ' · <span class="warn">' + offW + " of " + off + " on rounds the app skipped</span>";
+    else if (off >= 3) out += " · " + offW + " of " + off + " off-book";
+    return out;
+  }
+  // (r91) What happened to the round you were just looking at — so you don't have to go hunting.
+  function lastOutcomeLine() {
+    var log = state.moveLog || {}, keys = Object.keys(log);
+    if (!keys.length || !currentRoundEnd) return null;
+    var prevBucket = Math.floor(currentRoundEnd.getTime() / 900000) - 1;   // the round that just closed
+    var e = log[prevBucket];
+    if (!e) return null;
+    var actual = e.d > 0 ? "OVER" : "UNDER";
+    var mine = myBetFor(state.coin + ":" + prevBucket);
+    var confirmed = (e.lvl != null ? e.lvl : 1) >= 2;
+    var txt = "Last round settled <b>" + actual + "</b>" + (confirmed ? "" : " (confirming)");
+    if (mine && mine.side === actual) txt += ' · <span class="won">you won it</span>';
+    else if (mine) txt += ' · <span class="lost">you missed it</span>';
+    return txt;
+  }
+  // (r91) Is there a star on ANY coin right now? Same A-grade test as the card, computed from the
+  // all-coins feed the footer ticker already pulls — so the play finds you instead of you tapping
+  // through seven coins to look for it.
+  function bestStar(x) {
+    if (!x || typeof x.crowdOver !== "number" || (x.side !== "OVER" && x.side !== "UNDER")) return null;
+    var favSide = x.crowdOver >= 50 ? "OVER" : "UNDER";
+    if (favSide !== x.side) return null;                       // tracker must be on the crowd's favorite
+    var favPct = Math.max(x.crowdOver, 100 - x.crowdOver);
+    if (favPct < FAV_ZONE_LO || favPct > FAV_ZONE_HI) return null;
+    return { side: favSide, pct: favPct, mult: 100 / favPct };
+  }
   function renderHero() {
     var el = $("hero"); if (!el) return;
     var dir = state.shownDir || "SKIP";
@@ -4809,11 +4972,23 @@
     var mp = (typeof mRaw === "number") ? mRaw / 100 : null;
     el.hidden = false;
 
-    // 1) Kicker — which round, and how long you have to act.
-    var mins = state.remaining != null ? Math.max(0, Math.floor(state.remaining / 60)) : null;
-    var secs = state.remaining != null ? Math.max(0, Math.floor(state.remaining % 60)) : null;
-    var clock = mins != null ? (mins + ":" + ("0" + secs).slice(-2) + " left") : "";
-    $("heroKicker").textContent = (nextMode ? "Next round" : "This round") + (clock ? " · " + clock : "");
+    // 0) What happened last round (r91) — close the loop instead of making you go find it.
+    var outEl = $("heroOutcome"), outTxt = lastOutcomeLine();
+    if (outTxt) { outEl.hidden = false; outEl.innerHTML = outTxt; } else { outEl.hidden = true; outEl.textContent = ""; }
+
+    // 1) Kicker — which round, and how long you have to act. The clock now lives WITH the decision
+    //    (it used to sit four screens below it), and the card changes state as the round runs out:
+    //    normal -> act now (last 3 min) -> too late to enter (last 45s).
+    var rem = state.remaining;
+    var mins = rem != null ? Math.max(0, Math.floor(rem / 60)) : null;
+    var secs = rem != null ? Math.max(0, Math.floor(rem % 60)) : null;
+    var clock = mins != null ? '<span class="kClock">' + mins + ":" + ("0" + secs).slice(-2) + "</span> left" : "";
+    // The urgent window is 5:00 -> 2:00. It cannot run tighter than that: at BET_WINDOW (2:00) the app
+    // switches to showing the NEXT round, so any "too late" state below that is unreachable by design.
+    var urgent = rem != null && !nextMode && rem <= 300;
+    el.className = "hero" + (urgent ? " act" : "");
+    var lead = urgent ? "Act now" : (nextMode ? "Next round" : "This round");
+    $("heroKicker").innerHTML = lead + (clock ? " · " + clock : "");
 
     // 2) The verdict itself. One headline per tier — the qualifier lives INSIDE it (never a separate,
     //    contradicting line), which is how "right side, wrong price" reads as one sentence.
@@ -4875,6 +5050,18 @@
         '<div class="' + (fe && fe.edge >= 0.01 ? "good" : fe && fe.edge <= -0.01 ? "bad" : "") + '"><b>' +
           (ret >= 0 ? "+" : "") + Math.round(ret * 100) + '%</b><span>If it hits</span></div>';
     } else cost.hidden = true;
+
+    // 7) Did you take it? (r91) Shown once the round is real and actionable — including on SKIP rounds,
+    //    because a bet you place against the app's advice is exactly the one worth counting.
+    var act = $("heroAct"), btn = $("tookBtn"), key = betKeyFor();
+    if (key && !nextMode && rem != null && rem > 20) {
+      act.hidden = false;
+      var mine = myBetFor(key);
+      btn.className = "tookBtn" + (mine ? " on" : "");
+      btn.textContent = mine ? "Logged" + (mine.side === "OVER" || mine.side === "UNDER" ? " · " + mine.side : "") : "I took this bet";
+      btn.setAttribute("aria-pressed", mine ? "true" : "false");
+      $("myRec").innerHTML = myRecordLine();
+    } else { act.hidden = true; }
   }
   // "Who's calling it better" — a running scoreboard of the AI Co-Pilot vs the 24/7 tracker, by hit-rate on
   // the rounds each actually committed to (skips never count). A diverging meter leans toward whoever's ahead.
