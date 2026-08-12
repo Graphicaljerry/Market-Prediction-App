@@ -19,6 +19,12 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **r92 — the live chart is back, and the redesign gets room to breathe.** Three fixes to r91, all found from a real iPad screenshot rather than a test:
+  - **Glance mode was hiding the live chart.** Wrong on its own terms — the chart is what you watch while a round runs, not a diagnostic — and worse on the desktop grid, where `.m-chart` fills the middle column, so hiding it punched a large empty hole in the page. Glance now collapses only `.m-read` and `.m-indicators`, and only below 1200px; desktop shows the whole terminal.
+  - **The decision was in the narrowest column.** Desktop ran `320px | 578px chart | 340px`, so the r90 verdict — the point of the redesign — was squeezed into the skinniest column next to a much wider chart. Now `430px | 1fr | 340px`.
+  - **"One voice" made visual.** While the hero renders, the legacy rows that restate the same call (`#pickStrength`, `#recoScope`, `#buyLine`, `#buyHint`) are hidden via `#hero:not([hidden]) ~ …`, so the card states the verdict once. They keep rendering in the DOM and reappear automatically on the paths where the hero bails out.
+  - Timeframe buttons wrap on desktop rather than scrolling out of view in the narrower chart column.
+
 - **Workflow pass — the app starts listening, and the star comes to you (r91).** Six changes aimed at the flow around the pick card rather than the card itself. All **display-only**; no pick, alert or grade changed.
   - **"I took this bet."** The app scored itself for two months and never knew what *you* did — every fact about the July losing streak had to come from phone screenshots. One tap now logs the bet (device-local, `myBets.v1`), resolves it when the round settles, and surfaces **your** record next to the tracker's. It specifically counts **off-book bets** — rounds the app had skipped or opposed — because that's the pattern the 2,100-round audit found settling ~50/50, and the one that actually cost money.
   - **The star finds you.** An A-grade setup on any coin now leads the all-coins ticker and is marked ★ in the ranked board, instead of requiring you to tap through seven coins looking for it. Same A-grade test as the pick card, computed from the `?best` feed already being polled (`bestStar`).

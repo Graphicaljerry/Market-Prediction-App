@@ -391,7 +391,9 @@
     /* Three independent columns: left (price + Auto Pick), centre (chart), right (timer + AI Co-Pilot +
        Track Record), then full-width indicators. The stacks flow on their own, so the timer sits right
        above the AI Co-Pilot AND Auto Pick stays pinned under the price card regardless of what's expanded. */
-    .layout { display: grid; grid-template-columns: 320px minmax(0,1fr) 340px; gap: 20px; align-items: start;
+    /* (r92) The decision column gets real width. It was 320px — the narrowest of the three — which
+       squeezed the r90 verdict into a wrapped column beside a 578px chart. */
+    .layout { display: grid; grid-template-columns: 430px minmax(0,1fr) 340px; gap: 20px; align-items: start;
       grid-template-areas:
         "left chart right"
         "ind  ind   ind"; }
@@ -404,6 +406,10 @@
        lines up with the price card's top — the timeframe buttons already convey the pair/interval */
     .m-chart .chartSec { display: none; }
     .m-chart .miniChart { height: 600px; }
+    /* (r92) With the decision column widened, the chart column is narrower — the timeframe row used to
+       scroll horizontally (fine on a touchscreen, invisible with a mouse). Let it wrap instead so
+       every timeframe stays reachable. */
+    .tfBar { flex-wrap: wrap; overflow-x: visible; }
   }
 
   /* ---------- Prime-entry cue + late-entry record ---------- */
@@ -594,8 +600,14 @@
   /* Favorite-zone note — the audited favorite band (65–80%). Read-only. Full star = amber (A-grade,
      tracker committed); .dim = neutral watch-only; .dead = dead-market kill switch. */
   /* ---- UX PASS (r91) ---- */
-  /* (5) Glance vs Study. Default is Glance: the decision and the record only. */
-  body:not(.study) .m-chart, body:not(.study) .m-read, body:not(.study) .m-indicators { display: none; }
+  /* (5) Glance vs Study.
+     REVISED (r92): Glance originally hid the live chart too. That was wrong — the chart is the thing
+     you watch while a round runs, not a diagnostic — and on the desktop grid, removing it left an
+     empty middle column. Glance now only collapses the two genuine diagnostic panels, and only on
+     screens too small to hold everything. Desktop shows the whole terminal, always. */
+  @media (max-width: 1199px) {
+    body:not(.study) .m-read, body:not(.study) .m-indicators { display: none; }
+  }
   .modeBtn { float: right; font: inherit; font-size: 11px; letter-spacing: .04em; color: var(--label-2);
              background: transparent; border: 1px solid var(--hair); border-radius: 999px; padding: 3px 11px; cursor: pointer;
              transition: transform .12s ease, border-color .2s ease; }
@@ -660,6 +672,12 @@
   .heroCost span { display: block; font-size: 9.5px; letter-spacing: .11em; text-transform: uppercase; color: var(--label-3); margin-top: 2px; }
   .heroCost .good b { color: var(--green); }
   .heroCost .bad b { color: var(--red); }
+  /* (r92) Hide the rows the hero supersedes — ONLY while the hero is actually showing. If the hero
+     bails out (locking, no call yet), these reappear automatically and the card behaves as before. */
+  #hero:not([hidden]) ~ #pickStrength,
+  #hero:not([hidden]) ~ #recoScope,
+  #hero:not([hidden]) ~ #buyLine,
+  #hero:not([hidden]) ~ #buyHint { display: none; }
   .heroDetails { margin: 10px 0 2px; }
   .heroDetails > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--label-3); padding: 7px 0; position: relative; }
   .heroDetails > summary::-webkit-details-marker { display: none; }
@@ -1286,7 +1304,7 @@
 
   <div class="module m-signal">
   <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span>
-    <button type="button" class="modeBtn" id="modeBtn" aria-pressed="false" title="Glance shows just the decision; Study adds the chart, indicators and AI.">Study</button>
+    <button type="button" class="modeBtn" id="modeBtn" aria-pressed="false" title="Glance keeps the decision, the chart and the record. Study adds the indicators and the AI read.">Study</button>
 <button class="ihelp" data-info="autopick">?</button>
     <div class="playStyle" id="playStyle" role="group" aria-label="Play style — how often to bet">
       <button type="button" data-style="disciplined">Disciplined</button>
@@ -1510,10 +1528,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r91</span><span class="buildSep">·</span><span>2026-08-10</span>
+        <span class="buildVer">build r92</span><span class="buildSep">·</span><span>2026-08-10</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Chart restored, and the redesign gets the room it needed (r92).</b> Fixes r91 on iPad/desktop. <b>(1) The live graph is back</b> — Glance mode should never have hidden it (it's what you watch while a round runs, not a diagnostic), and on the three-column desktop grid removing it left a large empty middle. Glance now only collapses the two diagnostic panels, and only on screens too small to hold everything; desktop shows the full terminal. <b>(2) The decision column got wider</b> (320px → 430px) — the r90 verdict was squeezed into the narrowest of the three columns beside a much wider chart, which is why the redesign was hard to see on a big screen. <b>(3) One voice, visually:</b> while the new verdict is showing, the older rows that restate it ("— SIT OUT", the buy line, the scope tag) are hidden, so the card says the call once instead of three times — they reappear automatically if the verdict can't render. <b>(4)</b> Timeframe buttons wrap on desktop instead of scrolling out of sight. Display-only.</p>
         <p><b>The app finally listens — plus Glance mode and a star that finds you (r91).</b> Six workflow fixes. <b>(1) "I took this bet"</b> — one tap logs what you actually placed, so the app can score <i>you</i>, not just itself, and call out the pattern that cost real money in July: <i>"you're 1 of 5 on rounds the app skipped."</i> Stored on your device only. <b>(2) The star finds you</b> — an A-grade setup on any coin now leads the all-coins ticker instead of hiding behind a tap on a coin you'd have to think to check. <b>(3) The clock moved into the verdict</b> (it sat four screens below it) and the card turns amber for <b>Act now</b> in the last 5 minutes. <b>(4) Last round's result</b> is shown at the top instead of making you scroll and match timestamps. <b>(5) Glance mode</b> is the new default — decision and record only; one tap for <b>Study</b> (chart, indicators, AI). <b>(6) The page reorders</b> to the order you ask things: what do I do → how long → how's it going → why. The chart drops below the record. <b>All display-only — no pick, alert or grade changed.</b></p>
         <p><b>One screen, one answer — the pick card redesigned (r90).</b> The card used to stack seven voices down the screen (banner, two-column pick, buy line, hint, odds, tally, payout, favorite zone, off-book) and you had to assemble the verdict yourself — which is how the Jul-18 "bet up / says under / says skip" confusion happened in the first place. Now the <b>verdict owns the top</b>: one headline (<b>Bet Over ⭐</b> / <b>Sit this one out</b> / <b>Under — but overpriced</b>), the reason in one plain sentence, then the few numbers worth seeing — after-fee edge, the crowd's price, the app's %. Below that, <b>price vs the line as a single dot on a rail</b> (grey when it's inside the "too close to call" zone), and <b>what it costs and returns after the fee</b>. All the old rows still exist, one tap away under <b>"Show the numbers behind this."</b> The hero invents nothing — it renders the same values the rows below already computed, so it cannot disagree with them. Also fixed properly this time: the payout line was still doing <i>its own copy</i> of the after-fee maths instead of calling the shared function r87 added — two copies that agreed only by luck. Now there is one. <b>Display-only: no pick, commitment, alert or grade changed.</b></p>
         <p><b>Month audit — the star moves to where the money is (r89).</b> A full month of recorded rounds (21,412, of which 7,349 had a crowd price) showed the old ⭐ band straddled a losing half and a winning half: favorites priced <b>65–70¢ won 67.5% and still lost money after fees</b>, while 75–90¢ won ~84%. So the star band moves <b>65–80 → 73–90</b>: the star now hits 82.9% and roughly <b>doubles its edge</b> (+1.7¢ → +3.7¢ per dollar), at ~30 alerts a day instead of ~48. Three more changes ride along. The <b>commit bar</b> rises a notch (the weakest slice of bets hit just 54.7% — dropping it costs 3.8% of volume and lifts the record 75.8% → 76.3%). The 💤 <b>dead-market kill switch is retired</b>: over the month quiet chop did <i>not</i> hurt favorites (74.9% vs 74.2%), so it was muting good stars for nothing. And rounds that settle a hair from the line are now marked <b>"too close to call" (void)</b> instead of guessed — inside ±0.02% our price feed disagrees with Kalshi about a quarter of the time, and that sliver carried <b>60% of all our grading errors</b>; voiding it keeps both the record and what the model learns honest. <b>Heads up: the band, the commit bar and the star alerts all change what you're told to bet.</b></p>
