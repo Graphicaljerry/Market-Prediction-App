@@ -19,10 +19,50 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **r93 — compact layout: nine panels become three.** The page wasn't showing too much information;
+  it was showing the *same* information over and over. A full inventory of every surface on screen
+  found the call stated **9 times**, the crowd price **8** (four inside one card), the countdown **5**,
+  the app's own % **7**, the after-fee edge **4** (all in the pick card) and the hit rate **9**. Every
+  copy agreed — but you can't tell that at a glance, so you re-read them to check, and that's what
+  read as clutter. Each fact is now said once. **Display-only: no pick, commitment, alert, grade or
+  logged round changed.**
+  - **One card, not three.** The price card, the countdown card and the verdict card answered one
+    question split three ways, and lived in two different columns. They're welded into a single card:
+    price and clock share the top row (`.nowTop`), the countdown bar runs under it, the verdict owns
+    the middle. `.m-timer` is retired as a panel but kept in the DOM — `tickTimer()`,
+    `renderNextPick()` and `renderLastClose()` still write to real nodes.
+  - **The top decision bar is gone.** It existed to mirror a verdict that sat below the fold with its
+    clock four screens away; r91 and r93 fixed both. Still in the DOM: `renderDecisionBar()` reads
+    `#buyLine` / `#oddsPct` / `#recoConf`, and that read is load-bearing.
+  - **One voice, finished.** r92 hid four legacy rows but missed the ones still on screen — the
+    This/Next Round two-up, the payout line, the off-book warning and the favourite-zone note. All
+    four restate the headline or the numbers in its cost row; all four are now suppressed while the
+    hero renders.
+  - **The 24/7 record is a strip.** Hit rate + recent form always visible; the scoreboard, coverage,
+    the model tests, the full round log and the Clear buttons are one tap away.
+  - **Settings.** A gear in the nav opens one panel holding everything set once and never touched
+    again: play style, AI weighting + trust dial, worker URL / model / spend, alerts. The play-style
+    and trust controls **do change picks**, so they now carry their own explanation instead of
+    floating unlabelled above the verdict.
+  - **Two panes.** `the call | the chart` at ≥1024 (iPad portrait gets it too, instead of stacking),
+    with the record under the call so no column ends in a void — that void was the r92 iPad bug.
+    Three closed doors run along the bottom. **Glance/Study is retired**: every diagnostic panel is
+    collapsed by default at every width, so the mode had nothing left to switch.
+  - **Measured result** (same page, offline, same viewports as the r92 baseline): iPad portrait
+    2121px → ~1050px, phone 2357px → ~1450px, iPad landscape 1209px → ~1110px; on-screen controls
+    39 → 34 on desktop and 31 → 27 on phone.
+  - **Three real bugs fell out of the audit.** `[hidden]` did not hide blocks styled `display: flex`
+    (an author `display` rule outranks the browser's built-in `[hidden]` rule), so a "hidden"
+    `#heroCost` still drew a 13px strip with a hairline — those were the stray empty lines under the
+    verdict. The `--hair` / `--hair2` tokens the r90 card referenced were **never defined**, so every
+    divider inside the verdict fell back to `currentColor` and drew as a bright white line. And the
+    price card carried `class="card hero orb"`, colliding with r90's `.hero` block and losing its
+    18px padding; it's `.nowCard` now.
+
 - **r92 — the live chart is back, and the redesign gets room to breathe.** Three fixes to r91, all found from a real iPad screenshot rather than a test:
   - **Glance mode was hiding the live chart.** Wrong on its own terms — the chart is what you watch while a round runs, not a diagnostic — and worse on the desktop grid, where `.m-chart` fills the middle column, so hiding it punched a large empty hole in the page. Glance now collapses only `.m-read` and `.m-indicators`, and only below 1200px; desktop shows the whole terminal.
   - **The decision was in the narrowest column.** Desktop ran `320px | 578px chart | 340px`, so the r90 verdict — the point of the redesign — was squeezed into the skinniest column next to a much wider chart. Now `430px | 1fr | 340px`.
-  - **"One voice" made visual.** While the hero renders, the legacy rows that restate the same call (`#pickStrength`, `#recoScope`, `#buyLine`, `#buyHint`) are hidden via `#hero:not([hidden]) ~ …`, so the card states the verdict once. They keep rendering in the DOM and reappear automatically on the paths where the hero bails out.
+  - **"One voice" made visual.** While the hero renders, the legacy rows that restate the same call (`#pickStrength`, `#recoScope`, `#buyLine`, `#buyHint`) are hidden via `#hero:not([hidden]) ~ …`, so the card states the verdict once. They keep rendering in the DOM, which is what matters — `renderDecisionBar()` and other renderers read their text. (Correction, found in the r93 audit: this entry originally said they "reappear automatically on the paths where the hero bails out". They don't. `renderHero()` sets `el.hidden = false` unconditionally after its only guard (`if (!el) return`), which cannot fire, so once the hero has rendered the rows stay hidden for good. No behaviour depends on them being visible.)
   - Timeframe buttons wrap on desktop rather than scrolling out of view in the narrower chart column.
 
 - **Workflow pass — the app starts listening, and the star comes to you (r91).** Six changes aimed at the flow around the pick card rather than the card itself. All **display-only**; no pick, alert or grade changed.
@@ -547,6 +587,14 @@ disturbing the locked call).
 
 ## The Auto Pick card — "what & when to buy"
 
+> **Layout note (r93).** What used to be three cards — the price card, the countdown card and the
+> pick card — is now **one card**. Price and clock share its top row; the verdict (`renderHero()`)
+> owns the middle; the price-vs-line rail and the cost row sit under it; "Show the numbers behind
+> this" holds the evidence. Everything described below still renders from the same functions into the
+> same ids — several of the rows are simply no longer *drawn* while the verdict is showing, because
+> they restated it. The suppressed set is `#pickStrength`, `#recoScope`, `#buyLine`, `#buyHint`,
+> `#dualPick`, `#payout`, `#favZone`, `#offBook`.
+
 The headline card (`renderPickCard()`) turns everything into one plain instruction:
 
 - **BUY OVER ↑ / BUY UNDER ↓** in large type, with a plain-language subtitle and a hint.
@@ -826,9 +874,25 @@ iOS/Apple-inspired dark theme:
   orange `#ff9f0a` (skip/caution), blue `#0a84ff` (info/next-round).
 - **Brand coin icons** as crisp inline **SVG** (ETH diamond, BTC ₿, SOL bars, DOGE Ð, SHIB,
   XRP) — tiny and impossible to corrupt.
+- **Hairlines:** `--hair` `rgba(255,255,255,.09)` and `--hair2` `rgba(255,255,255,.06)` — the
+  internal dividers inside the verdict card. (These were referenced by the r90 CSS but only actually
+  *defined* in r93; before that they silently fell back to `currentColor`.)
 - **12-hour clock** with AM/PM everywhere.
-- **Responsive:** a **segmented** coin control on tablet/desktop, a **dropdown** on mobile;
-  fluid grids from phone to ultrawide.
+- **Responsive (r93):** a **segmented** coin control on tablet/desktop, a **dropdown** on mobile.
+  One layout engine, two shapes:
+  - **< 1024px** — a single flex column, ordered by the questions you ask in order: the call
+    (price + clock + verdict, one card) → the record strip → the chart → the closed doors.
+  - **≥ 1024px** — two panes, `the call | the chart`, with the record under the call and three
+    full-width doors below. iPad portrait gets the two-pane layout, not a stack.
+  - `.stackL` is a real flex column with **zero gap**, which is what welds the price card and the
+    verdict card into one; `.stackR` is `display: contents` so its modules place themselves as
+    grid items.
+  - **No column may end in a void.** A short verdict (a SKIP round draws no chips, rail or cost
+    row) used to leave a tall empty patch beside the chart, and an empty region reads as a bug
+    rather than as breathing room — that was the r92 iPad complaint.
+- **One door per thing you set once.** The gear in the nav opens Settings (play style, AI weighting
+  and trust, worker/model/spend, alerts). Diagnostics — AI read, Live Indicators, the full round log,
+  the chart's overlay switches — are `<details>`, collapsed by default at every width.
 - Help affordances: an info sheet (`EXPLAIN` map) defines each indicator + panel in plain
   English.
 

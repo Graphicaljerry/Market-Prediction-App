@@ -27,6 +27,11 @@
     --surface-2: #2c2c2e;
     --surface-3: #3a3a3c;
     --separator: rgba(84,84,88,0.55);
+    /* (r93) The r90 decision-hero CSS referenced --hair / --hair2 for its internal dividers and the
+       "I took this bet" button, but the tokens were never defined — so those borders fell back to
+       currentColor and drew as bright white lines instead of hairlines. Defining them here is the fix. */
+    --hair: rgba(255,255,255,0.09);
+    --hair2: rgba(255,255,255,0.06);
     --label: #ffffff;
     --label-2: rgba(235,235,245,0.62);
     --label-3: rgba(235,235,245,0.46);   /* lifted from .32 for legibility (closer to WCAG AA) while staying muted */
@@ -187,7 +192,7 @@
   .mono { font-family: "Geist Mono", ui-monospace, "SF Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: 0; }
 
   /* ---------- Header ---------- */
-  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 2px 18px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 6px 2px; }
   .topbar .brandText { flex: 1 1 auto; min-width: 0; }
   .guideBtn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--label); text-decoration: none; background: var(--surface-2); border: 1px solid var(--separator); border-radius: 999px; padding: 7px 13px; margin-right: 10px; white-space: nowrap; flex: 0 0 auto; transition: border-color .18s, color .18s; }
   .guideBtn:hover { border-color: rgba(48,209,88,.5); color: var(--green); }
@@ -337,80 +342,172 @@
      expanding the AI Co-Pilot grows only the right column; Auto Pick stays pinned under the price card. */
   .stack { display: contents; }
 
-  /* MOBILE (default, < 768px): dropdown coin picker, single vertical stack */
+  /* ═══ (r93) TWO PANES, NOT THREE COLUMNS ═══════════════════════════════════════════════════════
+     The old layout had nine modules across three columns, and the audit of what's actually on screen
+     found the reason it felt busy: the same facts were being restated. The call appeared 9 times, the
+     crowd price 8, the countdown 5, the hit rate 9. So the modules collapse into two panes —
+       PANE 1 "the call": the price + clock card and the verdict card, welded into ONE card
+       PANE 2 "the evidence": the live chart, with the record as a single strip beneath it
+     — and everything else (AI read, indicators, settings) becomes a closed door along the bottom.
+     Modules were not deleted; nothing that renders a pick or writes the log has changed.       */
+  /* (r93) [hidden] must actually hide. Several blocks are styled `display: flex` (.heroCost, .heroAct,
+     .heroChips…), and an author `display` rule outranks the browser's built-in [hidden] rule — so a
+     "hidden" cost row was still drawing a 13px strip with a hairline above it, which is where those
+     stray empty lines under the verdict came from. An empty chips row cost another 12px the same way. */
+  [hidden] { display: none !important; }
+  .heroChips:empty { display: none; }
+  .m-timer { display: none !important; }   /* clock + bar moved into the price card (r93) */
+  .m-settings { grid-area: set; }
+  /* The at-a-glance bar existed to mirror a verdict that sat below the fold with its clock four
+     screens away. Both of those are fixed: the verdict is the first thing on the page and it carries
+     its own countdown. Kept in the DOM — renderDecisionBar() still reads #buyLine/#oddsPct/#recoConf
+     to build it, and those reads are how several other renderers stay in sync. */
+  .decisionBar { display: none; }
+  .coinHero { display: none; }   /* the coin picker sits directly above it and says the same word */
+
+  /* MOBILE (< 768px): dropdown coin picker, roomier touch targets */
   @media (max-width: 767px) {
     .seg { display: none; }
     .coinSelectWrap { display: flex; }
     .m-chart .chartSec { display: none; }
-    .m-chart .miniChart { height: 264px; }   /* taller on phones — easier to read & scrub */
-    /* DOM order is grouped into stacks, so use flex + order to restore the single-column reading order */
-    .layout { display: flex; flex-direction: column; }
-    /* (r91) Ordered by the questions you actually ask, in order: what do I do -> how long have I got
-       -> how has this been going -> why does it think that. The chart was 4th, above the record; it is
-       the least decision-relevant thing on the page, so it drops below. */
-    .m-signal { order: 1; } .m-hero { order: 2; } .m-timer { order: 3; } .m-autotracker { order: 4; }
-    .m-read { order: 5; } .m-chart { order: 6; } .m-indicators { order: 7; }
-    .layout .module { margin-top: 18px; }
-    .layout .m-hero { margin-top: 0; }
+    .m-chart .miniChart { height: 248px; }
     /* Comfortable touch targets on phones (these are ~26-28px on desktop — fine for a mouse, small for a thumb) */
-    .tfBtn, .chartType button { min-height: 38px; }
+    .tfBtn, .chartType button { min-height: 36px; }
     .indBar button { padding-top: 9px; padding-bottom: 9px; }
     .chip { min-height: 28px; display: inline-flex; align-items: center; justify-content: center; }
+  }
+
+  /* PHONE + SMALL TABLET (< 1024px): one column, in the order you ask the questions.
+     what do I do (price+clock+verdict, one card) -> how's it going -> show me -> why. */
+  @media (max-width: 1023px) {
+    .layout { display: flex; flex-direction: column; }
+    .m-hero { order: 1; } .m-signal { order: 2; } .m-autotracker { order: 3; } .m-chart { order: 4; }
+    .m-read { order: 5; } .m-indicators { order: 6; } .m-settings { order: 7; }
+    .layout .module { margin-top: 16px; }
+    .layout .m-hero { margin-top: 0; }
+    .layout .m-signal { margin-top: 0; }   /* welded to the price card above it */
   }
 
   /* TABLET + DESKTOP: horizontal nav row, segmented coin tabs, big page title hidden */
   @media (min-width: 768px) {
     body { max-width: 1200px; }
-    .coinHero { display: none; }
     .coinSelectWrap { display: none; }
-    .appnav { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 24px; }
+    .appnav { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 20px; }
     .topbar { padding: 0; gap: 12px; flex: 0 0 auto; justify-content: flex-start; }
     .brandMark { display: block; }
     .seg { display: flex; margin: 0; flex: 1 1 300px; justify-content: center; max-width: none; }
   }
-
-  /* TABLET (768–1199): two-column areas, side-by-side rows */
-  @media (min-width: 768px) and (max-width: 1199px) {
-    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start;
-      grid-template-areas:
-        "signal signal"
-        "hero   timer"
-        "chart  chart"
-        "read   read"
-        "ind    ind"
-        "auto   auto"; }
-    .m-chart .chartSec { display: none; }
-    .m-chart .miniChart { height: 320px; }
+  @media (min-width: 768px) and (max-width: 1023px) {
+    .m-chart .miniChart { height: 300px; }
   }
 
-  /* DESKTOP (≥1200): three-column terminal + full-width rows below */
-  @media (min-width: 1200px) {
-    body { max-width: 1480px; }
-    .price { font-size: 50px; }
-    .brandSub, .navExch { display: flex; }
-    /* Three independent columns: left (price + Auto Pick), centre (chart), right (timer + AI Co-Pilot +
-       Track Record), then full-width indicators. The stacks flow on their own, so the timer sits right
-       above the AI Co-Pilot AND Auto Pick stays pinned under the price card regardless of what's expanded. */
-    /* (r92) The decision column gets real width. It was 320px — the narrowest of the three — which
-       squeezed the r90 verdict into a wrapped column beside a 578px chart. */
-    .layout { display: grid; grid-template-columns: 430px minmax(0,1fr) 340px; gap: 20px; align-items: start;
+  /* TWO PANES (≥1024): the call | the chart, then full-width doors. iPad portrait gets this too —
+     it has the width for it, and the old breakpoint made it stack for no reason. */
+  @media (min-width: 1024px) {
+    body { max-width: 1420px; }
+    /* The record strip rides in the LEFT column, under the call — not under the chart. Putting it
+       under the chart leaves a tall empty patch beside the chart whenever the verdict is short (a SKIP
+       round renders no chips, no rail and no cost row), and an empty region reads as something broken
+       rather than as breathing room. That was exactly the r92 bug on iPad, so the rule now is: no
+       column is allowed to end in a void. */
+    .layout { display: grid; grid-template-columns: minmax(400px, 452px) minmax(0,1fr); gap: 18px; align-items: start;
       grid-template-areas:
-        "left chart right"
-        "ind  ind   ind"; }
-    .stack { display: flex; flex-direction: column; }   /* real column containers on desktop */
-    .stackL { grid-area: left; }
-    .stackR { grid-area: right; }
-    /* fixed, stable chart height on desktop — no longer stretches to match the side columns */
+        "left  chart"
+        "read  read"
+        "ind   ind"
+        "set   set"; }
+    /* The left stack is a real flex column with NO gap, so the price card and the verdict card read
+       as one card (they're one thought). Everything on the right is a plain grid item. */
+    .stackL { display: flex; flex-direction: column; gap: 0; grid-area: left; }
+    .stackR { display: contents; }
     .m-chart { align-self: start; }
-    /* drop the breadcrumb on desktop too (already hidden on phone/tablet) so the chart card's top
-       lines up with the price card's top — the timeframe buttons already convey the pair/interval */
     .m-chart .chartSec { display: none; }
-    .m-chart .miniChart { height: 600px; }
-    /* (r92) With the decision column widened, the chart column is narrower — the timeframe row used to
-       scroll horizontally (fine on a touchscreen, invisible with a mouse). Let it wrap instead so
-       every timeframe stays reachable. */
+    .m-chart .miniChart { height: 460px; }
     .tfBar { flex-wrap: wrap; overflow-x: visible; }
   }
+  @media (min-width: 1360px) { .m-chart .miniChart { height: 540px; } }
+  /* The brand strapline and the exchange pill only appear once there's room for them WITHOUT
+     squeezing the coin tabs — at 1024 they were crushing the seven tabs into one run of letters. */
+  @media (min-width: 1240px) { .brandSub, .navExch { display: flex; } }
+
+  /* ---------- (r93) Nav: one row, with a gear for everything you set once ---------- */
+  .appnav { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+  .topbar { flex: 1 1 auto; }
+  .coinSelectWrap { order: 3; flex: 1 1 100%; }
+  .gearBtn { order: 2; margin-left: auto; width: 34px; height: 34px; flex: 0 0 auto; display: inline-flex;
+    align-items: center; justify-content: center; border-radius: 10px; border: 1px solid var(--separator);
+    background: transparent; color: var(--label-2); cursor: pointer; padding: 0; }
+  .gearBtn svg { width: 17px; height: 17px; }
+  .gearBtn:hover { color: var(--label); border-color: var(--label-3); }
+  .gearBtn[aria-expanded="true"] { color: var(--label); border-color: rgba(var(--accent-rgb), .6); }
+
+  /* ---------- (r93) The "now" row — price and clock share one line ----------
+     Two 46-52px numbers that used to live in two different cards in two different columns. */
+  .nowTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+  .nowSide { min-width: 0; flex: 1 1 auto; }
+  .nowClock { text-align: right; flex: 0 0 auto; }
+  .nowLbl { font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--label-3);
+    font-weight: 600; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nowVal { display: flex; align-items: baseline; gap: 9px; min-width: 0; }
+  /* #price isn't always a price — on a dropout it reads "Reconnecting…", which at 38px is wide enough
+     to run into the countdown. Let the word truncate rather than collide. */
+  .nowSide .price { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nowClock .nowVal { justify-content: flex-end; }
+  .nowTop .price, .nowTop .timer { font-size: 34px; line-height: 1; }
+  .nowTop .changePill { font-size: 12px; padding: 4px 9px; }
+  .m-hero .timerBarWrap { margin-top: 13px; }
+  .m-hero .roundStatus { margin-top: 12px; }
+  @media (min-width: 1024px) { .nowTop .price, .nowTop .timer { font-size: 38px; } }
+  @media (max-width: 360px) { .nowTop .price, .nowTop .timer { font-size: 27px; } .nowLbl { letter-spacing: .1em; } }
+
+  /* One card, not two: the price/clock card and the verdict card are welded together, because they
+     answer one question. The seam between them is removed rather than styled. */
+  .m-hero > .card { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; }
+  .m-signal > .card { border-top-left-radius: 0; border-top-right-radius: 0; border-top: 0; padding-top: 8px; margin-bottom: 0; }
+  .stackL .m-autotracker { margin-top: 16px; }
+
+  /* ---------- (r93) The record, as a strip ---------- */
+  .recStrip { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap;
+    padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.025); }
+  .recHead { display: flex; align-items: center; gap: 6px; }
+  .recTitle { font-size: 13px; font-weight: 700; color: var(--label); letter-spacing: -.01em; }
+  .recTitle::before { content: ""; display: inline-block; vertical-align: middle; width: 3px; height: 14px;
+    border-radius: 2px; margin-right: 9px; margin-bottom: 2px;
+    background: linear-gradient(180deg, rgba(var(--accent-rgb), .85), rgba(var(--accent-rgb), .3)); }
+  .recHit { display: flex; align-items: baseline; gap: 6px; }
+  .recHit .v { font-family: var(--font-num); font-size: 21px; font-weight: 700; line-height: 1; }
+  .recHit .k { font-size: 11px; color: var(--label-3); font-weight: 500; }
+  .recStrip .recentForm { margin-top: 0; text-align: left; flex: 1 1 200px; min-width: 0; }
+  .recDetails { margin-top: 12px; }
+  .recDetails .scoreGrid { grid-template-columns: repeat(3, 1fr); }
+  /* the very-narrow 2x2 reshape below is for the old 4-up grid; this one is 3-up and already fits */
+  @media (max-width: 380px) { .recDetails .scoreGrid { grid-template-columns: repeat(3, 1fr); row-gap: 0; }
+    .recDetails .scoreGrid .stat:nth-child(3)::before { display: block; } }
+  .clearRow { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  /* ---------- (r93) Chart overlays behind a disclosure ---------- */
+  .indWrap { margin-top: 10px; }
+  .indWrap > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; color: var(--label-3); padding: 5px 11px; border: 1px solid var(--separator); border-radius: 8px; }
+  .indWrap > summary::-webkit-details-marker { display: none; }
+  .indWrap > summary .secChevron { transition: transform .2s ease; }
+  .indWrap[open] > summary .secChevron { transform: rotate(90deg); }
+  .indWrap .indBar { margin-top: 10px; }
+
+  /* ---------- (r93) Settings captions ---------- */
+  .capNote { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--label-3); }
+
+  /* ---------- (r93) One voice, completed ----------
+     r92 hid the legacy rows that restated the verdict, but missed three that were still on screen:
+     the two-column This Round / Next Round block (the verdict already names the round and switches to
+     the next one itself), the payout line (its multiplier, market % and ±EV tag are the same three
+     numbers the verdict's cost row prints), the off-book warning (it fires on every SKIP, which is
+     exactly when the verdict already says "Sit this one out") and the favourite-zone note (the ⭐ on
+     the verdict is the same signal). All still render — they're just not repeated on screen. */
+  #hero:not([hidden]) ~ #dualPick,
+  #hero:not([hidden]) ~ #payout,
+  #hero:not([hidden]) ~ #favZone,
+  #hero:not([hidden]) ~ #offBook { display: none; }
 
   /* ---------- Prime-entry cue + late-entry record ---------- */
   .primeCue { display: none; }
@@ -605,14 +702,9 @@
      you watch while a round runs, not a diagnostic — and on the desktop grid, removing it left an
      empty middle column. Glance now only collapses the two genuine diagnostic panels, and only on
      screens too small to hold everything. Desktop shows the whole terminal, always. */
-  @media (max-width: 1199px) {
-    body:not(.study) .m-read, body:not(.study) .m-indicators { display: none; }
-  }
-  .modeBtn { float: right; font: inherit; font-size: 11px; letter-spacing: .04em; color: var(--label-2);
-             background: transparent; border: 1px solid var(--hair); border-radius: 999px; padding: 3px 11px; cursor: pointer;
-             transition: transform .12s ease, border-color .2s ease; }
-  .modeBtn:active { transform: scale(.96); }
-  .modeBtn[aria-pressed="true"] { color: var(--label); border-color: var(--label-3); }
+  /* (r93) Glance/Study is retired. It existed because the diagnostic panels were open by default and
+     needed a way to hide them; they're all collapsed by default now, at every width, so the mode had
+     nothing left to switch and was one more control to understand. */
   /* (4) The outcome of the round you were just watching. */
   .heroOutcome { font-size: 12px; color: var(--label-3); margin-bottom: 10px; line-height: 1.45; }
   .heroOutcome b { font-weight: 650; }
@@ -722,7 +814,9 @@
   .meter .mbull { background: var(--green); height: 100%; transition: width .45s; }
   .meter .mbear { background: var(--red); height: 100%; transition: width .45s; margin-left: auto; }
   /* ---------- Glowing "powered by AI" badge + ambient animations ---------- */
-  .aiBadgeRow { display: flex; justify-content: center; margin: -2px 0 14px; }
+  /* (r93) Which AI model is wired up is a Settings fact, not a per-round one — it cost a row above
+     the verdict on every screen. The node stays; renderAiBadge() still fills it. */
+  .aiBadgeRow { display: none; justify-content: center; margin: -2px 0 14px; }
   .aiBadge { --c: 10,132,255; position: relative; display: inline-flex; align-items: center; gap: 7px; overflow: hidden;
     font-size: 11px; font-weight: 800; letter-spacing: .03em; color: #fff; white-space: nowrap;
     padding: 6px 13px 6px 11px; border-radius: 999px;
@@ -753,7 +847,7 @@
   .dpNextCol.lockSnap { animation: lockSnap .6s ease-out; }
   @keyframes lockSnap { 0% { transform: scale(.9); filter: brightness(1.9); } 40% { transform: scale(1.06); } 100% { transform: scale(1); filter: brightness(1); } }
   /* win: the stat number flashes green as it ticks up */
-  .scoreGrid .v.statUp { animation: statUp 1.1s ease-out; }
+  .scoreGrid .v.statUp, .recHit .v.statUp { animation: statUp 1.1s ease-out; }   /* (r93) the hit rate now lives in the record strip, not the grid */
   @keyframes statUp { 0% { color: var(--green); text-shadow: 0 0 14px rgba(13,224,89,.8); transform: scale(1.18); } 100% { text-shadow: 0 0 0 transparent; transform: scale(1); } }
   /* "reading…" shimmer while the AI thinks */
   .shimmerText { background: linear-gradient(90deg, var(--label-3) 30%, #fff 50%, var(--label-3) 70%); background-size: 200% 100%;
@@ -781,7 +875,7 @@
   .indBar button { font: inherit; font-size: 12px; font-weight: 700; padding: 5px 13px; border-radius: 8px; border: 1px solid var(--separator); background: var(--surface-2); color: var(--label-2); cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .indBar button.active { background: rgba(10,132,255,.16); border-color: rgba(10,132,255,.5); color: #4da3ff; }
   /* timeframe zoom selector above the chart */
-  .tfBar { display: flex; gap: 4px; margin-top: 16px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; touch-action: pan-x; }
+  .tfBar { display: flex; gap: 3px; margin-top: 0; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: none; touch-action: pan-x; }
   .tfBar::-webkit-scrollbar { display: none; }
   .tfBtn { flex: 0 0 auto; min-height: 28px; padding: 4px 11px; border-radius: 8px; background: transparent; color: var(--label-2);
     border: 1px solid var(--separator); font-family: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: background-color .18s var(--ease), color .18s var(--ease), border-color .18s var(--ease); }
@@ -791,7 +885,7 @@
      options (30m, Line, Candles…) are discoverable instead of just being clipped at a hard edge. */
   @media (max-width: 920px) { .tfBar { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 22px), transparent); } }
   /* chart header row: timeframe bar (scrolls) + line/candles toggle (pinned right) */
-  .chartHead { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+  .chartHead { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
   .chartHead .tfBar { margin-top: 0; flex: 1 1 auto; min-width: 0; }
   .chartType { display: flex; gap: 2px; flex: 0 0 auto; background: rgba(28,28,30,0.55); border: 1px solid rgba(255,255,255,0.07); border-radius: 9px; padding: 2px; }
   .chartType button { flex: 0 0 auto; min-height: 26px; padding: 3px 10px; border-radius: 7px; background: transparent; color: var(--label-2);
@@ -1063,7 +1157,12 @@
 
   .footnote { text-align: center; font-size: 11px; color: var(--label-3); margin-top: 8px; line-height: 1.6; }
   /* Tier 2 — the Guide action + fine print, consolidated into one quiet group */
-  .footMeta { display: flex; flex-direction: column; align-items: center; gap: 11px; }
+  /* (r93) The footer's status capsule restated the live call for a ninth time — it's read-only and it
+     sits below everything, so it added a voice without adding an answer. The Guide link and the fine
+     print share one row now instead of stacking. */
+  .footStatus { display: none; }
+  .footMeta { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px 14px; }
+  @media (max-width: 520px) { .footMeta { flex-direction: column; gap: 10px; } }
   .footMeta .guideBtn { margin: 0; }
   .footFine { max-width: 344px; margin: 0 auto; font-size: 10.5px; line-height: 1.5; color: var(--label-3); }   /* no extra opacity on the already-faint tier — keeps the fine print at readable contrast */
   /* Tier 3 — build marker collapsed behind a small mono "stamp"; the changelog wall is one tap away */
@@ -1264,6 +1363,10 @@
     </select>
   </div>
   <div class="navExch mono" aria-hidden="true"><span class="navExchDot"></span> Coinbase</div>
+  <!-- (r93) One door for everything you set once and never touch again. -->
+  <button type="button" class="gearBtn" id="gearBtn" aria-label="Settings" title="Play style, AI Co-Pilot, alerts">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+  </button>
   </header>
 
   <h1 class="coinHero" id="coinHero">Ethereum</h1>
@@ -1280,38 +1383,41 @@
   <div class="layout">
   <div class="stack stackL">
   <div class="module m-hero">
-  <div class="card hero orb">
-    <div class="heroTop">
-      <div class="coinInfo">
-        <div class="badge" id="coinBadge">Ξ</div>
-        <div>
-          <div class="coinName" id="coinName">Ethereum</div>
-          <div class="coinPair" id="priceLabel">ETH · USD</div>
-        </div>
+  <div class="card nowCard orb">
+    <!-- (r93) The price and the clock are one thought — "what is it, and how long have I got" — so
+         they share one row. They used to be two separate cards in two different columns, which is
+         why the countdown kept getting restated inside the pick card to compensate. The coin's name
+         and badge stay in the DOM (setCoin writes them) but are no longer drawn: the nav tab and the
+         "ETH · USD" caption already say which coin this is. -->
+    <div class="nowTop">
+      <div class="nowSide">
+        <div class="nowLbl" id="priceLabel">ETH · USD</div>
+        <div class="nowVal"><span id="price" class="price mono">—</span><span id="change" class="changePill mono">—</span></div>
       </div>
-      <span id="change" class="changePill mono">—</span>
+      <div class="nowSide nowClock">
+        <div class="nowLbl">Closes in</div>
+        <div class="nowVal"><span id="timer" class="timer mono">--:--</span></div>
+      </div>
     </div>
-    <div id="price" class="price mono">—</div>
+    <div class="timerBarWrap"><div id="timerBar"></div></div>
     <div id="roundStatus" class="roundStatus">Waiting for round open…</div>
+    <div id="primeCue" class="primeCue"></div>
     <div id="moveStrip" class="moveStrip"></div>
     <div class="updated">
       <span id="updated" class="mono">Loading…</span>
       <span id="srcTag" class="mono"></span>
     </div>
+    <div class="coinIdent" hidden><span class="badge" id="coinBadge">Ξ</span><span class="coinName" id="coinName">Ethereum</span></div>
   </div>
 
   </div>
 
   <div class="module m-signal">
-  <div class="sec">Auto Pick <span class="tiny">· what &amp; when to buy</span>
-    <button type="button" class="modeBtn" id="modeBtn" aria-pressed="false" title="Glance keeps the decision, the chart and the record. Study adds the indicators and the AI read.">Study</button>
-<button class="ihelp" data-info="autopick">?</button>
-    <div class="playStyle" id="playStyle" role="group" aria-label="Play style — how often to bet">
-      <button type="button" data-style="disciplined">Disciplined</button>
-      <button type="button" data-style="balanced">Balanced</button>
-      <button type="button" data-style="active">Active</button>
-    </div>
-  </div>
+  <!-- (r93) The "Auto Pick" header is gone: the verdict below is the only thing this card says, and a
+       label above it added a line without adding an answer. Glance/Study is gone too — every diagnostic
+       panel is now collapsed by default at every width, so there is nothing left for a mode to switch.
+       The play-style dial moved into Settings (it is set once, but it DOES change what you're told to
+       bet, so it keeps its own explanation there). The "?" explainer moved next to the verdict. -->
   <div class="card orb">
     <div class="aiBadgeRow"><span class="aiBadge" id="aiBadge" hidden></span></div>
     <div id="reco" class="reco skip">
@@ -1386,6 +1492,45 @@
     </div>
   </div>
   </div>
+
+  <div class="module m-autotracker" id="autoMod">
+  <!-- (r93) The record is a STRIP by default, not a panel. Hit rate + the last runs are the only parts
+       you glance at between rounds; the scoreboard, coverage, the model tests and the full round log
+       are all one tap away. Nothing was deleted — every id below still renders exactly as before, so
+       the log, the arrows and everything that reads them are untouched. -->
+  <div class="card flat">
+    <div class="recStrip">
+      <div class="recHead"><span class="recTitle">Track record</span> <button class="ihelp" data-info="autotracker">?</button></div>
+      <div class="recHit"><span class="v mono" id="aHit">—</span><span class="k">hit rate</span></div>
+      <div id="recentForm" class="recentForm"></div>
+    </div>
+    <details class="collapsePanel recDetails">
+      <summary class="sec secToggle">Full log &amp; accuracy <span class="tiny">· graded 24/7</span><span class="secChevron" aria-hidden="true">▸</span></summary>
+      <div class="collapseCard">
+        <div class="scoreGrid">
+          <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
+          <div class="stat"><div class="v mono pos" id="aCorrect">0</div><div class="k">Correct</div></div>
+          <div class="stat"><div class="v mono" id="aStreak">0</div><div class="k">Streak</div></div>
+        </div>
+        <div id="autoCoverage" class="autoCoverage"></div>
+        <details class="collapsePanel" id="modelPanel">
+          <summary class="sec secToggle" style="margin-top:18px">Model &amp; Accuracy <span class="tiny" id="modelPanelSummary"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
+          <div class="collapseCard">
+            <div id="autoLearned" class="autoLearned"></div>
+            <div id="autoCalib" class="autoLearned"></div>
+            <div id="lockABStat" class="autoLearned"></div>
+            <div id="lateRecord" class="lateRecord"></div>
+          </div>
+        </details>
+        <div class="sec" style="margin-top:20px">Recent Rounds</div>
+        <div id="autoHistory" class="history collapsed"><div class="empty">Warming up — grades a round every 15 minutes, even while you're away.</div></div>
+        <button class="seeMore" id="moreAuto" style="display:none"></button>
+        <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. The AI reads this record too.</div>
+        <div class="clearRow"><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
+      </div>
+    </details>
+  </div>
+  </div>
   </div>
 
   <div class="module m-chart">
@@ -1413,21 +1558,28 @@
     <canvas id="rsiPane" class="subPane"></canvas>
     <canvas id="macdPane" class="subPane"></canvas>
     <canvas id="stochPane" class="subPane"></canvas>
-    <div class="indBar" id="indBar"><span class="indLbl">Indicators</span><button type="button" data-ind="rsi">RSI</button><button type="button" data-ind="macd">MACD</button><button type="button" data-ind="stoch">Stoch</button><button type="button" data-ind="ema">EMA</button><button type="button" data-ind="bb">Boll</button></div>
+    <!-- (r93) The overlay switches are behind a disclosure. They were 5 of the 17 controls the chart
+         put on screen at once (on a phone they wrapped onto a second row), and they're a "set it and
+         forget it" preference, not something you touch mid-round. -->
+    <details class="indWrap">
+      <summary class="indSummaryRow">Indicators<span class="secChevron" aria-hidden="true">▸</span></summary>
+      <div class="indBar" id="indBar"><span class="indLbl">Overlay</span><button type="button" data-ind="rsi">RSI</button><button type="button" data-ind="macd">MACD</button><button type="button" data-ind="stoch">Stoch</button><button type="button" data-ind="ema">EMA</button><button type="button" data-ind="bb">Boll</button></div>
+    </details>
     <div class="miniChartLbl" id="miniChartLbl">Live price vs the line you must beat</div>
   </div>
   </div>
 
   <div class="stack stackR">
-  <div class="module m-timer">
+  <!-- (r93) RETIRED AS A PANEL, KEPT AS NODES. The clock and its bar moved up into the price card;
+       what's left here only restated things the pick card already says — the close time (the pick
+       card's kicker), the next-round preview (the verdict switches to next-round itself in the final
+       two minutes) and last round's result (the outcome line at the top of the verdict). The nodes
+       stay so tickTimer() / renderNextPick() / renderLastClose() keep writing to something real. -->
+  <div class="module m-timer" hidden>
   <div class="card flat timerCard">
-    <div class="timerLabel">Next round closes in</div>
-    <div id="timer" class="timer mono">--:--</div>
-    <div class="timerBarWrap"><div id="timerBar"></div></div>
     <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
     <div id="nextPick" class="nextPick"></div>
     <div id="lastClose" class="lastClose"></div>
-    <div id="primeCue" class="primeCue"></div>
   </div>
 
   </div>
@@ -1439,6 +1591,26 @@
     <div id="blend" class="blend"></div>
     <div id="aiInfluence" class="aiInfluence"></div>
     <div class="pickoff" id="pickoff" hidden></div>
+  </div>
+  </details>
+
+  </div>
+
+  <!-- (r93) SETTINGS — one door for everything that is configured once and then never touched again.
+       These used to sit in the open on every screen. They are NOT decoration: the play-style dial and
+       the AI trust dial both change what you are told to bet, which is exactly why they now carry
+       their own explanation instead of floating unlabelled above the verdict. -->
+  <div class="module m-settings" id="settingsMod">
+  <details class="collapsePanel" id="settingsPanel">
+  <summary class="sec secToggle">Settings <span class="tiny">· play style, AI, alerts</span><span class="secChevron" aria-hidden="true">▸</span></summary>
+  <div class="card orb collapseCard">
+    <span class="fieldCap">Play style <span class="capNote">— how strong a setup has to be before the app tells you to bet. Changes the picks.</span></span>
+    <div class="playStyle" id="playStyle" role="group" aria-label="Play style — how often to bet">
+      <button type="button" data-style="disciplined">Disciplined</button>
+      <button type="button" data-style="balanced">Balanced</button>
+      <button type="button" data-style="active">Active</button>
+    </div>
+    <span class="fieldCap" style="margin-top:18px">AI weighting <span class="capNote">— how much the AI read counts in the blended %. Changes the picks.</span></span>
     <label class="hiConvToggle" style="margin:2px 0 10px"><input type="checkbox" id="aiBoost" /><span>Trust the AI more as it earns it</span></label>
     <div class="trustDial" id="trustDialWrap">
       <div class="tdHead"><span class="tdLbl">AI trust dial</span><span class="tdVal" id="aiTrustVal">earned · unchanged</span></div>
@@ -1474,34 +1646,7 @@
   </details>
 
   </div>
-
-  <div class="module m-autotracker" id="autoMod">
-  <div class="sec secHead">Track Record <span class="tiny">· 24/7 auto-graded · runs even when the app's closed</span> <button class="ihelp" data-info="autotracker">?</button><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
-  <div class="card flat">
-    <div class="scoreGrid">
-      <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
-      <div class="stat"><div class="v mono pos" id="aCorrect">0</div><div class="k">Correct</div></div>
-      <div class="stat"><div class="v mono" id="aStreak">0</div><div class="k">Streak</div></div>
-      <div class="stat"><div class="v mono" id="aHit">—</div><div class="k">Hit Rate</div></div>
-    </div>
-    <div id="autoCoverage" class="autoCoverage"></div>
-    <div id="recentForm" class="recentForm"></div>
-    <details class="collapsePanel" id="modelPanel">
-      <summary class="sec secToggle" style="margin-top:18px">Model &amp; Accuracy <span class="tiny" id="modelPanelSummary"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
-      <div class="collapseCard">
-        <div id="autoLearned" class="autoLearned"></div>
-        <div id="autoCalib" class="autoLearned"></div>
-        <div id="lockABStat" class="autoLearned"></div>
-        <div id="lateRecord" class="lateRecord"></div>
-      </div>
-    </details>
-    <div class="sec" style="margin-top:20px">Recent Rounds</div>
-    <div id="autoHistory" class="history collapsed"><div class="empty">Warming up — grades a round every 15 minutes, even while you're away.</div></div>
-    <button class="seeMore" id="moreAuto" style="display:none"></button>
-    <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. The AI reads this record too.</div>
-  </div>
-  </div>
-  </div>
+  </div><!-- /.stackR -->
 
   <div class="module m-indicators">
   <details class="collapsePanel">
@@ -1528,10 +1673,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r92</span><span class="buildSep">·</span><span>2026-08-10</span>
+        <span class="buildVer">build r93</span><span class="buildSep">·</span><span>2026-08-22</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Compact layout — nine panels become three (r93).</b> An audit of what's actually on screen found the reason the app felt busy, and it wasn't the amount of information: it was the <b>repetition</b>. On one screen the app stated the call <b>9 times</b>, the crowd's price <b>8 times</b> (four of them inside a single card), the countdown <b>5 times</b>, its own % <b>7 times</b> and its hit rate <b>9 times</b>. Every copy agreed — but you can't know that at a glance, so you re-read them to check. Now each fact is said once. <b>(1) One card, not three</b> — the price card, the countdown card and the verdict card were one thought split three ways, so they're welded into a single card: price and clock share the top row, the verdict owns the middle. The separate timer panel is gone. <b>(2) The top status bar is gone</b> — it existed to mirror a verdict that used to sit below the fold with its clock four screens away; both are fixed. <b>(3) The duplicated rows inside the pick card are gone</b> — This/Next Round, the payout line, the off-book warning and the favourite-zone note all restated the headline or its cost row. <b>(4) The 24/7 record is a strip</b> — hit rate and recent form, with the scoreboard, coverage, model tests and the full round log one tap away. <b>(5) Settings</b> — a gear in the nav holds everything you set once: play style, AI weighting and trust, worker/model/spend, alerts. <b>(6) Two panes</b> — the call on the left, the chart on the right, three closed doors along the bottom; iPad portrait gets the two-pane layout too instead of stacking. Glance/Study is retired (nothing left for it to switch). <b>Result: the page is about 40–50% shorter on phone and iPad, with 6 fewer controls on screen.</b> Three real bugs fell out of the audit and are fixed: <code>[hidden]</code> didn't hide flex-styled blocks (a "hidden" cost row still drew an empty strip with a hairline under the verdict), the hairline colour tokens the r90 card referenced were never defined so those dividers drew as bright white lines, and the price card had lost its padding to a class-name clash with the r90 verdict block. <b>Display-only: no pick, commitment, alert, grade or logged round changed.</b></p>
         <p><b>Chart restored, and the redesign gets the room it needed (r92).</b> Fixes r91 on iPad/desktop. <b>(1) The live graph is back</b> — Glance mode should never have hidden it (it's what you watch while a round runs, not a diagnostic), and on the three-column desktop grid removing it left a large empty middle. Glance now only collapses the two diagnostic panels, and only on screens too small to hold everything; desktop shows the full terminal. <b>(2) The decision column got wider</b> (320px → 430px) — the r90 verdict was squeezed into the narrowest of the three columns beside a much wider chart, which is why the redesign was hard to see on a big screen. <b>(3) One voice, visually:</b> while the new verdict is showing, the older rows that restate it ("— SIT OUT", the buy line, the scope tag) are hidden, so the card says the call once instead of three times — they reappear automatically if the verdict can't render. <b>(4)</b> Timeframe buttons wrap on desktop instead of scrolling out of sight. Display-only.</p>
         <p><b>The app finally listens — plus Glance mode and a star that finds you (r91).</b> Six workflow fixes. <b>(1) "I took this bet"</b> — one tap logs what you actually placed, so the app can score <i>you</i>, not just itself, and call out the pattern that cost real money in July: <i>"you're 1 of 5 on rounds the app skipped."</i> Stored on your device only. <b>(2) The star finds you</b> — an A-grade setup on any coin now leads the all-coins ticker instead of hiding behind a tap on a coin you'd have to think to check. <b>(3) The clock moved into the verdict</b> (it sat four screens below it) and the card turns amber for <b>Act now</b> in the last 5 minutes. <b>(4) Last round's result</b> is shown at the top instead of making you scroll and match timestamps. <b>(5) Glance mode</b> is the new default — decision and record only; one tap for <b>Study</b> (chart, indicators, AI). <b>(6) The page reorders</b> to the order you ask things: what do I do → how long → how's it going → why. The chart drops below the record. <b>All display-only — no pick, alert or grade changed.</b></p>
         <p><b>One screen, one answer — the pick card redesigned (r90).</b> The card used to stack seven voices down the screen (banner, two-column pick, buy line, hint, odds, tally, payout, favorite zone, off-book) and you had to assemble the verdict yourself — which is how the Jul-18 "bet up / says under / says skip" confusion happened in the first place. Now the <b>verdict owns the top</b>: one headline (<b>Bet Over ⭐</b> / <b>Sit this one out</b> / <b>Under — but overpriced</b>), the reason in one plain sentence, then the few numbers worth seeing — after-fee edge, the crowd's price, the app's %. Below that, <b>price vs the line as a single dot on a rail</b> (grey when it's inside the "too close to call" zone), and <b>what it costs and returns after the fee</b>. All the old rows still exist, one tap away under <b>"Show the numbers behind this."</b> The hero invents nothing — it renders the same values the rows below already computed, so it cannot disagree with them. Also fixed properly this time: the payout line was still doing <i>its own copy</i> of the after-fee maths instead of calling the shared function r87 added — two copies that agreed only by luck. Now there is one. <b>Display-only: no pick, commitment, alert or grade changed.</b></p>
@@ -3972,20 +4118,21 @@
   }
 
   // ---------- Init ----------
-  // (r91) Glance vs Study. Glance is the default — the decision and the record. Study adds the chart,
-  // the read and the indicators back. Remembered per device.
+  // (r93) The gear opens the Settings panel at the foot of the page and scrolls to it. Everything in
+  // there is set-once (play style, AI weighting, worker/model/spend, alerts) — it used to sit in the
+  // open on every screen. Display-only plumbing: the controls themselves are unchanged, so what they
+  // do to a pick is exactly what they did before.
   (function () {
-    var b = $("modeBtn"); if (!b) return;
-    var on = false;
-    try { on = localStorage.getItem("studyMode") === "1"; } catch (_) {}
-    var apply = function () {
-      document.body.classList.toggle("study", on);
-      b.setAttribute("aria-pressed", on ? "true" : "false");
-      b.textContent = on ? "Glance" : "Study";
-      try { localStorage.setItem("studyMode", on ? "1" : "0"); } catch (_) {}
-    };
-    apply();
-    b.addEventListener("click", function (e) { e.stopPropagation(); on = !on; apply(); if (on) drawMiniChart(); });
+    var b = $("gearBtn"), p = $("settingsPanel"); if (!b || !p) return;
+    var sync = function () { b.setAttribute("aria-expanded", p.open ? "true" : "false"); };
+    sync();
+    p.addEventListener("toggle", sync);
+    b.addEventListener("click", function (e) {
+      e.stopPropagation();
+      p.open = !p.open;
+      sync();
+      if (p.open) { try { p.scrollIntoView({ behavior: "smooth", block: "start" }); } catch (_) { p.scrollIntoView(); } }
+    });
   })();
   // (r91) "I took this bet" — the app's only channel for learning what YOU actually did.
   (function () {
