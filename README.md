@@ -19,6 +19,36 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **r94 — the AI model list keeps itself current.** The model picker was five hand-written options,
+  so it was stuck on a generation of models that had already been superseded: every time Google,
+  Groq or Anthropic shipped something new, the app quietly kept using the old one. It now asks the
+  providers instead of remembering. **The Worker calls each provider's own list-models endpoint**
+  (`GET /v1/models` Anthropic, `GET /v1beta/models` Google, `GET /openai/v1/models` Groq), merges
+  the answers and serves them at **`?models`**; the app rebuilds its dropdown from that on load,
+  every 6h while a tab stays open, and whenever you hit Save. List endpoints aren't inference calls,
+  so it costs nothing — free tiers included.
+  - **Only real chat models are offered.** Embeddings, image/video, speech and safety-classifier
+    models are filtered out (picking one would break the read); for Google the test is whether the
+    model advertises `generateContent`, the method the Worker actually calls.
+  - **Cached ~6h in KV and warmed by the cron**, so nothing waits on three provider calls. One dead
+    provider is reported and the rest still list; all three dead serves the last good list, flagged
+    stale. The picker shows how fresh the list is and names any provider that didn't answer.
+  - **Your choice is never silently swapped.** If the providers stop listing the model you picked,
+    it stays selected and is labelled *"no longer listed"* rather than being replaced under you.
+  - **Self-healing at call time** — the one place a substitution does happen. If the model the
+    Worker is about to call is gone from its provider's list, calling it 404s and the round gets
+    **no AI read at all**; the Worker instead uses the newest model in the same family (retired
+    sonnet → newest sonnet, retired flash → newest flash), preserving the cost tier the setting was
+    chosen for. **This is the one part of r94 that can change an AI read** — and only in the case
+    where the alternative was no read.
+  - Two fixes fell out of it: model ids containing `/` (Groq namespaces its catalogue as
+    `meta-llama/…`, `openai/gpt-oss-…`) were rejected by the cross-device sync's validation, so
+    those models could never sync; and a shared model the local dropdown didn't list was ignored
+    outright instead of adopted. Also, the badge's name map was hard-coded — it answered *"Claude
+    Sonnet 4.6"* for **any** sonnet id and *"Gemini 2.0 Flash"* for any gemini id, so it kept naming
+    a model that wasn't running. It now uses the provider's own display name.
+  - The dropdown's built-in options remain as an offline fallback, refreshed to current ids.
+
 - **r93 — compact layout: nine panels become three.** The page wasn't showing too much information;
   it was showing the *same* information over and over. A full inventory of every surface on screen
   found the call stated **9 times**, the crowd price **8** (four inside one card), the countdown **5**,
@@ -784,10 +814,16 @@ AI and the auto-tracker panel. Design choices are grounded in the literature:
 `cloudflare-worker/worker.js` takes the app's snapshot and returns a disciplined, **numeric**
 verdict.
 
-- **Providers (switchable):** Anthropic Claude (**`claude-haiku-4-5` default** — cheap and
-  plenty sharp; Sonnet/Opus selectable), Google Gemini (`gemini-2.0-flash`, free), Groq
-  (`llama-3.3-70b-versatile`, free). Auto-detected from the key present, or forced with
-  `AI_PROVIDER`; the app can request a specific model per call.
+- **Providers (switchable):** Anthropic Claude (paid; **`claude-haiku-4-5`** is the cheap default,
+  Sonnet/Opus selectable), Google Gemini (free tier), Groq (free tier). Auto-detected from the key
+  present, or forced with `AI_PROVIDER`; the app can request a specific model per call.
+- **Live model catalogue (r94):** the list of models you can pick is **fetched from the providers**,
+  not hard-coded. `?models` merges each provider's own list-models endpoint (only for keys that are
+  set), drops anything that can't do a chat completion, caches ~6h in KV (`cfg:models`, warmed by
+  the cron) and serves the last good list if a refresh fails. The app rebuilds its dropdown from it
+  and keeps your selection even if the providers stop listing it. At **call** time, a model that has
+  disappeared from its provider's list is swapped for the newest one in the same family
+  (`liveModel`) — a retired id would otherwise 404 and cost the round its AI read entirely.
 - **Structured output:** `{probOver, verdict, confidence, edge, rationale}` — Anthropic via
   JSON-schema, Gemini/Groq via JSON modes, with a tolerant `extractJson()` fallback and a
   `normalize()` that derives `probOver` if omitted.

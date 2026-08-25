@@ -496,6 +496,9 @@
 
   /* ---------- (r93) Settings captions ---------- */
   .capNote { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--label-3); }
+  /* (r94) How fresh the live model list is, and whether any provider failed to answer. */
+  .modelNote { font-size: 11px; color: var(--label-3); margin: -6px 0 14px; line-height: 1.45; }
+  .modelNote:empty { display: none; }
 
   /* ---------- (r93) One voice, completed ----------
      r92 hid the legacy rows that restated the verdict, but missed three that were still on screen:
@@ -1623,14 +1626,19 @@
       <div class="aiSetupBody">
         <span class="fieldCap">Worker URL</span>
         <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
-        <span class="fieldCap">Model</span>
+        <span class="fieldCap">Model <span class="capNote">— refreshed from Google, Groq and Anthropic themselves, so new models appear on their own.</span></span>
+        <!-- (r94) These options are the OFFLINE FALLBACK only. loadModelCatalogue() replaces them with
+             the live list the Worker pulls from each provider's own list-models endpoint, so this
+             list can no longer go stale the way it did. Kept in the markup so the picker still works
+             before the catalogue lands, or if the Worker is unreachable. -->
         <select id="aiModel" class="settingsInput">
           <option value="gemini-2.0-flash">Gemini 2.0 Flash · free</option>
           <option value="llama-3.3-70b-versatile">Groq Llama 3.3 70B · free</option>
           <option value="claude-haiku-4-5">Claude Haiku 4.5 · cheap (paid)</option>
-          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 · sharpest (default · paid)</option>
-          <option value="claude-opus-4-8">Claude Opus 4.8 · smartest (paid)</option>
+          <option value="claude-sonnet-5">Claude Sonnet 5 · sharpest (default · paid)</option>
+          <option value="claude-opus-5">Claude Opus 5 · smartest (paid)</option>
         </select>
+        <div class="modelNote" id="modelNote"></div>
         <span class="fieldCap">AI spend</span>
         <select id="aiBudget" class="settingsInput">
           <option value="always">Every round (default · free on Gemini)</option>
@@ -1673,10 +1681,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r93</span><span class="buildSep">·</span><span>2026-08-22</span>
+        <span class="buildVer">build r94</span><span class="buildSep">·</span><span>2026-08-25</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>The AI model list keeps itself current (r94).</b> The model picker was five hand-written options, so it was stuck on a generation of models that had already been superseded — every time Google, Groq or Anthropic shipped something new, the app quietly kept using the old one. It now <b>asks the providers instead of remembering</b>: the Worker calls each provider's own list-models endpoint, merges the answers, and the app builds its dropdown from that on load, every 6 hours while a tab stays open, and whenever you hit Save. <b>It costs nothing</b> — asking "what models do you have" isn't an AI call, so it's free on the free tiers too. <b>Only real chat models are offered</b> (embeddings, image, speech and safety models are filtered out — picking one would just break the read). The list is <b>cached ~6h</b> and warmed in the background, one dead provider never blanks the others, and if all of them are unreachable the last good list is served rather than an empty box. <b>Your choice is never silently swapped:</b> if the providers stop listing the model you picked, it stays selected and is labelled "no longer listed". The one exception is at call time — if the model the Worker is about to use has actually been retired, calling it would fail and the round would get <b>no AI read at all</b>, so it uses the newest model in the same family instead (retired Sonnet → newest Sonnet), keeping the cost tier you chose. <b>That is the only part of this that can change an AI read, and only where the alternative was no read.</b> Two bugs fixed along the way: model ids containing a slash (Groq now names its models <code>meta-llama/…</code>) were rejected by the cross-device sync, so those models could never sync; and the badge's name map was hard-coded — it said "Claude Sonnet 4.6" for <i>any</i> Sonnet, so it kept naming a model that wasn't running. It uses the provider's own name now.</p>
         <p><b>Compact layout — nine panels become three (r93).</b> An audit of what's actually on screen found the reason the app felt busy, and it wasn't the amount of information: it was the <b>repetition</b>. On one screen the app stated the call <b>9 times</b>, the crowd's price <b>8 times</b> (four of them inside a single card), the countdown <b>5 times</b>, its own % <b>7 times</b> and its hit rate <b>9 times</b>. Every copy agreed — but you can't know that at a glance, so you re-read them to check. Now each fact is said once. <b>(1) One card, not three</b> — the price card, the countdown card and the verdict card were one thought split three ways, so they're welded into a single card: price and clock share the top row, the verdict owns the middle. The separate timer panel is gone. <b>(2) The top status bar is gone</b> — it existed to mirror a verdict that used to sit below the fold with its clock four screens away; both are fixed. <b>(3) The duplicated rows inside the pick card are gone</b> — This/Next Round, the payout line, the off-book warning and the favourite-zone note all restated the headline or its cost row. <b>(4) The 24/7 record is a strip</b> — hit rate and recent form, with the scoreboard, coverage, model tests and the full round log one tap away. <b>(5) Settings</b> — a gear in the nav holds everything you set once: play style, AI weighting and trust, worker/model/spend, alerts. <b>(6) Two panes</b> — the call on the left, the chart on the right, three closed doors along the bottom; iPad portrait gets the two-pane layout too instead of stacking. Glance/Study is retired (nothing left for it to switch). <b>Result: the page is about 40–50% shorter on phone and iPad, with 6 fewer controls on screen.</b> Three real bugs fell out of the audit and are fixed: <code>[hidden]</code> didn't hide flex-styled blocks (a "hidden" cost row still drew an empty strip with a hairline under the verdict), the hairline colour tokens the r90 card referenced were never defined so those dividers drew as bright white lines, and the price card had lost its padding to a class-name clash with the r90 verdict block. <b>Display-only: no pick, commitment, alert, grade or logged round changed.</b></p>
         <p><b>Chart restored, and the redesign gets the room it needed (r92).</b> Fixes r91 on iPad/desktop. <b>(1) The live graph is back</b> — Glance mode should never have hidden it (it's what you watch while a round runs, not a diagnostic), and on the three-column desktop grid removing it left a large empty middle. Glance now only collapses the two diagnostic panels, and only on screens too small to hold everything; desktop shows the full terminal. <b>(2) The decision column got wider</b> (320px → 430px) — the r90 verdict was squeezed into the narrowest of the three columns beside a much wider chart, which is why the redesign was hard to see on a big screen. <b>(3) One voice, visually:</b> while the new verdict is showing, the older rows that restate it ("— SIT OUT", the buy line, the scope tag) are hidden, so the card says the call once instead of three times — they reappear automatically if the verdict can't render. <b>(4)</b> Timeframe buttons wrap on desktop instead of scrolling out of sight. Display-only.</p>
         <p><b>The app finally listens — plus Glance mode and a star that finds you (r91).</b> Six workflow fixes. <b>(1) "I took this bet"</b> — one tap logs what you actually placed, so the app can score <i>you</i>, not just itself, and call out the pattern that cost real money in July: <i>"you're 1 of 5 on rounds the app skipped."</i> Stored on your device only. <b>(2) The star finds you</b> — an A-grade setup on any coin now leads the all-coins ticker instead of hiding behind a tap on a coin you'd have to think to check. <b>(3) The clock moved into the verdict</b> (it sat four screens below it) and the card turns amber for <b>Act now</b> in the last 5 minutes. <b>(4) Last round's result</b> is shown at the top instead of making you scroll and match timestamps. <b>(5) Glance mode</b> is the new default — decision and record only; one tap for <b>Study</b> (chart, indicators, AI). <b>(6) The page reorders</b> to the order you ask things: what do I do → how long → how's it going → why. The chart drops below the record. <b>All display-only — no pick, alert or grade changed.</b></p>
@@ -4236,8 +4245,82 @@
   var WORKER_KEY = "workerUrl_v1", AI_MODEL_KEY = "aiModel_v1";
   var DEFAULT_WORKER = "https://market-prediction-app.jrodsuniverse.workers.dev";   // baked-in so you never retype it
   function getWorkerUrl() { try { return ((localStorage.getItem(WORKER_KEY) || "").trim()) || DEFAULT_WORKER; } catch (e) { return DEFAULT_WORKER; } }
-  var DEFAULT_AI_MODEL = "claude-sonnet-4-6";   // sharpest read; the dropdown also picks the provider (Worker needs ANTHROPIC_API_KEY for Claude). No key → falls back gracefully to a free provider.
+  var DEFAULT_AI_MODEL = "claude-sonnet-5";   // sharpest read; the dropdown also picks the provider (Worker needs ANTHROPIC_API_KEY for Claude). No key → falls back gracefully to a free provider. Only used on a device that has never picked one — a saved choice always wins.
   function getModel() { try { return localStorage.getItem(AI_MODEL_KEY) || DEFAULT_AI_MODEL; } catch (e) { return DEFAULT_AI_MODEL; } }
+
+  // ---------- Live model catalogue (r94) ----------
+  // The dropdown used to be a hand-written list of five models, so every time a provider shipped
+  // something new the app quietly kept using last year's. The Worker now asks Google, Groq and
+  // Anthropic what they actually serve today (each publishes a list-models endpoint) and this
+  // rebuilds the picker from that answer. Purely a menu of what you CAN choose — it never changes
+  // the model you HAVE chosen.
+  var MODEL_CATALOGUE = null;   // [{id,label,provider,tier}] once loaded
+  function catalogueEntry(id) {
+    if (!MODEL_CATALOGUE || !id) return null;
+    for (var i = 0; i < MODEL_CATALOGUE.length; i++) if (MODEL_CATALOGUE[i].id === id) return MODEL_CATALOGUE[i];
+    return null;
+  }
+  var PROVIDER_LABEL = { anthropic: "Claude · paid", gemini: "Google Gemini · free tier", groq: "Groq · free tier" };
+  function loadModelCatalogue(force) {
+    var url = workerGet(force ? { models: "refresh" } : { models: "1" });
+    if (!url) return;
+    fetch(url)
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.models || !d.models.length) return;
+        MODEL_CATALOGUE = d.models;
+        renderModelOptions(d);
+        renderAIBadge();                       // the badge can now use the provider's own display name
+      })
+      .catch(function () {});                  // offline / no worker → the built-in fallback list stands
+  }
+  // Built with DOM calls, not innerHTML: these ids and display names come straight from three
+  // third-party APIs, and textContent can't be talked into being markup.
+  function renderModelOptions(d) {
+    var sel = $("aiModel"); if (!sel) return;
+    var chosen = getModel();
+    var byProv = {}, order = [];
+    d.models.forEach(function (m) {
+      if (!m || !m.id) return;
+      var p = m.provider || "other";
+      if (!byProv[p]) { byProv[p] = []; order.push(p); }
+      byProv[p].push(m);
+    });
+    // The provider the Worker is actually configured for goes first — that's the one whose models
+    // will really run. Picking any other provider's model only works if its key is also set.
+    if (d.provider && order.indexOf(d.provider) > 0) order = [d.provider].concat(order.filter(function (p) { return p !== d.provider; }));
+    var frag = document.createDocumentFragment();
+    var addGroup = function (label, list, suffix) {
+      var g = document.createElement("optgroup");
+      g.label = label;
+      list.forEach(function (m) {
+        var o = document.createElement("option");
+        o.value = m.id;
+        o.textContent = (m.label || m.id) + (suffix || "");
+        g.appendChild(o);
+      });
+      frag.appendChild(g);
+    };
+    // NEVER drop the model that is currently selected. If the providers no longer list it, keep it
+    // as its own entry and say so, rather than silently switching which AI reads your rounds.
+    var stillThere = d.models.some(function (m) { return m.id === chosen; });
+    if (!stillThere) addGroup("Your current choice", [{ id: chosen, label: chosen }], " · no longer listed");
+    order.forEach(function (p) {
+      addGroup((PROVIDER_LABEL[p] || p) + (p === d.provider ? " · active" : ""), byProv[p]);
+    });
+    sel.innerHTML = "";
+    sel.appendChild(frag);
+    sel.value = chosen;
+    var note = $("modelNote");
+    if (note) {
+      var age = d.ts ? Math.round((Date.now() - d.ts) / 60000) : null;
+      var errs = d.errors ? Object.keys(d.errors) : [];
+      note.textContent = d.models.length + " models live" +
+        (age != null ? " · checked " + (age < 60 ? age + "m" : Math.round(age / 60) + "h") + " ago" : "") +
+        (errs.length ? " · couldn't reach " + errs.join(", ") : "") +
+        (stillThere ? "" : " · your saved model isn't in any provider's list any more");
+    }
+  }
   // The AI model is a SHARED, cross-device setting. Pull the choice the Worker has saved and apply it
   // here, so a model picked on one device shows up on the others. Ignores anything this build doesn't list.
   function syncSharedModel() {
@@ -4247,7 +4330,14 @@
       .then(function (d) {
         if (!d || !d.model || d.model === getModel()) return;          // nothing shared yet, or already in sync
         var sel = $("aiModel");
-        if (sel && !Array.prototype.some.call(sel.options, function (o) { return o.value === d.model; })) return;
+        // (r94) Previously an id the local dropdown didn't list was ignored outright — which meant a
+        // model picked on a device with a fresher list silently failed to sync. Adopt it and add it
+        // to the picker instead; the catalogue refresh will fold it in properly on the next load.
+        if (sel && !Array.prototype.some.call(sel.options, function (o) { return o.value === d.model; })) {
+          var o = document.createElement("option");
+          o.value = d.model; o.textContent = modelNice(d.model);
+          sel.insertBefore(o, sel.firstChild);
+        }
         try { localStorage.setItem(AI_MODEL_KEY, d.model); } catch (e) {}
         if (sel) sel.value = d.model;
         state.lastAI = null; state.lastProvider = null;   // a synced model change clears the old model's read too, so the label matches the new model
@@ -4421,14 +4511,23 @@
   // The AI label reflects whichever provider actually answered (set by the app's model dropdown).
   function providerNice(p) { return p === "gemini" ? "Gemini" : p === "groq" ? "Groq" : p === "anthropic" ? "Claude" : "AI"; }
   // Friendly name + provider class for the glowing "which AI is helping" badge near the top of the picker.
+  // (r94) Prefer the provider's own display name from the live catalogue. This used to be a
+  // hard-coded map that answered "Claude Sonnet 4.6" for ANY sonnet id and "Gemini 2.0 Flash" for
+  // any gemini id — so the badge kept naming last year's model no matter what was really running.
+  // Without a catalogue (offline, no worker) it now derives a readable name from the id itself
+  // rather than asserting a version it can't know.
   function modelNice(m) {
     m = m || "";
-    if (m.indexOf("sonnet") >= 0) return "Claude Sonnet 4.6";
-    if (m.indexOf("opus") >= 0) return "Claude Opus 4.8";
-    if (m.indexOf("haiku") >= 0) return "Claude Haiku 4.5";
-    if (m.indexOf("gemini") >= 0) return "Gemini 2.0 Flash";
-    if (m.indexOf("llama") >= 0) return "Groq Llama 3.3";
-    return "AI";
+    var e = catalogueEntry(m);
+    if (e && e.label) return e.label;
+    if (!m) return "AI";
+    var id = m.indexOf("/") >= 0 ? m.slice(m.indexOf("/") + 1) : m;          // strip "meta-llama/" style prefixes
+    id = id.replace(/-(latest|preview|exp|\d{8})$/i, "");                    // drop trailing channel/date tags
+    var words = id.split(/[-_.]/).filter(Boolean).map(function (w) {
+      if (/^\d/.test(w)) return w;                                           // version numbers stay as-is
+      return w.length <= 2 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1);
+    });
+    return words.join(" ") || "AI";
   }
   function modelProvider(m) {
     m = m || "";
@@ -5415,6 +5514,7 @@
   $("aiRun").addEventListener("click", function () {
     try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {}
     pushSharedModel($("aiModel").value);
+    loadModelCatalogue(true);   // (r94) saving is also "check for new models now" — forces a re-fetch past the Worker's 6h cache
     callWorker(true);
   });
   $("aiModel").addEventListener("change", function () { var m = $("aiModel").value; try { localStorage.setItem(AI_MODEL_KEY, m); } catch (e) {} state.lastAI = null; state.lastProvider = null; pushSharedModel(m); renderAIBadge(); renderBlend(); if (getWorkerUrl()) refreshCrowd(true); });   // switching models clears the previous model's read so the label can't show the wrong AI; shares the choice + free-refreshes
@@ -5423,7 +5523,10 @@
 
   loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog(); loadLockAB(); loadLockedNext(); loadCommitted();
   renderAccuracy(); renderRounds(); renderLateRecord(); tickTimer(); refresh(); connectWS();
-  (function initAI() { $("aiModel").value = getModel(); renderAIBadge(); syncSharedModel(); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
+  (function initAI() { $("aiModel").value = getModel(); renderAIBadge(); syncSharedModel(); loadModelCatalogue(false); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
+  // (r94) Re-check the catalogue every 6h for a tab that stays open for days, so a model released
+  // this afternoon shows up without a reload. Cheap: the Worker serves it from KV.
+  setInterval(function () { loadModelCatalogue(false); }, 6 * 60 * 60 * 1000);
   setInterval(function () { fetchBest(false); }, 60000);   // keep the best-coin ticker fresh between rounds
   Array.prototype.forEach.call(document.querySelectorAll("#coinSeg button"), function (b) { var im = b.querySelector(".cico"); if (im) im.src = COIN_ICONS[b.getAttribute("data-coin")] || ""; });
   $("coinBadge").innerHTML = COIN_ICONS[state.coin] ? '<img alt="" src="' + COIN_ICONS[state.coin] + '">' : "";

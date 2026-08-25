@@ -27,11 +27,114 @@
 
 const KALSHI_BASE = "https://external-api.kalshi.com/trade-api/v2";
 
+// Last-resort defaults ONLY. The live catalogue below (?models) is the real source of truth: every
+// provider publishes its own list-models endpoint, so the Worker asks them instead of shipping a
+// hard-coded list that silently rots. These are what it falls back to before the first catalogue
+// refresh lands, or if a provider's list endpoint is down.
 const DEFAULT_MODELS = {
   anthropic: "claude-haiku-4-5",
   gemini: "gemini-2.0-flash",
   groq: "llama-3.3-70b-versatile",
 };
+
+// --- Live model catalogue ------------------------------------------------------------------
+// Each provider publishes what it currently serves; we merge those lists, drop the ones that
+// can't do a chat completion (embeddings, image/video, speech, safety classifiers), cache the
+// result in KV and refresh it on the cron. So the app's dropdown tracks the providers rather
+// than a list someone has to remember to edit.
+const MODELS_KEY = "cfg:models";
+const MODELS_TTL_MS = 6 * 60 * 60 * 1000;   // refresh at most every 6h (cron does it in the background)
+
+// Models that exist but cannot answer a prompt — selecting one would just break the AI read.
+const NOT_CHAT = /embedding|embed-|aqa|imagen|image-generation|veo|\btts\b|text-to-speech|whisper|guard|playai|moderation|rerank/i;
+
+async function fetchAnthropicModels(key) {
+  const r = await fetch("https://api.anthropic.com/v1/models?limit=100", {
+    headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+  });
+  if (!r.ok) throw new Error("anthropic " + r.status + " " + (await r.text()).slice(0, 120));
+  const d = await r.json();
+  return (d.data || [])
+    .filter((m) => m && m.id && !NOT_CHAT.test(m.id))
+    .map((m) => ({
+      id: m.id,
+      label: m.display_name || m.id,
+      provider: "anthropic",
+      tier: "paid",
+      created: m.created_at ? Date.parse(m.created_at) || 0 : 0,
+    }));
+}
+
+async function fetchGeminiModels(key) {
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key));
+  if (!r.ok) throw new Error("gemini " + r.status + " " + (await r.text()).slice(0, 120));
+  const d = await r.json();
+  return (d.models || [])
+    // generateContent is the method the Worker actually calls — anything without it is a different
+    // kind of model (embeddings, retrieval, media) and would 400 on a read.
+    .filter((m) => m && m.name && (m.supportedGenerationMethods || []).indexOf("generateContent") >= 0)
+    .map((m) => ({ id: String(m.name).replace(/^models\//, ""), label: m.displayName || m.name, provider: "gemini", tier: "free", created: 0 }))
+    .filter((m) => !NOT_CHAT.test(m.id));
+}
+
+async function fetchGroqModels(key) {
+  const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: "Bearer " + key } });
+  if (!r.ok) throw new Error("groq " + r.status + " " + (await r.text()).slice(0, 120));
+  const d = await r.json();
+  return (d.data || [])
+    .filter((m) => m && m.id && m.active !== false && !NOT_CHAT.test(m.id))
+    .map((m) => ({ id: m.id, label: m.id, provider: "groq", tier: "free", created: (m.created || 0) * 1000 }));
+}
+
+// Newest first. Anthropic and Groq date-stamp their models; Google doesn't, so fall back to the
+// version numbers in the id (gemini-3-pro sorts above gemini-2.0-flash) and then to the name.
+function versionScore(id) {
+  const nums = String(id).match(/\d+(?:\.\d+)?/g);
+  return nums ? nums.slice(0, 2).reduce((a, n, i) => a + Number(n) / Math.pow(1000, i), 0) : 0;
+}
+function sortModels(a, b) {
+  if (a.provider !== b.provider) return a.provider.localeCompare(b.provider);
+  if (b.created !== a.created) return b.created - a.created;
+  const v = versionScore(b.id) - versionScore(a.id);
+  return v || String(a.id).localeCompare(String(b.id));
+}
+
+// Ask every provider we hold a key for, in parallel. A provider that fails is reported in `errors`
+// and simply contributes nothing — one dead list never blanks the whole dropdown.
+async function refreshModels(env) {
+  const jobs = [];
+  if (env.ANTHROPIC_API_KEY) jobs.push(["anthropic", fetchAnthropicModels(env.ANTHROPIC_API_KEY)]);
+  if (env.GEMINI_API_KEY) jobs.push(["gemini", fetchGeminiModels(env.GEMINI_API_KEY)]);
+  if (env.GROQ_API_KEY) jobs.push(["groq", fetchGroqModels(env.GROQ_API_KEY)]);
+  const out = [], errors = {};
+  const settled = await Promise.all(jobs.map(([p, job]) => job.then((r) => [p, r, null]).catch((e) => [p, null, e.message || String(e)])));
+  for (const [p, list, err] of settled) { if (err) errors[p] = err; else out.push(...list); }
+  out.sort(sortModels);
+  return { ts: Date.now(), models: out, errors };
+}
+
+// The cached catalogue, refreshed at most every MODELS_TTL_MS. `force` bypasses the age check.
+// On a refresh failure we keep serving the last good list — stale beats empty.
+async function listModels(env, force) {
+  const cached = await kvGetRaw(env, MODELS_KEY);
+  const fresh = cached && cached.ts && (Date.now() - cached.ts) < MODELS_TTL_MS && (cached.models || []).length;
+  if (fresh && !force) return { ...cached, cached: true };
+  try {
+    const next = await refreshModels(env);
+    if (next.models.length) { await kvPutRaw(env, MODELS_KEY, next); return { ...next, cached: false }; }
+    if (cached) return { ...cached, cached: true, errors: next.errors, stale: true };
+    return { ...next, cached: false };
+  } catch (e) {
+    if (cached) return { ...cached, cached: true, stale: true, errors: { refresh: e.message || String(e) } };
+    return { ts: Date.now(), models: [], errors: { refresh: e.message || String(e) }, cached: false };
+  }
+}
+// Read-only peek at the cache — used on the AI-read path, which must never make a network call
+// just to resolve a model name.
+async function cachedModels(env) {
+  const c = await kvGetRaw(env, MODELS_KEY);
+  return (c && c.models && c.models.length) ? c.models : null;
+}
 
 const CORS = {
   "Access-Control-Allow-Origin": "*", // tighten to your Pages origin if you like
@@ -225,6 +328,13 @@ export default {
         const cfg = await kvGetRaw(env, AIMODEL_KEY);
         return json({ model: cfg && cfg.model ? cfg.model : null, ts: cfg ? cfg.ts || null : null });
       }
+      // The LIVE model catalogue, merged from every provider whose key is set. The app calls this to
+      // build its dropdown, so the list tracks what the providers actually serve today instead of a
+      // hard-coded set. Cached ~6h in KV and warmed by the cron; ?models=refresh forces a re-fetch.
+      if (u.searchParams.has("models")) {
+        const cat = await listModels(env, u.searchParams.get("models") === "refresh");
+        return json({ ok: true, provider, ...cat });
+      }
       // Quick health check: shows which provider is wired up.
       return json({ ok: true, provider, model: env.AI_MODEL || DEFAULT_MODELS[provider] || null });
     }
@@ -242,7 +352,10 @@ export default {
     // never touches (no race with the auto-tracker state); stored without a TTL so the choice sticks.
     if (body.setModel != null) {
       const m = String(body.setModel);
-      if (!/^[a-z0-9.\-]{1,60}$/i.test(m)) return json({ error: "bad model" }, 400);
+      // Groq (and other OpenAI-compatible catalogues) namespace their ids with a slash —
+      // "meta-llama/llama-4-…", "openai/gpt-oss-…" — which the old pattern rejected outright, so
+      // those models could never be shared across devices. Allow / _ : as well.
+      if (!/^[a-z0-9._:\/\-]{1,80}$/i.test(m)) return json({ error: "bad model" }, 400);
       try { if (env.CROWD_KV) await env.CROWD_KV.put(AIMODEL_KEY, JSON.stringify({ model: m, ts: Date.now() })); } catch (_) {}
       return json({ ok: true, model: m });
     }
@@ -312,6 +425,11 @@ export default {
     // a 3-min/99% ping is too late to act on — that was the old bug.) This pings you while you can still
     // place it, and ONLY reads crowd odds + sends a notification — it never touches the proven loop.
     if (event.cron === "8,23,38,53 * * * *") { ctx.waitUntil(scanLateLocks(env).catch(() => {})); return; }
+    // Keep the model catalogue warm in the background so neither the app's dropdown nor an AI read
+    // ever waits on three provider list calls. listModels() no-ops unless the cache is older than
+    // MODELS_TTL_MS, so this is ~4 refreshes a day, not one every 15 minutes. Free — list endpoints
+    // aren't inference calls.
+    ctx.waitUntil(listModels(env).catch(() => {}));
     ctx.waitUntil((async () => {
       // One consolidated KV record for the whole auto-tracker (every coin + the pooled model),
       // so a cron run is a SINGLE KV write instead of ~7 — keeping us inside the free tier's
@@ -373,7 +491,9 @@ function providerOfModel(model) {
   const m = (model || "").toLowerCase();
   if (m.startsWith("gemini")) return "gemini";
   if (m.startsWith("claude")) return "anthropic";
-  if (m.includes("llama") || m.includes("mixtral") || m.includes("gemma") || m.includes("qwen")) return "groq";
+  // Groq's catalogue is namespaced now ("meta-llama/…", "openai/gpt-oss-…", "moonshotai/…"), so a
+  // slash is the reliable tell for anything that isn't Gemini or Claude.
+  if (m.includes("llama") || m.includes("mixtral") || m.includes("gemma") || m.includes("qwen") || m.includes("/")) return "groq";
   return null;
 }
 function providerHasKey(env, p) {
@@ -737,17 +857,37 @@ function extractJson(text) {
 // (e.g. the dropdown is on a Claude model while AI_PROVIDER=gemini). Only honor the app's model when
 // it matches the active provider; otherwise fall back to AI_MODEL or the provider default — so
 // switching providers in the dashboard "just works" without also changing the app's dropdown.
-function modelForProvider(provider, model, env) {
+function modelForProvider(provider, model, env, catalogue) {
   const m = (model || "").toLowerCase();
-  const matches = provider === "anthropic" ? m.startsWith("claude")
+  // The catalogue knows exactly which provider owns an id — needed for Groq, whose ids are now
+  // namespaced ("meta-llama/…", "openai/gpt-oss-…") and no longer match a keyword guess.
+  const known = catalogue && catalogue.find((x) => x.id.toLowerCase() === m);
+  const matches = known ? known.provider === provider
+    : provider === "anthropic" ? m.startsWith("claude")
     : provider === "gemini" ? m.startsWith("gemini")
-    : provider === "groq" ? (m.includes("llama") || m.includes("mixtral") || m.includes("gemma") || m.includes("qwen") || m.includes("groq"))
+    : provider === "groq" ? (m.includes("llama") || m.includes("mixtral") || m.includes("gemma") || m.includes("qwen") || m.includes("groq") || m.includes("/"))
     : false;
-  return (matches && model) ? String(model).trim() : (env.AI_MODEL || DEFAULT_MODELS[provider]);
+  const want = (matches && model) ? String(model).trim() : (env.AI_MODEL || DEFAULT_MODELS[provider]);
+  return liveModel(provider, want, catalogue);
+}
+// SELF-HEALING: if the model we're about to call is not in the provider's own current list, it has
+// been retired — calling it would 404 and the round would get no AI read at all. Substitute the
+// newest model from the SAME family (sonnet → newest sonnet, flash → newest flash) so the cost and
+// capability tier the setting was chosen for is preserved; only fall back to "newest overall" when
+// no family match exists. Does nothing while the catalogue is unavailable.
+const FAMILIES = [/fable/i, /opus/i, /sonnet/i, /haiku/i, /flash-lite/i, /flash/i, /pro/i];
+function liveModel(provider, want, catalogue) {
+  if (!catalogue || !want) return want;
+  const mine = catalogue.filter((x) => x.provider === provider);
+  if (!mine.length) return want;                                     // provider's list didn't load — leave it alone
+  if (mine.some((x) => x.id.toLowerCase() === String(want).toLowerCase())) return want;   // still served
+  const fam = FAMILIES.find((re) => re.test(want));
+  const sameFam = fam ? mine.filter((x) => fam.test(x.id)) : [];
+  return (sameFam[0] || mine[0]).id;                                 // catalogue is already newest-first
 }
 async function getAIRead(env, provider, body, crowd, autopicks) {
   const prompt = buildPrompt(body, crowd, autopicks);
-  const model = modelForProvider(provider, body.model, env);
+  const model = modelForProvider(provider, body.model, env, await cachedModels(env));
   const hasKey = (provider === "anthropic" && env.ANTHROPIC_API_KEY) || (provider === "gemini" && env.GEMINI_API_KEY) || (provider === "groq" && env.GROQ_API_KEY);
   if (!hasKey) return { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "No AI provider configured — add ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY.", plan: "" };
   const once = (t) => provider === "anthropic" ? readAnthropic(env.ANTHROPIC_API_KEY, model, prompt, t)
@@ -1857,3 +1997,7 @@ async function runCoinPick(env, coin, st) {
   rec.updated = Date.now();
   // No per-coin write here — the whole auto-tracker is persisted once per cron run by saveState().
 }
+
+// Named exports for the test harness only — Cloudflare uses `export default` above and ignores
+// these. Keeping them out of the default object means the runtime surface is unchanged.
+export { liveModel, modelForProvider, sortModels, versionScore, refreshModels };

@@ -48,15 +48,41 @@ auto-detects which provider to use; or force it with a Text var `AI_PROVIDER`.
 - **Synced across your devices:** the model you pick is saved on the Worker (a tiny `cfg:aimodel` KV
   key) and every device pulls it on app-open and on tab-focus — pick a model on your phone and your
   laptop follows next load. The app reads it with a GET `?aimodel` and saves it with a POST
-  `{ "setModel": "…" }`. Note a *paid* model picked anywhere applies everywhere (the other devices'
+  `{ "setModel": "…" }`. (r94: ids may now contain `/` — Groq namespaces its catalogue as
+  `meta-llama/…`, `openai/gpt-oss-…` — which the old validation pattern rejected outright, so those
+  models could never sync. A shared id the local dropdown doesn't list is now adopted and added
+  rather than ignored.) Note a *paid* model picked anywhere applies everywhere (the other devices'
   reads bill for it); the **spend mode** (Smart / Every-round / Manual) stays per-device.
   (`syncSharedModel` / `pushSharedModel` in the app.)
+- **The model list updates itself (r94).** The dropdown used to be five hard-coded options, so every
+  time a provider shipped something new the app quietly kept using last year's model. Now the Worker
+  asks each provider what it currently serves — `GET /v1/models` (Anthropic), `GET /v1beta/models`
+  (Google), `GET /openai/v1/models` (Groq) — merges the answers, and the app builds its picker from
+  that. It only queries providers whose key is set, and list endpoints are **not** inference calls,
+  so this costs nothing on any provider, free tier included.
+  - **`?models`** returns the catalogue: `{ok, provider, ts, cached, models:[{id,label,provider,tier}], errors}`.
+    **`?models=refresh`** forces a re-fetch past the cache.
+  - **Cached ~6h** in KV (`cfg:models`) and warmed by the 15-min cron, so neither the dropdown nor an
+    AI read ever waits on three provider calls. If a provider is down its failure is reported in
+    `errors` and the others still list; if *all* of them fail, the last good list is served and
+    flagged `stale`. Better a slightly old list than an empty one.
+  - **Not chat-capable → not listed.** Embeddings, image/video, speech and safety-classifier models
+    are filtered out; picking one would just break the read. For Google the test is whether the model
+    advertises `generateContent`, which is the method the Worker actually calls.
+  - **Self-healing model ids.** If the model about to be called is no longer in its provider's list,
+    it has been retired and calling it would 404 — the round would get **no AI read at all**. The
+    Worker substitutes the newest model in the same family (a retired `…-sonnet-4-6` → the newest
+    sonnet, a retired `…-flash` → the newest flash) so the cost/capability tier you chose is kept,
+    and only falls back to "newest overall" when there's no family match. It does nothing while the
+    catalogue is unavailable. (`liveModel` in `worker.js`.)
 - **Keep options open:** add more than one key and flip between them by setting
   `AI_PROVIDER` = `gemini` | `groq` | `anthropic`. No redeploy of code needed — just save the var.
-- Override the model with `AI_MODEL` if you want (defaults: `claude-haiku-4-5`,
-  `gemini-2.0-flash`, `llama-3.3-70b-versatile`). A model id that doesn't match the active provider
-  is ignored (so a stale dropdown choice can't 404 the read); the response's `provider` field tells
-  the app which brain answered, and the app labels the read **AI · Gemini / Claude / Groq** to match.
+- Override the model with `AI_MODEL` if you want. The built-in defaults (`claude-haiku-4-5`,
+  `gemini-2.0-flash`, `llama-3.3-70b-versatile`) are now **last-resort only** — they apply before the
+  first catalogue refresh lands, and are themselves subject to the retirement substitution above. A
+  model id that doesn't match the active provider is ignored (so a stale dropdown choice can't 404
+  the read); the response's `provider` field tells the app which brain answered, and the app labels
+  the read **AI · Gemini / Claude / Groq** to match.
 - **Consensus samples:** `AI_SAMPLES` (default `3`, max `5`) sets how many reads are taken per
   round and **averaged** into one calibrated verdict, with cross-sample agreement as the
   confidence. Set `AI_SAMPLES=1` for a single read (the old behavior). Each sample is one model
