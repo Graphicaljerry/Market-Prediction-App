@@ -67,8 +67,19 @@ auto-detects which provider to use; or force it with a Text var `AI_PROVIDER`.
     `errors` and the others still list; if *all* of them fail, the last good list is served and
     flagged `stale`. Better a slightly old list than an empty one.
   - **Not chat-capable → not listed.** Embeddings, image/video, speech and safety-classifier models
-    are filtered out; picking one would just break the read. For Google the test is whether the model
-    advertises `generateContent`, which is the method the Worker actually calls.
+    are filtered out; picking one would just break the read. For Google the test **fails open**: a
+    model is dropped only if it *explicitly* advertises its methods without `generateContent`. A
+    strict "must declare it" test means that the day Google omits or renames that field, every
+    Gemini model disappears and the provider silently vanishes from the picker.
+  - **Every provider is accounted for, every time.** The response carries
+    `providers: {anthropic|gemini|groq: {key, ok, count, why}}` — including the ones that weren't
+    called. Without it, *no key set* and *key works but returned nothing* look identical from the
+    app: the provider is just missing, with nothing to explain it. **If a provider isn't in your
+    dropdown, open `?models` and read its `why`.** The most common answer is that its key isn't set
+    in the Worker — free-tier Gemini and Groq each need their own key (`GEMINI_API_KEY`,
+    `GROQ_API_KEY`); an Anthropic key alone only ever lists Claude models.
+  - **Paginated lists are followed** — Anthropic's `has_more`/`last_id` and Google's
+    `nextPageToken`, bounded to 6 pages.
   - **Self-healing model ids.** If the model about to be called is no longer in its provider's list,
     it has been retired and calling it would 404 — the round would get **no AI read at all**. The
     Worker substitutes the newest model in the same family (a retired `…-sonnet-4-6` → the newest

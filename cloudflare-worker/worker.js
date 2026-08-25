@@ -48,33 +48,52 @@ const MODELS_TTL_MS = 6 * 60 * 60 * 1000;   // refresh at most every 6h (cron do
 // Models that exist but cannot answer a prompt — selecting one would just break the AI read.
 const NOT_CHAT = /embedding|embed-|aqa|imagen|image-generation|veo|\btts\b|text-to-speech|whisper|guard|playai|moderation|rerank/i;
 
+const MAX_PAGES = 6;   // every list endpoint paginates; bound the loop so a bad cursor can't spin
+
 async function fetchAnthropicModels(key) {
-  const r = await fetch("https://api.anthropic.com/v1/models?limit=100", {
-    headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
-  });
-  if (!r.ok) throw new Error("anthropic " + r.status + " " + (await r.text()).slice(0, 120));
-  const d = await r.json();
-  return (d.data || [])
-    .filter((m) => m && m.id && !NOT_CHAT.test(m.id))
-    .map((m) => ({
-      id: m.id,
-      label: m.display_name || m.id,
-      provider: "anthropic",
-      tier: "paid",
-      created: m.created_at ? Date.parse(m.created_at) || 0 : 0,
-    }));
+  const out = [];
+  let after = null;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const r = await fetch("https://api.anthropic.com/v1/models?limit=100" + (after ? "&after_id=" + encodeURIComponent(after) : ""), {
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01" },
+    });
+    if (!r.ok) throw new Error("anthropic " + r.status + " " + (await r.text()).slice(0, 120));
+    const d = await r.json();
+    for (const m of d.data || []) {
+      if (!m || !m.id || NOT_CHAT.test(m.id)) continue;
+      out.push({ id: m.id, label: m.display_name || m.id, provider: "anthropic", tier: "paid", created: m.created_at ? Date.parse(m.created_at) || 0 : 0 });
+    }
+    if (!d.has_more || !d.last_id) break;
+    after = d.last_id;
+  }
+  return out;
 }
 
 async function fetchGeminiModels(key) {
-  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key));
-  if (!r.ok) throw new Error("gemini " + r.status + " " + (await r.text()).slice(0, 120));
-  const d = await r.json();
-  return (d.models || [])
-    // generateContent is the method the Worker actually calls — anything without it is a different
-    // kind of model (embeddings, retrieval, media) and would 400 on a read.
-    .filter((m) => m && m.name && (m.supportedGenerationMethods || []).indexOf("generateContent") >= 0)
-    .map((m) => ({ id: String(m.name).replace(/^models\//, ""), label: m.displayName || m.name, provider: "gemini", tier: "free", created: 0 }))
-    .filter((m) => !NOT_CHAT.test(m.id));
+  const out = [];
+  let token = null;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const r = await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200" +
+      (token ? "&pageToken=" + encodeURIComponent(token) : "") + "&key=" + encodeURIComponent(key));
+    if (!r.ok) throw new Error("gemini " + r.status + " " + (await r.text()).slice(0, 120));
+    const d = await r.json();
+    for (const m of d.models || []) {
+      if (!m || !m.name) continue;
+      // FAIL OPEN. generateContent is the method the Worker calls, so a model that explicitly
+      // advertises its methods without it (embeddings, retrieval, media) is genuinely unusable and
+      // gets dropped. But if Google omits or renames that field, an "only keep what declares it"
+      // test silently drops EVERY Gemini model and the whole provider vanishes from the picker with
+      // no error to explain it. Absent field → keep, and let the name filter do the work.
+      const methods = m.supportedGenerationMethods;
+      if (Array.isArray(methods) && methods.length && methods.indexOf("generateContent") < 0) continue;
+      const id = String(m.name).replace(/^models\//, "");
+      if (NOT_CHAT.test(id)) continue;
+      out.push({ id, label: m.displayName || id, provider: "gemini", tier: "free", created: 0 });
+    }
+    if (!d.nextPageToken) break;
+    token = d.nextPageToken;
+  }
+  return out;
 }
 
 async function fetchGroqModels(key) {
@@ -99,18 +118,37 @@ function sortModels(a, b) {
   return v || String(a.id).localeCompare(String(b.id));
 }
 
-// Ask every provider we hold a key for, in parallel. A provider that fails is reported in `errors`
-// and simply contributes nothing — one dead list never blanks the whole dropdown.
+// Ask every provider we hold a key for, in parallel. A provider that fails is reported and simply
+// contributes nothing — one dead list never blanks the whole dropdown.
+//
+// `providers` reports the state of ALL THREE, every time, including the ones we didn't call. Without
+// it "no API key set" and "the key works but returned nothing" look identical from the app: the
+// provider is just missing from the list with nothing to explain it. That is exactly how Gemini
+// disappeared from the picker with no error anywhere.
+const ALL_PROVIDERS = [
+  ["anthropic", "ANTHROPIC_API_KEY", fetchAnthropicModels],
+  ["gemini", "GEMINI_API_KEY", fetchGeminiModels],
+  ["groq", "GROQ_API_KEY", fetchGroqModels],
+];
 async function refreshModels(env) {
-  const jobs = [];
-  if (env.ANTHROPIC_API_KEY) jobs.push(["anthropic", fetchAnthropicModels(env.ANTHROPIC_API_KEY)]);
-  if (env.GEMINI_API_KEY) jobs.push(["gemini", fetchGeminiModels(env.GEMINI_API_KEY)]);
-  if (env.GROQ_API_KEY) jobs.push(["groq", fetchGroqModels(env.GROQ_API_KEY)]);
+  const providers = {}, jobs = [];
+  for (const [name, envVar, fn] of ALL_PROVIDERS) {
+    if (!env[envVar]) { providers[name] = { key: false, ok: false, count: 0, why: "no " + envVar + " set in the Worker" }; continue; }
+    providers[name] = { key: true, ok: false, count: 0 };
+    jobs.push([name, fn(env[envVar])]);
+  }
   const out = [], errors = {};
   const settled = await Promise.all(jobs.map(([p, job]) => job.then((r) => [p, r, null]).catch((e) => [p, null, e.message || String(e)])));
-  for (const [p, list, err] of settled) { if (err) errors[p] = err; else out.push(...list); }
+  for (const [p, list, err] of settled) {
+    if (err) { errors[p] = err; providers[p] = { key: true, ok: false, count: 0, why: err }; continue; }
+    out.push(...list);
+    providers[p] = { key: true, ok: true, count: list.length };
+    // A key that works but yields nothing usable is its own failure mode — say so rather than
+    // letting the provider quietly vanish.
+    if (!list.length) providers[p].why = "the key works but the list came back with no usable chat models";
+  }
   out.sort(sortModels);
-  return { ts: Date.now(), models: out, errors };
+  return { ts: Date.now(), models: out, errors, providers };
 }
 
 // The cached catalogue, refreshed at most every MODELS_TTL_MS. `force` bypasses the age check.

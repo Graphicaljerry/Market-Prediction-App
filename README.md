@@ -48,6 +48,16 @@ Recent work, newest first:
     Sonnet 4.6"* for **any** sonnet id and *"Gemini 2.0 Flash"* for any gemini id, so it kept naming
     a model that wasn't running. It now uses the provider's own display name.
   - The dropdown's built-in options remain as an offline fallback, refreshed to current ids.
+  - **Follow-up (r94b), from a real screenshot:** the picker came back with ten Claude models and
+    **no Google and no Groq at all, and nothing anywhere said why**. Three fixes. (1) `?models` now
+    reports **every** provider in a `providers` map — `{key, ok, count, why}` — because "no API key
+    set in the Worker" and "the key works but returned nothing" were indistinguishable from the app:
+    the provider was simply absent. The picker prints the reason in amber under the dropdown.
+    (2) The Gemini filter now **fails open**: it only excludes a model that *explicitly* advertises
+    its methods without `generateContent`. Keeping only models that declare the field means that if
+    Google ever omits or renames it, every Gemini model is silently dropped and the whole provider
+    vanishes — the exact failure this was meant to prevent. (3) Anthropic and Google list endpoints
+    are **paginated** (`has_more`/`last_id`, `nextPageToken`) and were only being read one page deep.
 
 - **r93 — compact layout: nine panels become three.** The page wasn't showing too much information;
   it was showing the *same* information over and over. A full inventory of every surface on screen
