@@ -19,6 +19,17 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **r95 — the background stops showing rings.** The ambient glows had visible hard arcs. Three
+  causes: **banding** (an alpha ramp from ~0.1 to 0 across 900px on a near-black base has only ~12
+  representable steps, so it paints as a dozen ~75px bands — a 2%-opacity SVG noise film now dithers
+  them away), **linear two-stop gradients that stop dead** at their last stop (each wash is now a
+  7-stop, roughly gaussian falloff ending at the same hue with zero alpha, not `transparent`), and a
+  **hard elliptical clip** on the per-card backing glow — `border-radius: 50%` was cutting a gradient
+  that is centred on the tracked light position, so whenever the light drifted off-centre the clip
+  sliced it at meaningful alpha. The clip is gone; the falloff is the shape. The liquid-glass
+  displacement was also reduced (scale 28 → 13) and its filter region widened, so it can't tear at
+  its own edges. Display-only.
+
 - **r94 — the AI model list keeps itself current.** The model picker was five hand-written options,
   so it was stuck on a generation of models that had already been superseded: every time Google,
   Groq or Anthropic shipped something new, the app quietly kept using the old one. It now asks the

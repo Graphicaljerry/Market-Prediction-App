@@ -1224,24 +1224,43 @@
   .glassui body { background: transparent; }
   .glassui body::before {
     content: ""; position: fixed; inset: 0; z-index: -3; pointer-events: none;
+    /* (r95) SOFT EDGES. Two things were making these read as hard-edged rings:
+       (1) a two-stop gradient ending at `transparent` is a LINEAR ramp that stops dead at its last
+           stop — the eye reads that terminus as an arc. Each wash now uses a 7-stop, roughly
+           gaussian falloff that approaches zero asymptotically, and ends at the SAME hue with zero
+           alpha rather than `transparent` (which is transparent *black* and can dirty the ramp).
+       (2) banding: an alpha ramp from ~0.1 to 0 across 900px on a near-black base only has a handful
+           of distinct 8-bit values to work with, so it steps in visible ~100px rings. The dither
+           layer in `body::after` below is what actually kills that. */
     background:
       /* neutral ambient — spread across the whole viewport so the sides are never bare */
-      radial-gradient(1400px 920px at 78% -6%, rgba(158,170,198,0.115), transparent 60%),
-      radial-gradient(1300px 1000px at 4% 32%, rgba(140,154,186,0.090), transparent 58%),
-      radial-gradient(1500px 1040px at 98% 72%, rgba(146,160,192,0.078), transparent 60%),
-      radial-gradient(1200px 900px at 48% 114%, rgba(150,164,196,0.072), transparent 60%),
+      radial-gradient(1400px 920px at 78% -6%, rgba(158,170,198,0.115) 0%, rgba(158,170,198,0.094) 16%, rgba(158,170,198,0.063) 32%, rgba(158,170,198,0.035) 48%, rgba(158,170,198,0.016) 63%, rgba(158,170,198,0.005) 78%, rgba(158,170,198,0) 92%),
+      radial-gradient(1300px 1000px at 4% 32%, rgba(140,154,186,0.090) 0%, rgba(140,154,186,0.073) 16%, rgba(140,154,186,0.049) 32%, rgba(140,154,186,0.027) 48%, rgba(140,154,186,0.012) 63%, rgba(140,154,186,0.004) 78%, rgba(140,154,186,0) 92%),
+      radial-gradient(1500px 1040px at 98% 72%, rgba(146,160,192,0.078) 0%, rgba(146,160,192,0.063) 16%, rgba(146,160,192,0.042) 32%, rgba(146,160,192,0.023) 48%, rgba(146,160,192,0.010) 63%, rgba(146,160,192,0.003) 78%, rgba(146,160,192,0) 92%),
+      radial-gradient(1200px 900px at 48% 114%, rgba(150,164,196,0.072) 0%, rgba(150,164,196,0.058) 16%, rgba(150,164,196,0.039) 32%, rgba(150,164,196,0.021) 48%, rgba(150,164,196,0.009) 63%, rgba(150,164,196,0.003) 78%, rgba(150,164,196,0) 92%),
       /* pick-colour wash, centred behind the content (top + bottom) */
-      radial-gradient(1150px 800px at 50% -10%, rgba(var(--accent-rgb),0.10), transparent 62%),
-      radial-gradient(980px 840px at 50% 116%, rgba(var(--accent-rgb),0.055), transparent 62%),
+      radial-gradient(1150px 800px at 50% -10%, rgba(var(--accent-rgb),0.10) 0%, rgba(var(--accent-rgb),0.081) 16%, rgba(var(--accent-rgb),0.054) 32%, rgba(var(--accent-rgb),0.030) 48%, rgba(var(--accent-rgb),0.013) 64%, rgba(var(--accent-rgb),0.004) 79%, rgba(var(--accent-rgb),0) 93%),
+      radial-gradient(980px 840px at 50% 116%, rgba(var(--accent-rgb),0.055) 0%, rgba(var(--accent-rgb),0.045) 16%, rgba(var(--accent-rgb),0.030) 32%, rgba(var(--accent-rgb),0.016) 48%, rgba(var(--accent-rgb),0.007) 64%, rgba(var(--accent-rgb),0.002) 79%, rgba(var(--accent-rgb),0) 93%),
       #070809;
+  }
+  /* (r95) DITHER. The real cause of the "sharp edges" in a dark ambient background is 8-bit banding:
+     between rgba(158,170,198,.115) and zero there are only ~12 representable steps over ~900px, so
+     the ramp paints as a dozen ~75px bands with visible boundaries. A film of fine noise at ~2%
+     randomises which side of a step each pixel lands on and the boundaries dissolve. It is a static
+     SVG texture (no runtime cost) and sits above the washes but below every card. */
+  .glassui body::after {
+    content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; opacity: .028;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 160px 160px;
   }
   /* the drifting orbs are now just faint position anchors for the light-tracking (dimmed right down so they
      can't blow out a hard hotspot where one sits behind a card — the visible "light behind the glass" now
      comes from the per-card BACKING glows below, which stay aligned to each wrapper). */
-  .glassui .pageGlow { display: block;
+  .glassui .pageGlow { display: block; border-radius: 0;   /* (r95) drop the ellipse clip — see .gb */
     background: radial-gradient(closest-side,
-      rgba(204,216,240,0.055) 0%, rgba(192,204,230,0.028) 34%,
-      rgba(var(--accent-rgb),0.022) 60%, transparent 100%); }
+      rgba(204,216,240,0.055) 0%, rgba(200,212,236,0.040) 20%, rgba(192,204,230,0.024) 38%,
+      rgba(var(--accent-rgb),0.014) 56%, rgba(var(--accent-rgb),0.005) 74%,
+      rgba(var(--accent-rgb),0) 90%); }
   /* ---- BACKING LIGHT: a soft, same-coloured gradient sat DIRECTLY BEHIND each glass wrapper and aligned to
      it (positioned by trackGlassLight). The card's translucent fill + backdrop-blur transmits it, so the
      front gradient on the glass has a matching glow behind it → it reads as real transparency, not a flat
@@ -1251,9 +1270,14 @@
   /* The backing glow is a soft BLOB that fades to fully transparent well before the card's edges (radial
      ends ~60% out) and is heavily blurred, so it never paints the card's rounded-RECTANGLE shape — that
      rectangular halo was the "hard edge" showing in the margins on wide screens. Now it's an organic pool. */
-  .glassui #glassBack .gb { position: absolute; pointer-events: none; filter: blur(38px); border-radius: 50%; }
-  .glassui #glassBack .gb.orb   { background: radial-gradient(56% 50% at var(--lx,50%) var(--ly,40%), rgba(var(--accent-rgb),0.38) 0%, rgba(var(--accent-rgb),0.13) 32%, rgba(var(--accent-rgb),0.03) 50%, rgba(var(--accent-rgb),0) 62%); }
-  .glassui #glassBack .gb.plain { background: radial-gradient(56% 50% at var(--lx,50%) var(--ly,40%), rgba(202,214,238,0.14) 0%, rgba(202,214,238,0.045) 32%, rgba(202,214,238,0) 58%); }
+  /* (r95) The `border-radius: 50%` here was a HARD ELLIPTICAL CLIP. The gradient is centred on the
+     tracked light position (--lx/--ly), so whenever that drifts off-centre the gradient was still at
+     meaningful alpha where the ellipse cut it — a crisp curved edge that 38px of blur only softened.
+     The gradient already *is* the blob's shape; the clip was redundant. Removed, falloff extended and
+     given more stops so it reaches zero on its own, well inside the box. */
+  .glassui #glassBack .gb { position: absolute; pointer-events: none; filter: blur(44px); }
+  .glassui #glassBack .gb.orb   { background: radial-gradient(58% 52% at var(--lx,50%) var(--ly,40%), rgba(var(--accent-rgb),0.38) 0%, rgba(var(--accent-rgb),0.22) 18%, rgba(var(--accent-rgb),0.11) 34%, rgba(var(--accent-rgb),0.045) 48%, rgba(var(--accent-rgb),0.015) 62%, rgba(var(--accent-rgb),0.004) 76%, rgba(var(--accent-rgb),0) 88%); }
+  .glassui #glassBack .gb.plain { background: radial-gradient(58% 52% at var(--lx,50%) var(--ly,40%), rgba(202,214,238,0.14) 0%, rgba(202,214,238,0.085) 18%, rgba(202,214,238,0.042) 34%, rgba(202,214,238,0.017) 48%, rgba(202,214,238,0.006) 62%, rgba(202,214,238,0.002) 76%, rgba(202,214,238,0) 88%); }
   .reduce-motion #glassBack { display: none; }
   /* Mid-resize "settle" state (see the resize handler): iPad Safari can freeze a stale backdrop-filter
      tile / backing glow sized for the OLD layout when the window is resized (Split View, rotation) —
@@ -1326,7 +1350,7 @@
     if(blur&&!rt)d.classList.add('glassui');   // frosted glass + ambient glow where supported
     if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)d.classList.add('reduce-motion');
   }catch(e){}})();</script>
-  <svg width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><filter id="liquidGlass" x="-25%" y="-25%" width="150%" height="150%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.009 0.013" numOctaves="2" seed="7" result="n"/><feGaussianBlur in="n" stdDeviation="1.5" result="nb"/><feDisplacementMap in="SourceGraphic" in2="nb" scale="28" xChannelSelector="R" yChannelSelector="G"/></filter></svg>
+  <svg width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><filter id="liquidGlass" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.008 0.011" numOctaves="2" seed="7" result="n"/><feGaussianBlur in="n" stdDeviation="2.4" result="nb"/><feDisplacementMap in="SourceGraphic" in2="nb" scale="13" xChannelSelector="R" yChannelSelector="G"/></filter></svg>
 
   <div id="glassBack" aria-hidden="true"></div>   <!-- per-card backing glows (filled by trackGlassLight) -->
   <div class="pageGlow g1" aria-hidden="true"></div>
@@ -1683,10 +1707,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r94</span><span class="buildSep">·</span><span>2026-08-25</span>
+        <span class="buildVer">build r95</span><span class="buildSep">·</span><span>2026-08-26</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>The background stops showing rings (r95).</b> The ambient glows had visible hard arcs in them. Three causes, all fixed. <b>(1) Banding</b> — this was the main one. Between a faint tint and nothing there are only about a dozen shades a screen can actually display, so a glow spread over 900px painted as a dozen ~75px bands with visible seams between them. A film of very fine noise at ~2% now sits over the background; it randomises which side of each step a pixel falls on and the seams dissolve. <b>(2) The glows stopped dead.</b> Each was a straight ramp from tint to nothing that simply ended at a fixed radius, and the eye reads that ending as an arc. They now fade on a curve that trails off to nothing instead of stopping. <b>(3) A hard clip.</b> The glow behind each card was being cut to an ellipse; because the glow follows the light position, it was often still bright where the cut happened, leaving a crisp curved edge that blurring only smudged. The clip is gone — the glow's own falloff is its shape. The liquid-glass ripple was also turned down and given more room, so it can't tear at its edges. <b>Display-only.</b></p>
         <p><b>The AI model list keeps itself current (r94).</b> The model picker was five hand-written options, so it was stuck on a generation of models that had already been superseded — every time Google, Groq or Anthropic shipped something new, the app quietly kept using the old one. It now <b>asks the providers instead of remembering</b>: the Worker calls each provider's own list-models endpoint, merges the answers, and the app builds its dropdown from that on load, every 6 hours while a tab stays open, and whenever you hit Save. <b>It costs nothing</b> — asking "what models do you have" isn't an AI call, so it's free on the free tiers too. <b>Only real chat models are offered</b> (embeddings, image, speech and safety models are filtered out — picking one would just break the read). The list is <b>cached ~6h</b> and warmed in the background, one dead provider never blanks the others, and if all of them are unreachable the last good list is served rather than an empty box. <b>Your choice is never silently swapped:</b> if the providers stop listing the model you picked, it stays selected and is labelled "no longer listed". The one exception is at call time — if the model the Worker is about to use has actually been retired, calling it would fail and the round would get <b>no AI read at all</b>, so it uses the newest model in the same family instead (retired Sonnet → newest Sonnet), keeping the cost tier you chose. <b>That is the only part of this that can change an AI read, and only where the alternative was no read.</b> <b>Follow-up fix:</b> the first version came back with only Claude models and gave no hint why Google and Groq were missing — a provider whose key isn't set in the Worker looked exactly like a provider that answered with nothing. The picker now names every provider that isn't in the list and says why (usually: its key isn't set in the Worker). Google's filter also <b>fails open</b>, so a change on their end can't silently wipe out every Gemini model, and paginated lists are followed to the end. And <b>adding a key now works straight away</b> — the list used to be cached for six hours, so switching on a new provider left it missing from the picker for the rest of the day with nothing to say it was coming. Two bugs fixed along the way: model ids containing a slash (Groq now names its models <code>meta-llama/…</code>) were rejected by the cross-device sync, so those models could never sync; and the badge's name map was hard-coded — it said "Claude Sonnet 4.6" for <i>any</i> Sonnet, so it kept naming a model that wasn't running. It uses the provider's own name now.</p>
         <p><b>Compact layout — nine panels become three (r93).</b> An audit of what's actually on screen found the reason the app felt busy, and it wasn't the amount of information: it was the <b>repetition</b>. On one screen the app stated the call <b>9 times</b>, the crowd's price <b>8 times</b> (four of them inside a single card), the countdown <b>5 times</b>, its own % <b>7 times</b> and its hit rate <b>9 times</b>. Every copy agreed — but you can't know that at a glance, so you re-read them to check. Now each fact is said once. <b>(1) One card, not three</b> — the price card, the countdown card and the verdict card were one thought split three ways, so they're welded into a single card: price and clock share the top row, the verdict owns the middle. The separate timer panel is gone. <b>(2) The top status bar is gone</b> — it existed to mirror a verdict that used to sit below the fold with its clock four screens away; both are fixed. <b>(3) The duplicated rows inside the pick card are gone</b> — This/Next Round, the payout line, the off-book warning and the favourite-zone note all restated the headline or its cost row. <b>(4) The 24/7 record is a strip</b> — hit rate and recent form, with the scoreboard, coverage, model tests and the full round log one tap away. <b>(5) Settings</b> — a gear in the nav holds everything you set once: play style, AI weighting and trust, worker/model/spend, alerts. <b>(6) Two panes</b> — the call on the left, the chart on the right, three closed doors along the bottom; iPad portrait gets the two-pane layout too instead of stacking. Glance/Study is retired (nothing left for it to switch). <b>Result: the page is about 40–50% shorter on phone and iPad, with 6 fewer controls on screen.</b> Three real bugs fell out of the audit and are fixed: <code>[hidden]</code> didn't hide flex-styled blocks (a "hidden" cost row still drew an empty strip with a hairline under the verdict), the hairline colour tokens the r90 card referenced were never defined so those dividers drew as bright white lines, and the price card had lost its padding to a class-name clash with the r90 verdict block. <b>Display-only: no pick, commitment, alert, grade or logged round changed.</b></p>
         <p><b>Chart restored, and the redesign gets the room it needed (r92).</b> Fixes r91 on iPad/desktop. <b>(1) The live graph is back</b> — Glance mode should never have hidden it (it's what you watch while a round runs, not a diagnostic), and on the three-column desktop grid removing it left a large empty middle. Glance now only collapses the two diagnostic panels, and only on screens too small to hold everything; desktop shows the full terminal. <b>(2) The decision column got wider</b> (320px → 430px) — the r90 verdict was squeezed into the narrowest of the three columns beside a much wider chart, which is why the redesign was hard to see on a big screen. <b>(3) One voice, visually:</b> while the new verdict is showing, the older rows that restate it ("— SIT OUT", the buy line, the scope tag) are hidden, so the card says the call once instead of three times — they reappear automatically if the verdict can't render. <b>(4)</b> Timeframe buttons wrap on desktop instead of scrolling out of sight. Display-only.</p>
