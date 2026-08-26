@@ -496,6 +496,42 @@
 
   /* ---------- (r93) Settings captions ---------- */
   .capNote { font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--label-3); }
+  /* ---------- (r96) Bet calculator ----------
+     Sits inside the verdict card. Deliberately reads as a sentence you complete — "If I bet $50 on
+     Kalshi" — rather than a form, because the point is to turn a per-contract cent figure into your
+     own money. */
+  .stake { margin-top: 15px; padding-top: 14px; border-top: 1px solid var(--hair); }
+  .stakeHead { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .stakeLbl { font-size: 13px; font-weight: 600; color: var(--label-2); }
+  .stakeIn { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--separator);
+    border-radius: 10px; padding: 5px 10px; background: rgba(255,255,255,.04); }
+  .stakeCur { font-family: var(--font-num); font-size: 14px; color: var(--label-3); }
+  .stakeIn input { width: 62px; border: 0; background: transparent; color: var(--label); font-family: var(--font-num);
+    font-size: 16px; font-weight: 700; padding: 0; -moz-appearance: textfield; }
+  .stakeIn input::-webkit-outer-spin-button, .stakeIn input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .stakeIn input:focus { outline: none; }
+  .stakeIn:focus-within { border-color: rgba(var(--accent-rgb), .6); }
+  .stakeVenue { font: inherit; font-size: 13px; font-weight: 600; color: var(--label-2); background: transparent;
+    border: 1px solid var(--separator); border-radius: 10px; padding: 6px 8px; cursor: pointer; }
+  .stakeOut { margin-top: 12px; }
+  .stakeLine { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 4px 0; font-size: 13px; color: var(--label-2); }
+  .stakeLine b { font-family: var(--font-num); font-size: 15px; font-weight: 700; color: var(--label); white-space: nowrap; }
+  .stakeLine.win b { color: var(--green); }
+  .stakeLine.lose b { color: var(--red); }
+  .stakeSub { font-size: 11px; color: var(--label-3); margin: -2px 0 6px; }
+  .stakeBe { margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--hair); font-size: 12.5px; color: var(--label-2); line-height: 1.5; }
+  .stakeBe b { font-family: var(--font-num); color: var(--label); font-weight: 700; }
+  .stakeReal { margin-top: 7px; font-size: 12.5px; line-height: 1.5; color: var(--label-3); }
+  .stakeReal b { font-weight: 700; }
+  .stakeReal.good { color: var(--green); }
+  .stakeReal.bad { color: var(--red); }
+  .stakeNote { font-size: 12px; color: var(--label-3); line-height: 1.5; margin-top: 7px; }
+  .stakeVenueTip { margin-top: 8px; font-size: 12px; color: var(--label-2); line-height: 1.5;
+    padding: 8px 11px; border-radius: 10px; background: rgba(var(--accent-rgb), .07); border: 1px solid rgba(var(--accent-rgb), .22); }
+  .stakeVenueTip b { color: var(--label); font-weight: 700; }
+  .stakeSkip { font-size: 12px; color: var(--orange); line-height: 1.5; margin-bottom: 9px; }
+  .stakeSkip b { font-weight: 700; }
+
   /* (r94) How fresh the live model list is, and whether any provider failed to answer. */
   .modelNote { font-size: 11px; color: var(--label-3); margin: -6px 0 14px; line-height: 1.45; }
   .modelNote:empty { display: none; }
@@ -1470,6 +1506,25 @@
           <div class="hmFoot"><span id="hmFootL"></span><b id="hmFootR"></b></div>
         </div>
         <div class="heroCost" id="heroCost" hidden></div>
+        <!-- (r96) THE BET CALCULATOR. "≈1.3¢ taker fee" is a true statement that tells you nothing
+             about your money. Type what you'd actually stake and this says it in dollars: how many
+             contracts that buys, what leaves your account, what comes back if you're right, what you
+             lose if you're wrong, and the win rate you'd need just to break even. It also prints what
+             rounds at this price have ACTUALLY done on the record, which is the only honest answer to
+             "is this a good bet". Read-only — it never changes the pick. -->
+        <div class="stake" id="stakeBox" hidden>
+          <div class="stakeHead">
+            <span class="stakeLbl">If I bet</span>
+            <span class="stakeIn"><span class="stakeCur">$</span><input id="stakeAmt" type="number" inputmode="decimal" min="1" step="5" value="50" aria-label="How much you want to bet" /></span>
+            <select id="stakeVenue" class="stakeVenue" aria-label="Where you place the bet">
+              <option value="kalshi">on Kalshi</option>
+              <option value="rhGold">on Robinhood Gold</option>
+              <option value="robinhood">on Robinhood</option>
+              <option value="coinbase">on Coinbase</option>
+            </select>
+          </div>
+          <div class="stakeOut" id="stakeOut"></div>
+        </div>
         <!-- (r91) The app finally listens: tell it what you actually did, so it can score YOU, not just
              itself. Everything about the July losses had to come from screenshots because this was missing. -->
         <div class="heroAct" id="heroAct" hidden>
@@ -1707,10 +1762,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r95</span><span class="buildSep">·</span><span>2026-08-26</span>
+        <span class="buildVer">build r96</span><span class="buildSep">·</span><span>2026-08-26</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Cents turned into money, and the picker finally has an opinion about price (r96).</b> Two changes, one of which moves real money. <b>(1) The bet calculator.</b> "≈1.3¢ taker fee" is a true sentence that tells you nothing. Type what you'd actually stake and the card now says it in dollars: how many contracts that buys, what leaves your account, what comes back if you're right, what you lose if you're wrong, and — the number that actually decides everything — <b>the win rate you'd need just to break even</b>, next to what rounds at that price have <i>actually</i> won on the record. It also compares venues: the same bet on Kalshi, Robinhood, Robinhood Gold and Coinbase, because the gap between them is bigger than it looks. <b>(2) A price gate on the pick.</b> The picker used to commit on its blended probability with no opinion about what the bet <i>cost</i> — and a 40-day audit of 26,313 rounds showed that's where the money went: at 65–70¢ it bet 1,057 times and lost, at 75–78¢ it lost badly, and only 78–82¢ actually cleared its break-even. Everything it committed, at any price, ran −2.5¢ per dollar over the 16 days with full crowd data; restricted to 78–82¢ it ran +5.5¢. So the app now simply won't bet outside 78–82¢, and the ⭐ band moved 73–90 → 78–82 to match. <b>That's about 9 bets a day instead of 36.</b> <b>Told straight:</b> that window is 160 bets, roughly 1.4 sigma, and a fair statistical test says a search across 70 possible bands finds one looking this good by luck about a third of the time. It is the best available rule, not a proven edge — which is exactly what was said about the last two bands before they decayed. <b>This changes what you're told to bet.</b> Set PRICE_MIN=0 in the Worker to turn it off.</p>
         <p><b>The background stops showing rings (r95).</b> The ambient glows had visible hard arcs in them. Three causes, all fixed. <b>(1) Banding</b> — this was the main one. Between a faint tint and nothing there are only about a dozen shades a screen can actually display, so a glow spread over 900px painted as a dozen ~75px bands with visible seams between them. A film of very fine noise at ~2% now sits over the background; it randomises which side of each step a pixel falls on and the seams dissolve. <b>(2) The glows stopped dead.</b> Each was a straight ramp from tint to nothing that simply ended at a fixed radius, and the eye reads that ending as an arc. They now fade on a curve that trails off to nothing instead of stopping. <b>(3) A hard clip.</b> The glow behind each card was being cut to an ellipse; because the glow follows the light position, it was often still bright where the cut happened, leaving a crisp curved edge that blurring only smudged. The clip is gone — the glow's own falloff is its shape. The liquid-glass ripple was also turned down and given more room, so it can't tear at its edges. <b>Display-only.</b></p>
         <p><b>The AI model list keeps itself current (r94).</b> The model picker was five hand-written options, so it was stuck on a generation of models that had already been superseded — every time Google, Groq or Anthropic shipped something new, the app quietly kept using the old one. It now <b>asks the providers instead of remembering</b>: the Worker calls each provider's own list-models endpoint, merges the answers, and the app builds its dropdown from that on load, every 6 hours while a tab stays open, and whenever you hit Save. <b>It costs nothing</b> — asking "what models do you have" isn't an AI call, so it's free on the free tiers too. <b>Only real chat models are offered</b> (embeddings, image, speech and safety models are filtered out — picking one would just break the read). The list is <b>cached ~6h</b> and warmed in the background, one dead provider never blanks the others, and if all of them are unreachable the last good list is served rather than an empty box. <b>Your choice is never silently swapped:</b> if the providers stop listing the model you picked, it stays selected and is labelled "no longer listed". The one exception is at call time — if the model the Worker is about to use has actually been retired, calling it would fail and the round would get <b>no AI read at all</b>, so it uses the newest model in the same family instead (retired Sonnet → newest Sonnet), keeping the cost tier you chose. <b>That is the only part of this that can change an AI read, and only where the alternative was no read.</b> <b>Follow-up fix:</b> the first version came back with only Claude models and gave no hint why Google and Groq were missing — a provider whose key isn't set in the Worker looked exactly like a provider that answered with nothing. The picker now names every provider that isn't in the list and says why (usually: its key isn't set in the Worker). Google's filter also <b>fails open</b>, so a change on their end can't silently wipe out every Gemini model, and paginated lists are followed to the end. And <b>adding a key now works straight away</b> — the list used to be cached for six hours, so switching on a new provider left it missing from the picker for the rest of the day with nothing to say it was coming. Two bugs fixed along the way: model ids containing a slash (Groq now names its models <code>meta-llama/…</code>) were rejected by the cross-device sync, so those models could never sync; and the badge's name map was hard-coded — it said "Claude Sonnet 4.6" for <i>any</i> Sonnet, so it kept naming a model that wasn't running. It uses the provider's own name now.</p>
         <p><b>Compact layout — nine panels become three (r93).</b> An audit of what's actually on screen found the reason the app felt busy, and it wasn't the amount of information: it was the <b>repetition</b>. On one screen the app stated the call <b>9 times</b>, the crowd's price <b>8 times</b> (four of them inside a single card), the countdown <b>5 times</b>, its own % <b>7 times</b> and its hit rate <b>9 times</b>. Every copy agreed — but you can't know that at a glance, so you re-read them to check. Now each fact is said once. <b>(1) One card, not three</b> — the price card, the countdown card and the verdict card were one thought split three ways, so they're welded into a single card: price and clock share the top row, the verdict owns the middle. The separate timer panel is gone. <b>(2) The top status bar is gone</b> — it existed to mirror a verdict that used to sit below the fold with its clock four screens away; both are fixed. <b>(3) The duplicated rows inside the pick card are gone</b> — This/Next Round, the payout line, the off-book warning and the favourite-zone note all restated the headline or its cost row. <b>(4) The 24/7 record is a strip</b> — hit rate and recent form, with the scoreboard, coverage, model tests and the full round log one tap away. <b>(5) Settings</b> — a gear in the nav holds everything you set once: play style, AI weighting and trust, worker/model/spend, alerts. <b>(6) Two panes</b> — the call on the left, the chart on the right, three closed doors along the bottom; iPad portrait gets the two-pane layout too instead of stacking. Glance/Study is retired (nothing left for it to switch). <b>Result: the page is about 40–50% shorter on phone and iPad, with 6 fewer controls on screen.</b> Three real bugs fell out of the audit and are fixed: <code>[hidden]</code> didn't hide flex-styled blocks (a "hidden" cost row still drew an empty strip with a hairline under the verdict), the hairline colour tokens the r90 card referenced were never defined so those dividers drew as bright white lines, and the price card had lost its padding to a class-name clash with the r90 verdict block. <b>Display-only: no pick, commitment, alert, grade or logged round changed.</b></p>
@@ -2325,6 +2381,87 @@
   // constant is the only thing to change (verify against the fee column on your own fills).
   var KALSHI_FEE_RATE = 0.07;
   function takerFee(p) { return KALSHI_FEE_RATE * p * (1 - p); }   // fee in $ per contract at price p (0–1)
+
+  // ---------- (r96) WHAT A BET ACTUALLY COSTS ----------------------------------------------
+  // The formula above is the per-contract average and it is what every % and ¢ label uses. The
+  // REAL charge has one more wrinkle that matters at small sizes: the exchange computes the fee on
+  // the whole order and rounds it UP to the next whole cent. On 100 contracts at 80¢ that rounding
+  // is invisible (1.12¢ each). On ONE contract it nearly doubles the fee (1.12¢ becomes 2¢). That is
+  // why the calculator below works in dollars on YOUR stake instead of quoting a per-contract cent
+  // figure — "1.3¢" means nothing until it is "$0.49 of your $50".
+  //
+  // VENUES: every one of these routes to the same Kalshi exchange and the same contract, so the
+  // market price is identical; what differs is what the broker adds on top. Numbers marked
+  // "unverified" are shown to you as such in the app rather than asserted.
+  // VENUES — all four trade the SAME KalshiEX contract at the SAME market price and settle $1.00/$0.00
+  // (there is no settlement fee anywhere, and the "15-min crypto settles at 99c" rumour is false).
+  // What differs is what each venue charges to get you in. Verified against primary schedules:
+  //
+  //   KALSHI DIRECT — kalshi.com fee schedule (July 2026 update):
+  //       fee = ceil_to_cent(0.07 * C * P * (1-P))            once, per ORDER
+  //     Rounding is per order, not per contract, so small orders pay proportionally much more: one
+  //     contract at 80c pays a full 2c (the raw 1.12c rounds up), a hundred pay 1.12c each. Resting a
+  //     limit order is free (maker fee is zero on this series). No commission — Kalshi IS the exchange.
+  //
+  //   ROBINHOOD — RHD fee schedule (eff. 2026-06-01) + Robinhood Help Center:
+  //       commission = min( ceil_to_cent(k * C * P * (1-P)),  0.01 * C )     k = 0.10, or 0.05 with Gold
+  //       exchange   = 0.01 * C                                             flat, per contract, per side
+  //     THE CAP IS THE IMPORTANT PART and it is easy to miss: the commission can never exceed 1c per
+  //     contract, so the total is hard-capped at 2c per contract per side at ANY price. Checked against
+  //     Robinhood's own worked example — 100 Yes at 90c costs $91.90, or $91.45 with Gold.
+  //     Gold is worth nothing between roughly 28c and 72c, because both tiers hit the cap there.
+  //
+  //   COINBASE — genuinely unpublished. Coinbase Predict shows no fee schedule and no formula; the
+  //     only number available is the one on the order-confirmation screen. A single reported fill
+  //     (10 contracts at 68c cost $0.20 where Kalshi's formula gives $0.16) is consistent with at
+  //     least three different models, and one data point cannot separate them. The app therefore
+  //     shows a RANGE and says so, rather than asserting a number it does not know.
+  //
+  // At the 78-82c prices this app now bets, the honest ranking is:
+  //     Kalshi 1.12c  <  Robinhood Gold 1.80c  <  Robinhood 2.00c = Coinbase worst case 2.00c
+  // — a spread of about 0.9 points of required win rate. Real, but smaller than the bid-ask spread.
+  function ceilCent(x) { return Math.ceil(Number((x * 100).toFixed(6))) / 100; }
+  var VENUES = {
+    kalshi: {
+      label: "Kalshi", verified: true, note: "the exchange itself — cheapest at every price",
+      fee: function (p, n) { return ceilCent(0.07 * n * p * (1 - p)); }
+    },
+    rhGold: {
+      label: "Robinhood Gold", verified: true, note: "Gold halves the commission — but only outside ~28–72¢, where both tiers hit the cap",
+      fee: function (p, n) { return Math.min(ceilCent(0.05 * n * p * (1 - p)), 0.01 * n) + 0.01 * n; }
+    },
+    robinhood: {
+      label: "Robinhood", verified: true, note: "commission capped at 1¢/contract, plus a flat 1¢ exchange fee",
+      fee: function (p, n) { return Math.min(ceilCent(0.10 * n * p * (1 - p)), 0.01 * n) + 0.01 * n; }
+    },
+    coinbase: {
+      label: "Coinbase", verified: false, note: "Coinbase publishes no fee schedule — this is a range, not a number",
+      fee: function (p, n) { return 0.02 * n; },                                  // conservative: assume the worst of the plausible models
+      feeLow: function (p, n) { return ceilCent(0.07 * n * p * (1 - p)); }        // floor: no markup at all
+    }
+  };
+  var VENUE_KEY = "venue_v1";
+  function getVenue() { try { return VENUES[localStorage.getItem(VENUE_KEY)] ? localStorage.getItem(VENUE_KEY) : "kalshi"; } catch (e) { return "kalshi"; } }
+  // The exact charge for an order of `n` contracts at price `p`, on the chosen venue, in dollars.
+  function orderFee(p, n, venueKey) {
+    var v = VENUES[venueKey || getVenue()] || VENUES.kalshi;
+    return v.fee(p, n);
+  }
+  // Everything the calculator needs, from a stake in dollars and a price in 0–1.
+  function betMath(dollars, p, venueKey) {
+    if (!(dollars > 0) || !(p > 0 && p < 1)) return null;
+    var n = Math.floor(dollars / p);                              // you buy whole contracts
+    if (n < 1) return null;
+    var fee = orderFee(p, n, venueKey);
+    var cost = n * p + fee;                                        // what leaves your account
+    var payout = n * 1;                                            // each winning contract settles at $1
+    return {
+      contracts: n, price: p, fee: fee, cost: cost, payout: payout,
+      profit: payout - cost,                                       // if it hits
+      loss: cost,                                                  // if it misses
+      breakEven: cost / payout                                     // win rate needed just to break even
+    };
+  }
   // ONE fee-honest edge for a side, shared by the headline verdict, the strength banner and the payout
   // line — so they can never contradict each other again (r87 "one voice": the Jul-18 screenshots showed
   // "STRONG / BUY OVER" above a "−EV after fees — skip" payout line). Returns null when the market price
@@ -5264,6 +5401,94 @@
     if (favPct < FAV_ZONE_LO || favPct > FAV_ZONE_HI) return null;
     return { side: favSide, pct: favPct, mult: 100 / favPct };
   }
+  // ---------- (r96) Bet calculator ----------------------------------------------------------
+  var STAKE_KEY = "stakeAmt_v1";
+  function getStake() { try { return Number(localStorage.getItem(STAKE_KEY)) || 50; } catch (e) { return 50; } }
+  function money(x) { return (x < 0 ? "-$" : "$") + Math.abs(x).toFixed(2); }
+  // What rounds priced like this one have actually done, from the coin's own graded record. This is
+  // the number that matters and the app never used to show it: a 72% hit rate against an 80% price
+  // is a loss, and nothing on the old screen said so.
+  // Source is the 24/7 graded history (state.lastAuto.history) — the only record that carries BOTH the
+  // crowd price the round was bought at and whether it won. (The arrow log has neither: it stores the
+  // round's direction and nothing about price, so it cannot answer this question.)
+  function measuredAtPrice(p) {
+    var hist = (state.lastAuto && Array.isArray(state.lastAuto.history)) ? state.lastAuto.history : null;
+    if (!hist) return null;
+    var lo = p - 0.025, hi = p + 0.025, n = 0, w = 0;
+    for (var i = 0; i < hist.length; i++) {
+      var e = hist[i];
+      if (!e || e.correct == null || typeof e.crowd !== "number" || (e.side !== "OVER" && e.side !== "UNDER")) continue;
+      var px = (e.side === "OVER" ? e.crowd : 100 - e.crowd) / 100;   // what THAT round's committed side cost
+      if (px >= lo && px <= hi) { n++; if (e.correct) w++; }
+    }
+    return n >= 20 ? { n: n, hit: w / n } : null;
+  }
+  function renderStake(dir, mp, nextMode, rem) {
+    var box = $("stakeBox"); if (!box) return;
+    // On a SKIP round we still show the maths — for the crowd's favourite, clearly labelled as NOT a
+    // recommendation. Hiding it entirely would mean the one tool that explains what a price costs is
+    // invisible on ~88% of rounds, and "what would this have cost me" is exactly the question worth
+    // being able to ask on a round the app told you to pass.
+    var skip = (dir === "SKIP");
+    if (skip) {
+      var c = activeCrowd();
+      if (c && typeof c.overPct === "number") mp = Math.max(c.overPct, 100 - c.overPct) / 100;
+    }
+    if (!(mp > 0 && mp < 1) || nextMode || rem == null || rem <= 20) { box.hidden = true; return; }
+    box.hidden = false;
+    var amt = getStake(), vk = getVenue(), v = VENUES[vk] || VENUES.kalshi;
+    var m = betMath(amt, mp, vk), out = $("stakeOut");
+    if (!m) { out.innerHTML = '<div class="stakeNote">Enter at least ' + money(mp) + ' — that\'s the price of one contract.</div>'; return; }
+    var meas = measuredAtPrice(mp);
+    var html = "";
+    if (skip) html += '<div class="stakeSkip">The app is <b>not</b> recommending this round. Here\'s what the crowd\'s favourite would cost you anyway:</div>';
+    html += '<div class="stakeLine"><span>You buy</span><b>' + m.contracts + ' contracts at ' + Math.round(mp * 100) + '¢</b></div>';
+    html += '<div class="stakeLine"><span>It costs you</span><b>' + money(m.cost) + '</b></div>';
+    html += '<div class="stakeSub">' + money(m.contracts * mp) + ' for the contracts + ' + money(m.fee) + ' in fees' + (v.commission ? ' (incl. ' + v.label + ' commission)' : '') + '</div>';
+    html += '<div class="stakeLine win"><span>If it hits</span><b>+' + money(m.profit) + '</b></div>';
+    html += '<div class="stakeLine lose"><span>If it misses</span><b>-' + money(m.loss) + '</b></div>';
+    html += '<div class="stakeBe">You need to be right <b>' + (m.breakEven * 100).toFixed(1) + '%</b> of the time just to break even.</div>';
+    // Where you place the bet changes the break-even you have to beat, by more than people expect.
+    // If a cheaper venue exists for THIS price, say so in money rather than leaving it implied.
+    var cheapest = null, cheapCost = Infinity;
+    for (var key in VENUES) {
+      var c2 = m.contracts * mp + orderFee(mp, m.contracts, key);
+      if (c2 < cheapCost) { cheapCost = c2; cheapest = key; }
+    }
+    if (cheapest && cheapest !== vk && (m.cost - cheapCost) >= 0.01) {
+      html += '<div class="stakeVenueTip">On <b>' + VENUES[cheapest].label + '</b> the same bet costs <b>' +
+        money(cheapCost) + '</b> — you\'d keep <b>' + money(m.cost - cheapCost) + '</b> more of this ' + money(amt) + '.</div>';
+    }
+    if (!v.verified) html += '<div class="stakeNote">' + v.label + ' doesn\'t publish its fee formula — this is estimated, so treat it as approximate.</div>';
+    if (meas) {
+      var edge = meas.hit - m.breakEven;
+      html += '<div class="stakeReal ' + (edge > 0.005 ? "good" : edge < -0.005 ? "bad" : "") + '">On the record, rounds priced near ' +
+        Math.round(mp * 100) + '¢ have won <b>' + Math.round(meas.hit * 100) + '%</b> of ' + meas.n + ' — ' +
+        (edge > 0.005 ? "better than break-even" : edge < -0.005 ? "worse than break-even" : "about break-even") +
+        ' by <b>' + (edge >= 0 ? "+" : "") + (edge * 100).toFixed(1) + ' points</b>.</div>';
+    } else {
+      html += '<div class="stakeNote">Not enough graded rounds at this price yet to say what it really wins.</div>';
+    }
+    out.innerHTML = html;
+  }
+  function wireStake() {
+    var a = $("stakeAmt"), v = $("stakeVenue");
+    if (a) {
+      a.value = getStake();
+      a.addEventListener("input", function () {
+        var n = Number(a.value);
+        if (n > 0) { try { localStorage.setItem(STAKE_KEY, String(n)); } catch (e) {} }
+        renderPickCard();
+      });
+    }
+    if (v) {
+      v.value = getVenue();
+      v.addEventListener("change", function () {
+        try { localStorage.setItem(VENUE_KEY, v.value); } catch (e) {}
+        renderPickCard();
+      });
+    }
+  }
   function renderHero() {
     var el = $("hero"); if (!el) return;
     var dir = state.shownDir || "SKIP";
@@ -5357,6 +5582,11 @@
           (ret >= 0 ? "+" : "") + Math.round(ret * 100) + '%</b><span>If it hits</span></div>';
     } else cost.hidden = true;
 
+    // 6b) (r96) THE SAME NUMBERS, IN YOUR MONEY. Everything above is per-contract cents; this is what
+    //     it does to a real stake. Rendered from the same `mp` the cost row uses, so they cannot
+    //     disagree. Hidden on SKIP rounds and once the round is no longer actionable.
+    renderStake(dir, mp, nextMode, rem);
+
     // 7) Did you take it? (r91) Shown once the round is real and actionable — including on SKIP rounds,
     //    because a bet you place against the app's advice is exactly the one worth counting.
     var act = $("heroAct"), btn = $("tookBtn"), key = betKeyFor();
@@ -5438,7 +5668,11 @@
   // only muting good stars. Set it back to 0.08 to restore the old behavior.
   // STRICTLY READ-ONLY: reads activeCrowd() + the already-fetched 24/7 state; never computes, commits,
   // or tempers a pick.
-  var FAV_ZONE_LO = 73, FAV_ZONE_HI = 90, DEAD_MARGIN_PCT = 0;
+  // (r96) 73–90 → 78–82, matching the Worker's PRICE_MIN/PRICE_MAX gate. The 40-day audit measured
+  // 73–90 at −2.3¢ per dollar and 78–82 at +5.5¢ over the 16 days with full crowd coverage. See the
+  // long note at the price gate in worker.js — including why this is the best available rule and
+  // still not a proven one.
+  var FAV_ZONE_LO = 78, FAV_ZONE_HI = 82, DEAD_MARGIN_PCT = 0;
   // Mirrors the Worker's VOID_MARGIN_PCT (r89): inside this margin a round is "too close to call".
   var VOID_MARGIN_PCT = 0.02;
   // Trailing market "pulse": median |settle margin| of this coin's newest ~8 graded 24/7 rounds.
@@ -5564,6 +5798,7 @@
 
   loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog(); loadLockAB(); loadLockedNext(); loadCommitted();
   renderAccuracy(); renderRounds(); renderLateRecord(); tickTimer(); refresh(); connectWS();
+  wireStake();   // (r96) the bet calculator's amount + venue inputs
   (function initAI() { $("aiModel").value = getModel(); renderAIBadge(); syncSharedModel(); loadModelCatalogue(false); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
   // (r94) Re-check the catalogue every 6h for a tab that stays open for days, so a model released
   // this afternoon shows up without a reload. Cheap: the Worker serves it from KV.

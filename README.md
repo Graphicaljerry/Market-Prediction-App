@@ -19,6 +19,34 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **r96 — a price gate on the picker, and a bet calculator that speaks in dollars.**
+  - **The picker had no opinion about price.** It committed on its blended probability alone. A
+    40-day audit (26,313 rounds; 10,624 of them with ~100% crowd coverage after the Kalshi key
+    landed) measured what each price actually returns after fees: 60–65¢ won 61.4% needing 64.1%;
+    65–70¢ won 66.3% needing 69.0%; 75–78¢ won 72.1% needing 77.8%; **78–82¢ won 83.3% needing
+    81.1%**; 82–86¢ won 73.8% needing 84.9%. Everything it committed at any price ran **−2.5¢ per
+    dollar**; restricted to 78–82¢ it ran **+5.5¢**. New `PRICE_MIN`/`PRICE_MAX` gate (default
+    78/82) refuses to commit outside that window, and the ⭐ band moved 73–90 → 78–82 to match.
+    ~9 bets/day instead of ~36. **Changes pick behaviour.** `PRICE_MIN=0` disables it.
+  - **Said plainly, because two previous bands were shipped on this kind of evidence and decayed:**
+    the window is 160 bets (~1.4σ), and a fair null test — keep every price, redraw outcomes from
+    the smoothed calibration curve, re-run the same 70-band search — reproduces a band this good
+    **about 30% of the time (p ≈ 0.30)**. Best available rule, *not* a proven edge. The walk-forward
+    check (each day picks its band from prior days only) returned +4.1¢/$ over 137 bets, which is
+    the only number with no hindsight in it.
+  - **The bet calculator.** Type a stake; the card returns contracts, total cost, profit if it hits,
+    loss if it misses, the break-even win rate, and what rounds at that price have actually won.
+    Shown on skip rounds too, clearly labelled as not a recommendation.
+  - **Real venue fees, from primary schedules.** Kalshi `ceil(0.07·C·P·(1−P))` per *order* — so one
+    contract at 80¢ pays 2¢ where a hundred pay 1.12¢ each. Robinhood `min(ceil(k·C·P·(1−P)), 0.01·C)
+    + 0.01·C` with k = 0.10 (0.05 on Gold) — **the 1¢-per-contract commission cap is the part that's
+    easy to miss**, and it means Gold is worth nothing between ~28¢ and ~72¢. Coinbase publishes no
+    schedule at all, so it's modelled conservatively and labelled as an estimate. At 78–82¢ the
+    ranking is Kalshi 1.12¢ < RH Gold 1.80¢ < Robinhood/Coinbase 2.00¢ — about 0.9 points of
+    required win rate between cheapest and dearest.
+  - Fixed a float bug found by the tests: `0.07*100*0.8*0.2` is `1.1200000000000003`, so ceiling it
+    landed on 1.13 — a cent of pure arithmetic error on every exact-value order.
+
 - **r95 — the background stops showing rings.** The ambient glows had visible hard arcs. Three
   causes: **banding** (an alpha ramp from ~0.1 to 0 across 900px on a near-black base has only ~12
   representable steps, so it paints as a dozen ~75px bands — a 2%-opacity SVG noise film now dithers

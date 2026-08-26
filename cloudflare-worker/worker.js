@@ -1310,7 +1310,13 @@ async function scanLateLocks(env) {
   // double the edge on ~30 alerts a day instead of ~48. Honest caveat recorded here for the next audit: even
   // the good zone decayed over the month (+0.10/$ in week 1 → ≈0 in weeks 4–5) as the market sharpened, so
   // re-measure before trusting it further. Tune with LOCK_MIN_PROB / LOCK_MAX_PROB (bounds are INCLUSIVE).
-  const lo = Number(env.LOCK_MIN_PROB) || 73, hi = Number(env.LOCK_MAX_PROB) || 90;
+  // (r96) RE-CENTRED AGAIN, 73-90 -> 78-82, and now aligned with the PRICE GATE in runCoinPick so the
+  // ping and the committed bet can never describe different rules. The 40-day audit found 73-90 ran
+  // -2.3c per dollar over the 16 days with full crowd coverage; 78-82 ran +5.5c. Read the long note at
+  // the price gate for why this is the best available rule and still not a proven one. Defaults follow
+  // PRICE_MIN/PRICE_MAX so one dashboard change moves both; LOCK_MIN_PROB/LOCK_MAX_PROB still override.
+  const lo = Number(env.LOCK_MIN_PROB) || Number(env.PRICE_MIN) || 78,
+        hi = Number(env.LOCK_MAX_PROB) || Number(env.PRICE_MAX) || 82;
   // The favorite ping requires the 24/7 tracker to have COMMITTED the same side this round — pinging only
   // the star-plus-commit subset that carried the edge. One read-only state load powers it; if it fails,
   // pings stay gated OFF for safety (a missed ping costs nothing; a bad ping costs money).
@@ -1995,6 +2001,34 @@ async function runCoinPick(env, coin, st) {
       // can't claim a bet on the scoreboard. Only ever makes it skip MORE, like the band gate below.
       if (fp && fp.side !== "SKIP" && typeof mkt.overPct !== "number") fp.side = "SKIP";
       if (fp && fp.side !== "SKIP" && !bandEdgeOK(rec.history, fp.pRaw)) fp.side = "SKIP";   // accuracy #2: this band hasn't beaten break-even on record → pass (measured on the 24/7 scoreboard)
+      // ── PRICE GATE (r96) ────────────────────────────────────────────────────────────────────
+      // The 40-day audit (26,313 rounds, of which 10,624 with ~100% crowd coverage after the Kalshi
+      // key landed on Aug 10) measured what each PRICE actually returns after fees. The picker had no
+      // opinion about price at all — it committed on its blended probability alone — and that is where
+      // the money went:
+      //     pay 60-65c  n=1755  won 61.4%  needed 64.1%   LOSES
+      //     pay 65-70c  n=1057  won 66.3%  needed 69.0%   LOSES
+      //     pay 70-75c  n= 547  won 73.1%  needed 73.9%   loses slightly
+      //     pay 75-78c  n= 204  won 72.1%  needed 77.8%   LOSES badly
+      //     pay 78-82c  n= 150  won 83.3%  needed 81.1%   wins
+      //     pay 82-86c  n=  65  won 73.8%  needed 84.9%   LOSES badly
+      // Everything the app committed, at any price, ran -2.5c per dollar over those 16 clean days.
+      // Restricted to 78-82c it ran +5.5c per dollar on 160 bets (9.4/day instead of 80/day).
+      //
+      // HONESTY, because two previous bands (r86's 65-80, r89's 73-90) were shipped on exactly this
+      // kind of evidence and both decayed: 160 bets is ~1.4 sigma, and a fair null test — keep every
+      // price, redraw the outcomes from the smoothed calibration curve, re-run the same 70-band search
+      // — reproduces a band this good about 30% of the time (p=0.30). So this is the best available
+      // rule, NOT a proven edge. It is a HARD GATE rather than a tilt so it can only ever skip more,
+      // and both edges are env-tunable with no deploy. Set PRICE_MIN=0 to switch it off entirely.
+      if (fp && fp.side !== "SKIP") {
+        const pMin = (env.PRICE_MIN == null || env.PRICE_MIN === "") ? 78 : Number(env.PRICE_MIN) || 0;
+        const pMax = (env.PRICE_MAX == null || env.PRICE_MAX === "") ? 82 : Number(env.PRICE_MAX) || 100;
+        if (pMin > 0) {
+          const sidePct = fp.side === "OVER" ? mkt.overPct : 100 - mkt.overPct;   // what this side costs, in cents
+          if (!(sidePct >= pMin && sidePct <= pMax)) fp.side = "SKIP";
+        }
+      }
       if (fp) {
         const d = new Date(nowTs);
         rec.pending = {
