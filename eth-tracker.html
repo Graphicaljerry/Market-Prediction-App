@@ -30,6 +30,14 @@
     /* (r93) The r90 decision-hero CSS referenced --hair / --hair2 for its internal dividers and the
        "I took this bet" button, but the tokens were never defined — so those borders fell back to
        currentColor and drew as bright white lines instead of hairlines. Defining them here is the fix. */
+    /* (r97) ONE SPACING SCALE. The page had six different vertical gaps — 0, 8, 16, 18, 28 and 44px —
+       arrived at by accretion, which is why some sections looked welded and others adrift. Everything
+       vertical now comes from these five steps and nothing else. */
+    --sp-1: 8px;    /* inside a row */
+    --sp-2: 12px;   /* between related lines */
+    --sp-3: 20px;   /* card padding, and the inset of internal dividers */
+    --sp-4: 20px;   /* between cards inside one group */
+    --sp-5: 34px;   /* between groups, and before the footer */
     --hair: rgba(255,255,255,0.09);
     --hair2: rgba(255,255,255,0.06);
     --label: #ffffff;
@@ -146,7 +154,9 @@
     position: relative; overflow: hidden;   /* CONTAIN the glow inside the rounded card so it can't
                                                 bleed past the glass and leave a hard-edged disc on the page */
     border-color: rgba(var(--accent-rgb), 0.22);
-    box-shadow: 0 7px 26px rgba(0,0,0,0.25), inset 0 1px 40px rgba(var(--accent-rgb), 0.07);
+    /* tinted to the page's own hue rather than flat black, and the inner accent ring widened so it
+       reads as ambient light in the glass instead of a line following the border */
+    box-shadow: 0 7px 26px rgba(10,10,14,0.28), inset 0 1px 64px rgba(var(--accent-rgb), 0.05);
     transition: border-color .8s ease, box-shadow .8s ease;
   }
   .card.orb::before, .card.orb::after {
@@ -160,11 +170,18 @@
      half of the prior wash) so the pick cards stop reading as solid green/red panels and instead look
      like the same neutral frosted glass as the rest — the pick colour is carried by the rim, the
      headline %, the status bar and the price badge, not by flooding the whole card. */
-  .card.orb::before { width: 82%; height: 74%; right: 2%; top: -4%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.11) 0%, rgba(var(--accent-rgb), 0.06) 28%, rgba(var(--accent-rgb), 0.025) 50%, rgba(var(--accent-rgb), 0.008) 72%, transparent 90%);
+  /* (r97) THE LAST HARD EDGE. These glows sat at top:-4% and bottom:-2%, i.e. deliberately hanging over
+     the card's edge — and the card clips them (overflow:hidden above). Clipping a glow that is still
+     bright where the clip happens is exactly how you get a crisp arc, which is what showed as a stain
+     with a defined boundary in the bottom-right of the chart card. Two changes: the glows are pulled
+     fully INSIDE the card so the clip has nothing left to cut, and their falloff is stretched so they
+     reach zero alpha before they reach any edge. Ending at the same hue with zero alpha rather than
+     `transparent` (= transparent black) keeps the ramp clean. */
+  .card.orb::before { width: 76%; height: 66%; right: 6%; top: 5%;
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.10) 0%, rgba(var(--accent-rgb), 0.070) 18%, rgba(var(--accent-rgb), 0.042) 34%, rgba(var(--accent-rgb), 0.021) 50%, rgba(var(--accent-rgb), 0.008) 66%, rgba(var(--accent-rgb), 0.002) 80%, rgba(var(--accent-rgb), 0) 92%);
     animation: orbCircleA 26s linear infinite, orbBreath 7.5s ease-in-out infinite; }
-  .card.orb::after  { width: 70%; height: 64%; left: 0%; bottom: -2%;
-    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.065) 0%, rgba(var(--accent-rgb), 0.035) 28%, rgba(var(--accent-rgb), 0.015) 52%, rgba(var(--accent-rgb), 0.004) 74%, transparent 90%);
+  .card.orb::after  { width: 64%; height: 56%; left: 5%; bottom: 6%;
+    background: radial-gradient(closest-side, rgba(var(--accent-rgb), 0.060) 0%, rgba(var(--accent-rgb), 0.042) 18%, rgba(var(--accent-rgb), 0.025) 34%, rgba(var(--accent-rgb), 0.012) 50%, rgba(var(--accent-rgb), 0.005) 66%, rgba(var(--accent-rgb), 0.001) 80%, rgba(var(--accent-rgb), 0) 92%);
     animation: orbCircleB 34s linear infinite, orbBreath 9s ease-in-out infinite -3s; }
   /* slow, subtle circular drift (the element orbits ~9px without spinning itself) + a breathing glow */
   @keyframes orbCircleA { from { transform: rotate(0deg) translateX(9px) rotate(0deg); } to { transform: rotate(360deg) translateX(9px) rotate(-360deg); } }
@@ -293,8 +310,11 @@
   .card {
     background: rgba(28,28,30,0.55);
     -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
-    border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: 18px; margin-bottom: 28px;
-    box-shadow: 0 8px 28px rgba(0,0,0,0.21), inset 0 1px 0 rgba(255,255,255,0.05);   /* softened, diffused drop shadow + a 1px inner top highlight (machined edge) */
+    /* (r97) margin-bottom was 28px and leaked into the layout, stacking with the module margin to make
+       a 44px gap in some places and 16px in others. The card owns its padding; the LAYOUT owns the
+       space between cards. */
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: var(--sp-3); margin-bottom: 0;
+    box-shadow: 0 8px 28px rgba(10,10,14,0.30), inset 0 1px 0 rgba(255,255,255,0.05);   /* (r97) tinted to the page hue, not flat black */
     transition: border-color .4s ease;
   }
   /* "clear" sections — no glass, content sits straight on the glow */
@@ -302,7 +322,8 @@
   /* The flat (no-bg) sections — timer, Live Indicators, Track Record — run almost to the screen edge by
      default while the glass cards inset 18px. Give them real left/right padding so their content (timer
      bar, indicator rows, the score grid + Recent Rounds) lines up with the glass cards, not the edges. */
-  .card.flat.timerCard, .card.flat.collapseCard, #autoMod > .card.flat { padding-left: 18px; padding-right: 18px; }
+  .card.flat.timerCard, .card.flat.collapseCard, #autoMod > .card.flat { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  #autoMod > .card.flat { padding-top: var(--sp-2); padding-bottom: var(--sp-2); }   /* (r97) was 14/16 — off the scale */
   #autoMod > .card.flat { padding-top: 14px; padding-bottom: 16px; }
   /* glowing cards a touch more glassy so the orb reads through, like the Figma */
   .card.orb { background: rgba(28,28,30,0.26); }   /* glassier so the glow behind reads through */
@@ -341,6 +362,9 @@
      items on mobile). On desktop they become real flex columns so the two sides flow INDEPENDENTLY —
      expanding the AI Co-Pilot grows only the right column; Auto Pick stays pinned under the price card. */
   .stack { display: contents; }
+  /* (r97) stackL holds the single-pane call card AND the record strip, so unlike stackR it has to be
+     a real box at every width, not just on the desktop grid. */
+  .stackL { display: flex; flex-direction: column; }
 
   /* ═══ (r93) TWO PANES, NOT THREE COLUMNS ═══════════════════════════════════════════════════════
      The old layout had nine modules across three columns, and the audit of what's actually on screen
@@ -380,12 +404,13 @@
   /* PHONE + SMALL TABLET (< 1024px): one column, in the order you ask the questions.
      what do I do (price+clock+verdict, one card) -> how's it going -> show me -> why. */
   @media (max-width: 1023px) {
-    .layout { display: flex; flex-direction: column; }
-    .m-hero { order: 1; } .m-signal { order: 2; } .m-autotracker { order: 3; } .m-chart { order: 4; }
-    .m-read { order: 5; } .m-indicators { order: 6; } .m-settings { order: 7; }
-    .layout .module { margin-top: 16px; }
-    .layout .m-hero { margin-top: 0; }
-    .layout .m-signal { margin-top: 0; }   /* welded to the price card above it */
+    .layout { display: flex; flex-direction: column; gap: var(--sp-4); }
+    /* stackL is a real container now (it holds the one-pane call card + the record), so the order is
+       set on the top-level items. The gap on .layout does all the vertical spacing — no per-module
+       margins to drift out of sync. */
+    .stackL { order: 1; } .m-chart { order: 2; } .m-read { order: 3; }
+    .m-indicators { order: 4; } .m-settings { order: 5; }
+    .layout .module { margin-top: 0; }
   }
 
   /* TABLET + DESKTOP: horizontal nav row, segmented coin tabs, big page title hidden */
@@ -410,7 +435,7 @@
        round renders no chips, no rail and no cost row), and an empty region reads as something broken
        rather than as breathing room. That was exactly the r92 bug on iPad, so the rule now is: no
        column is allowed to end in a void. */
-    .layout { display: grid; grid-template-columns: minmax(400px, 452px) minmax(0,1fr); gap: 18px; align-items: start;
+    .layout { display: grid; grid-template-columns: minmax(400px, 452px) minmax(0,1fr); column-gap: var(--sp-4); row-gap: var(--sp-5); align-items: start;
       grid-template-areas:
         "left  chart"
         "read  read"
@@ -418,7 +443,7 @@
         "set   set"; }
     /* The left stack is a real flex column with NO gap, so the price card and the verdict card read
        as one card (they're one thought). Everything on the right is a plain grid item. */
-    .stackL { display: flex; flex-direction: column; gap: 0; grid-area: left; }
+    .stackL { grid-area: left; }
     .stackR { display: contents; }
     .m-chart { align-self: start; }
     .m-chart .chartSec { display: none; }
@@ -462,9 +487,32 @@
 
   /* One card, not two: the price/clock card and the verdict card are welded together, because they
      answer one question. The seam between them is removed rather than styled. */
-  .m-hero > .card { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; border-bottom: 0; }
-  .m-signal > .card { border-top-left-radius: 0; border-top-right-radius: 0; border-top: 0; padding-top: 8px; margin-bottom: 0; }
-  .stackL .m-autotracker { margin-top: 16px; }
+  /* (r97) The glass moved OUT of the two cards and onto their shared wrapper, so there is exactly one
+     pane, one border and one blur — no seam to see. The halves inside are pure padding, divided by a
+     hairline inset from the edges so it reads as one card with two sections rather than two cards
+     colliding. Note the divider is inset by the same --sp-3 as the padding: an edge-to-edge rule is
+     what made it look like a join. */
+  .callCard {
+    background: rgba(28,28,30,0.55);
+    -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 18px;
+    box-shadow: 0 8px 28px rgba(10,10,14,0.30), inset 0 1px 0 rgba(255,255,255,0.05);
+    overflow: hidden;   /* the inner glows can never poke past the rounded corner */
+  }
+  .glassui .callCard { background: rgba(28,28,30,0.26); }
+  .callCard > .module > .card,
+  .callCard > .module > .card.orb {
+    background: none; border: 0; border-radius: 0; box-shadow: none; margin: 0;
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+  }
+  .callCard .m-hero > .card { padding: var(--sp-3) var(--sp-3) var(--sp-3); }
+  .callCard .m-signal > .card { padding: 0 var(--sp-3) var(--sp-3); }
+  .callCard .m-signal { position: relative; }
+  .callCard .m-signal::before {
+    content: ""; display: block; height: 1px; margin: 0 var(--sp-3) var(--sp-3);
+    background: var(--hair);
+  }
+  .stackL .m-autotracker { margin-top: var(--sp-4); }
 
   /* ---------- (r93) The record, as a strip ---------- */
   .recStrip { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap;
@@ -1196,7 +1244,7 @@
   .aiSetup[open] > summary::before { transform:rotate(90deg); }
   .aiSetupBody { padding-top:6px; }
 
-  .footnote { text-align: center; font-size: 11px; color: var(--label-3); margin-top: 8px; line-height: 1.6; }
+  .footnote { text-align: center; font-size: 11px; color: var(--label-3); margin-top: var(--sp-5); line-height: 1.6; }
   /* Tier 2 — the Guide action + fine print, consolidated into one quiet group */
   /* (r93) The footer's status capsule restated the live call for a ninth time — it's read-only and it
      sits below everything, so it added a voice without adding an answer. The Guide link and the fine
@@ -1447,6 +1495,13 @@
 
   <div class="layout">
   <div class="stack stackL">
+  <!-- (r97) ONE SURFACE. These were two separately-glassed cards butted together with their facing
+       corners squared off. Two backdrop-filter layers never render identically, so the join showed as
+       a hard line running edge to edge, with a notch at each end where a square corner met a round
+       one — which read as "the sections are touching", because visually they were colliding rather
+       than belonging. The glass now lives on ONE wrapper and the two blocks inside are transparent,
+       so there is a single continuous pane with one inset hairline between its two halves. -->
+  <div class="callCard">
   <div class="module m-hero">
   <div class="card nowCard orb">
     <!-- (r93) The price and the clock are one thought — "what is it, and how long have I got" — so
@@ -1576,6 +1631,7 @@
     </div>
   </div>
   </div>
+  </div><!-- /.callCard -->
 
   <div class="module m-autotracker" id="autoMod">
   <!-- (r93) The record is a STRIP by default, not a panel. Hit rate + the last runs are the only parts
@@ -1762,10 +1818,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r96</span><span class="buildSep">·</span><span>2026-08-26</span>
+        <span class="buildVer">build r97</span><span class="buildSep">·</span><span>2026-08-26</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Spacing put on one scale, and the last hard edges removed (r97).</b> <b>(1) The price block and the verdict are now one pane, not two cards jammed together.</b> They were two separately-frosted cards butted edge to edge with their facing corners squared off — and two frosted layers never render identically, so the join showed as a hard line straight across the card with a notch at each end. That's why it looked like the sections were <i>touching</i> rather than belonging together. The glass now sits on a single wrapper and the two halves inside are transparent, so it's one continuous pane divided by a hairline inset from the edges — the same divider style used elsewhere in the card, so it reads as designed. <b>(2) One spacing scale.</b> The page had six different vertical gaps — 0, 8, 16, 18, 28 and 44px — collected over twenty builds. Everything now comes from five steps, so the rhythm is 20px between cards and 34px between groups, everywhere, on every screen. The card was also holding a 28px margin under itself that leaked into the layout and stacked with other margins; the card owns its padding now and the layout owns the space between cards. <b>(3) The glows stopped being sliced.</b> Each card clips its own glow to its rounded shape, but the glows were positioned deliberately hanging over the card's edge — so the clip cut them while they were still bright, leaving a crisp arc. That's the stain with a defined boundary in the corner of the chart. They're pulled fully inside now and fade to nothing before they reach any edge. Card shadows are also tinted to the page's own colour instead of flat black. <b>Display-only — no pick, grade or logged round changed.</b></p>
         <p><b>Cents turned into money, and the picker finally has an opinion about price (r96).</b> Two changes, one of which moves real money. <b>(1) The bet calculator.</b> "≈1.3¢ taker fee" is a true sentence that tells you nothing. Type what you'd actually stake and the card now says it in dollars: how many contracts that buys, what leaves your account, what comes back if you're right, what you lose if you're wrong, and — the number that actually decides everything — <b>the win rate you'd need just to break even</b>, next to what rounds at that price have <i>actually</i> won on the record. It also compares venues: the same bet on Kalshi, Robinhood, Robinhood Gold and Coinbase, because the gap between them is bigger than it looks. <b>(2) A price gate on the pick.</b> The picker used to commit on its blended probability with no opinion about what the bet <i>cost</i> — and a 40-day audit of 26,313 rounds showed that's where the money went: at 65–70¢ it bet 1,057 times and lost, at 75–78¢ it lost badly, and only 78–82¢ actually cleared its break-even. Everything it committed, at any price, ran −2.5¢ per dollar over the 16 days with full crowd data; restricted to 78–82¢ it ran +5.5¢. So the app now simply won't bet outside 78–82¢, and the ⭐ band moved 73–90 → 78–82 to match. <b>That's about 9 bets a day instead of 36.</b> <b>Told straight:</b> that window is 160 bets, roughly 1.4 sigma, and a fair statistical test says a search across 70 possible bands finds one looking this good by luck about a third of the time. It is the best available rule, not a proven edge — which is exactly what was said about the last two bands before they decayed. <b>This changes what you're told to bet.</b> Set PRICE_MIN=0 in the Worker to turn it off.</p>
         <p><b>The background stops showing rings (r95).</b> The ambient glows had visible hard arcs in them. Three causes, all fixed. <b>(1) Banding</b> — this was the main one. Between a faint tint and nothing there are only about a dozen shades a screen can actually display, so a glow spread over 900px painted as a dozen ~75px bands with visible seams between them. A film of very fine noise at ~2% now sits over the background; it randomises which side of each step a pixel falls on and the seams dissolve. <b>(2) The glows stopped dead.</b> Each was a straight ramp from tint to nothing that simply ended at a fixed radius, and the eye reads that ending as an arc. They now fade on a curve that trails off to nothing instead of stopping. <b>(3) A hard clip.</b> The glow behind each card was being cut to an ellipse; because the glow follows the light position, it was often still bright where the cut happened, leaving a crisp curved edge that blurring only smudged. The clip is gone — the glow's own falloff is its shape. The liquid-glass ripple was also turned down and given more room, so it can't tear at its edges. <b>Display-only.</b></p>
         <p><b>The AI model list keeps itself current (r94).</b> The model picker was five hand-written options, so it was stuck on a generation of models that had already been superseded — every time Google, Groq or Anthropic shipped something new, the app quietly kept using the old one. It now <b>asks the providers instead of remembering</b>: the Worker calls each provider's own list-models endpoint, merges the answers, and the app builds its dropdown from that on load, every 6 hours while a tab stays open, and whenever you hit Save. <b>It costs nothing</b> — asking "what models do you have" isn't an AI call, so it's free on the free tiers too. <b>Only real chat models are offered</b> (embeddings, image, speech and safety models are filtered out — picking one would just break the read). The list is <b>cached ~6h</b> and warmed in the background, one dead provider never blanks the others, and if all of them are unreachable the last good list is served rather than an empty box. <b>Your choice is never silently swapped:</b> if the providers stop listing the model you picked, it stays selected and is labelled "no longer listed". The one exception is at call time — if the model the Worker is about to use has actually been retired, calling it would fail and the round would get <b>no AI read at all</b>, so it uses the newest model in the same family instead (retired Sonnet → newest Sonnet), keeping the cost tier you chose. <b>That is the only part of this that can change an AI read, and only where the alternative was no read.</b> <b>Follow-up fix:</b> the first version came back with only Claude models and gave no hint why Google and Groq were missing — a provider whose key isn't set in the Worker looked exactly like a provider that answered with nothing. The picker now names every provider that isn't in the list and says why (usually: its key isn't set in the Worker). Google's filter also <b>fails open</b>, so a change on their end can't silently wipe out every Gemini model, and paginated lists are followed to the end. And <b>adding a key now works straight away</b> — the list used to be cached for six hours, so switching on a new provider left it missing from the picker for the rest of the day with nothing to say it was coming. Two bugs fixed along the way: model ids containing a slash (Groq now names its models <code>meta-llama/…</code>) were rejected by the cross-device sync, so those models could never sync; and the badge's name map was hard-coded — it said "Claude Sonnet 4.6" for <i>any</i> Sonnet, so it kept naming a model that wasn't running. It uses the provider's own name now.</p>

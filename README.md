@@ -19,6 +19,27 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **r97 — one spacing scale, and the last hard edges.** Applied the vendored
+  `redesign-existing-projects` / `design-taste-frontend` skills to the two things that still looked
+  unfinished. **Display-only.**
+  - **The price block and the verdict share ONE glass pane.** r93 welded two separately-glassed
+    cards edge to edge with their facing corners squared. Two `backdrop-filter` layers never render
+    identically, so the join drew a hard line across the full card width, notched at each end where
+    a square corner met a round one — it read as *touching*, not as one card. The glass moved onto a
+    `.callCard` wrapper; the halves inside are transparent, divided by a hairline **inset by the same
+    `--sp-3` as the padding** (an edge-to-edge rule is what made it look like a join).
+  - **One spacing scale.** The page had six vertical gaps — 0, 8, 16, 18, 28, 44px. Now five tokens
+    (`--sp-1`…`--sp-5`) drive everything: 20px between cards, 34px between groups, on every screen.
+    `.card`'s `margin-bottom: 28px` was leaking into the layout and stacking with module margins —
+    the card owns its padding, the layout owns the gaps.
+  - **Glows are no longer sliced.** `.card.orb` clips its glow (`overflow: hidden`) but the glows sat
+    at `top: -4%` / `bottom: -2%` — deliberately overhanging, so the clip cut them while still bright
+    and left a crisp arc. Pulled fully inside with a 7-stop falloff reaching zero before any edge.
+    Card shadows tinted to the page hue rather than flat black.
+  - The layout suite's "welded, gap === 0" assertion was retired — that was the defect. It now
+    asserts the real invariant: both halves inside one pane, the glass on the pane and not the
+    halves, the divider inset, and the spacing tokens present. 128 assertions pass.
+
 - **r96 — a price gate on the picker, and a bet calculator that speaks in dollars.**
   - **The picker had no opinion about price.** It committed on its blended probability alone. A
     40-day audit (26,313 rounds; 10,624 of them with ~100% crowd coverage after the Kalshi key
