@@ -153,9 +153,22 @@ async function refreshModels(env) {
 
 // The cached catalogue, refreshed at most every MODELS_TTL_MS. `force` bypasses the age check.
 // On a refresh failure we keep serving the last good list — stale beats empty.
+// Which providers currently have a key, as a comparable string.
+function keyedProviders(env) {
+  return ALL_PROVIDERS.filter(([, envVar]) => !!env[envVar]).map(([name]) => name).sort().join(",");
+}
 async function listModels(env, force) {
   const cached = await kvGetRaw(env, MODELS_KEY);
-  const fresh = cached && cached.ts && (Date.now() - cached.ts) < MODELS_TTL_MS && (cached.models || []).length;
+  // ADDING A KEY SHOULD WORK IMMEDIATELY. The cache is 6h, so without this, setting GEMINI_API_KEY
+  // in the dashboard leaves Gemini missing from the picker for up to six hours with no clue that
+  // anything is pending — you'd have to know about ?models=refresh. Compare the providers that have
+  // a key now against the ones the cached list was built from; if that set changed either way, the
+  // cache is answering a different question and gets rebuilt on the spot.
+  const cachedKeys = cached && cached.providers
+    ? Object.keys(cached.providers).filter((p) => cached.providers[p].key).sort().join(",")
+    : null;
+  const keysChanged = cachedKeys !== null && cachedKeys !== keyedProviders(env);
+  const fresh = cached && cached.ts && (Date.now() - cached.ts) < MODELS_TTL_MS && (cached.models || []).length && !keysChanged;
   if (fresh && !force) return { ...cached, cached: true };
   try {
     const next = await refreshModels(env);

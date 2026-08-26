@@ -58,6 +58,9 @@ Recent work, newest first:
     Google ever omits or renames it, every Gemini model is silently dropped and the whole provider
     vanishes — the exact failure this was meant to prevent. (3) Anthropic and Google list endpoints
     are **paginated** (`has_more`/`last_id`, `nextPageToken`) and were only being read one page deep.
+    (4) Adding a key in the Cloudflare dashboard now takes effect on the next app load instead of
+    waiting out the 6h cache: the cached list records which providers had a key when it was built,
+    and a mismatch against the current environment rebuilds it immediately.
 
 - **r93 — compact layout: nine panels become three.** The page wasn't showing too much information;
   it was showing the *same* information over and over. A full inventory of every surface on screen

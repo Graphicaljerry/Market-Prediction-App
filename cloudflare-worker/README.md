@@ -80,6 +80,11 @@ auto-detects which provider to use; or force it with a Text var `AI_PROVIDER`.
     `GROQ_API_KEY`); an Anthropic key alone only ever lists Claude models.
   - **Paginated lists are followed** — Anthropic's `has_more`/`last_id` and Google's
     `nextPageToken`, bounded to 6 pages.
+  - **Adding or removing a key takes effect immediately.** The cached list records which providers
+    had a key when it was built; if that set no longer matches the environment, the cache is
+    rebuilt on the spot rather than waiting out the 6h TTL. So setting `GEMINI_API_KEY` in the
+    dashboard puts Gemini in the picker on the next app load — no redeploy, no `?models=refresh`,
+    no waiting. Revoking a key drops that provider just as fast.
   - **Self-healing model ids.** If the model about to be called is no longer in its provider's list,
     it has been retired and calling it would 404 — the round would get **no AI read at all**. The
     Worker substitutes the newest model in the same family (a retired `…-sonnet-4-6` → the newest
