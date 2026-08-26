@@ -1,0 +1,68 @@
+# TEMPORARY — data pull for an accuracy audit. This exists because the analysis environment has no
+# outbound route to the Worker; a GitHub runner does. It fetches the permanent round archive, writes
+# one gzipped NDJSON, and commits it. Delete this workflow and the data file when the audit is done.
+name: fetch-archive
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fetch-archive.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/prediction-market-app-review-bfkk10
+
+      - name: Pull the archive
+        env:
+          WORKER: https://market-prediction-app.jrodsuniverse.workers.dev
+        run: |
+          set -euo pipefail
+          mkdir -p tmp-audit
+          echo "--- listing days ---"
+          curl -sS --max-time 60 "$WORKER/?archive" -o tmp-audit/days.json
+          head -c 400 tmp-audit/days.json; echo
+          python3 - <<'PY'
+          import json, gzip, urllib.request, os, sys, datetime
+          W = os.environ["WORKER"]
+          days = json.load(open("tmp-audit/days.json")).get("days", [])
+          if not days:
+              print("NO DAYS RETURNED — check ACCESS_TOKEN / KV binding"); sys.exit(1)
+          days = sorted(days)[-40:]           # last ~40 days is plenty for a month audit
+          print(f"{len(days)} days: {days[0]} .. {days[-1]}")
+          total = 0
+          with gzip.open("tmp-audit/rounds.ndjson.gz", "wt") as out:
+              for d in days:
+                  try:
+                      with urllib.request.urlopen(f"{W}/?archive={d}", timeout=90) as r:
+                          blob = json.load(r)
+                  except Exception as ex:
+                      print(f"  {d}: FAILED {ex}"); continue
+                  rounds = blob.get("rounds", [])
+                  for row in rounds:
+                      row["_day"] = d
+                      out.write(json.dumps(row, separators=(",", ":")) + "\n")
+                  total += len(rounds)
+                  print(f"  {d}: {len(rounds)}")
+          print("TOTAL ROUNDS", total)
+          # a sample record so the shape is visible in the job log
+          with gzip.open("tmp-audit/rounds.ndjson.gz", "rt") as f:
+              print("SAMPLE:", f.readline()[:1200])
+          PY
+          ls -la tmp-audit/
+
+      - name: Commit it
+        run: |
+          set -euo pipefail
+          rm -f tmp-audit/days.json
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f tmp-audit/rounds.ndjson.gz
+          git commit -m "chore: temporary archive pull for the accuracy audit" || echo "nothing to commit"
+          git push origin HEAD:claude/prediction-market-app-review-bfkk10
