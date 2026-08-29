@@ -45,7 +45,7 @@
     --label-3: rgba(235,235,245,0.46);   /* lifted from .32 for legibility (closer to WCAG AA) while staying muted */
     --green: #30d158;
     --red: #ff453a;
-    --orange: #ff9f0a;
+    --orange: #a8adb8;   /* (r98) the "caution" tone is neutral now — green and red are the only accents */
     --blue: #0a84ff;
     /* live status accent — flips green↔red↔amber with the current pick (see body.glow-*) */
     --accent: var(--green);
@@ -61,7 +61,8 @@
   /* the whole UI's accent follows the up/down status of the pick */
   body.glow-over  { --accent: var(--green);  --accent-rgb: 13,224,89; }
   body.glow-under { --accent: var(--red);    --accent-rgb: 255,69,58; }
-  body.glow-skip  { --accent: var(--orange); --accent-rgb: 255,159,10; }
+  /* (r98) skip = "nothing to do" = neutral. Orange was a third accent doing decoration's job. */
+  body.glow-skip  { --accent: #8e939d; --accent-rgb: 142,147,157; }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
 
@@ -91,8 +92,9 @@
   :focus-visible { outline: 2px solid rgba(var(--accent-rgb), .9); outline-offset: 2px; border-radius: 5px; }
   /* Inline line icons (replace decorative emoji — ultra-light strokes, inherit text colour) */
   .ic { width: 1.05em; height: 1.05em; display: inline-block; vertical-align: -0.16em; margin-right: .3em; flex: none; }
+  html { background: var(--bg); }
   body {
-    position: relative; background: transparent;
+    position: relative; background: var(--bg);
     max-width: 1120px; margin: 0 auto;
     padding: max(14px, env(safe-area-inset-top)) clamp(16px, 3.5vw, 44px) calc(40px + env(safe-area-inset-bottom));
     min-height: 100vh; min-height: 100dvh; overflow-x: clip; overscroll-behavior-y: none;   /* dvh: no iOS Safari viewport jump. overflow-x: clip is REQUIRED here (html's clip alone doesn't contain it on iOS Safari) — the ambient orbs sit past the screen edges (negative offsets), so without it the page scrolls sideways and content drifts off-screen on mobile. The behind/inside glows now fade to ~0 well before the card edge, so clipping at the content box no longer cuts a visible edge. */
@@ -101,7 +103,7 @@
   body.has-bestbar { padding-bottom: calc(74px + env(safe-area-inset-bottom)); }
   .bestBar { position: fixed; left: 0; right: 0; bottom: 0; max-width: 1120px; margin-inline: auto; z-index: 60; display: flex; align-items: center; gap: 11px;
     padding: 10px clamp(16px, 3.5vw, 44px); padding-bottom: calc(10px + env(safe-area-inset-bottom));
-    background: rgba(18,18,20,.82); backdrop-filter: blur(16px) saturate(1.4); -webkit-backdrop-filter: blur(16px) saturate(1.4);
+    background: #121214;
     border-top: 1px solid var(--separator); cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .3s ease, opacity .3s ease; }
   .bestBar.hidden { transform: translateY(110%); opacity: 0; pointer-events: none; }
   .bestBar::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--label-3); transition: background .3s; }
@@ -117,7 +119,7 @@
   @media (max-width: 560px) { .bbRank { display: none; } }
   /* expanded full ranking, slides up above the ticker */
   .bestList { position: fixed; left: 0; right: 0; bottom: calc(53px + env(safe-area-inset-bottom)); max-width: 1120px; margin-inline: auto; z-index: 59; max-height: 54vh; overflow-y: auto; -webkit-overflow-scrolling: touch;
-    padding: 6px clamp(12px, 3vw, 40px) 10px; background: rgba(14,14,16,.94); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
+    padding: 6px clamp(12px, 3vw, 40px) 10px; background: #0e0e10;
     border-top: 1px solid var(--separator); box-shadow: 0 -16px 44px rgba(0,0,0,.5); transition: transform .28s ease, opacity .28s ease; }
   .bestList.hidden { transform: translateY(14px); opacity: 0; pointer-events: none; }
   .blHead { font-size: 10.5px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--label-3); padding: 8px 6px 6px; }
@@ -150,14 +152,12 @@
      Soft radial glows that live INSIDE each glowing card and scroll with it — never a fixed,
      sticky backdrop. Green by default; crossfades to red when the pick is UNDER. Each card
      clips its own orb so the glow stays contained within that section. */
+  /* (r98) FLAT: no accent-tinted rim, no inset ambient ring — the pick's colour lives in the text
+     and the semantic elements, never in the furniture. */
   .card.orb {
-    position: relative; overflow: hidden;   /* CONTAIN the glow inside the rounded card so it can't
-                                                bleed past the glass and leave a hard-edged disc on the page */
-    border-color: rgba(var(--accent-rgb), 0.22);
-    /* tinted to the page's own hue rather than flat black, and the inner accent ring widened so it
-       reads as ambient light in the glass instead of a line following the border */
-    box-shadow: 0 7px 26px rgba(10,10,14,0.28), inset 0 1px 64px rgba(var(--accent-rgb), 0.05);
-    transition: border-color .8s ease, box-shadow .8s ease;
+    position: relative; overflow: hidden;
+    border-color: rgba(255,255,255,0.07);
+    transition: border-color .8s ease;
   }
   .card.orb::before, .card.orb::after {
     content: ""; position: absolute; z-index: -1; pointer-events: none;
@@ -217,16 +217,16 @@
   .live { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--label-2); }
   .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: livepulse 2s infinite; }
   .brandMark { width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto; display: none;
-    background: linear-gradient(140deg, var(--blue) 0%, #5b8cff 100%); box-shadow: 0 2px 8px rgba(10,132,255,.35); }
+    background: var(--green); }
   .brandText { display: flex; flex-direction: column; justify-content: center; line-height: 1.18; min-width: 0; }
   .brandSub { font-size: 11px; color: var(--label-3); font-weight: 500; display: none; white-space: nowrap; }
   .navExch { display: none; align-items: center; gap: 7px; font-size: 13px; font-weight: 600; color: var(--label-2);
     background: rgba(28,28,30,.55); border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 7px 12px; }
-  .navExchDot { width: 13px; height: 13px; border-radius: 50%; background: var(--blue); flex: 0 0 auto; }
+  .navExchDot { width: 13px; height: 13px; border-radius: 50%; background: var(--label-3); flex: 0 0 auto; }
   @keyframes livepulse { 0%,100%{opacity:1;} 50%{opacity:.25;} }
 
   /* ---------- Segmented control ---------- */
-  .seg { display: flex; gap: 2px; background: rgba(28,28,30,0.55); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 3px; margin-bottom: 22px; }
+  .seg { display: flex; gap: 2px; background: var(--surface); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; padding: 3px; margin-bottom: 22px; }
   .seg button {
     flex: 1; min-height: 40px; border-radius: 9px; background: transparent; color: var(--label);
     border: none; font-family: inherit; font-weight: 600; font-size: 14px; cursor: pointer;
@@ -243,7 +243,7 @@
   /* ---------- Coin dropdown (mobile only) — compact pill, top-left ---------- */
   .coinSelectWrap {
     display: none; position: relative; align-items: center; gap: 9px; width: -moz-fit-content; width: fit-content;
-    background: rgba(28,28,30,0.6); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    background: var(--surface);
     border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 0 8px 0 14px; min-height: 48px; margin-bottom: 0;
   }
   .coinSelectWrap .csIcon { width: 21px; height: 21px; border-radius: 50%; flex: 0 0 auto; }
@@ -292,7 +292,7 @@
      is inline-block so it works whether the header is plain flow or one of the flex variants. */
   .sec { font-size: 13px; font-weight: 700; color: var(--label); letter-spacing: -.01em; margin: 0 2px 11px; }
   .sec::before { content: ""; display: inline-block; vertical-align: middle; flex: 0 0 auto; width: 3px; height: 14px;
-    border-radius: 2px; margin-right: 9px; margin-bottom: 2px; background: linear-gradient(180deg, rgba(var(--accent-rgb), .85), rgba(var(--accent-rgb), .3)); }
+    border-radius: 2px; margin-right: 9px; margin-bottom: 2px; background: rgba(var(--accent-rgb), .8); }
   .sec .tiny { color: var(--label-3); font-weight: 500; letter-spacing: 0; }
   /* "High-conviction only" switch — sits inline at the LEFT of the Auto Pick header, in line
      with the rest of the interface (no longer floated off to the right edge). */
@@ -307,14 +307,14 @@
   .hiConvToggle:has(input:checked) { color: var(--label); border-color: rgba(48,209,88,.5); }
 
   /* ---------- Card ---------- */
+  /* (r98) FLAT: a solid raised surface on a solid ground. The hairline border does the work the
+     blur + drop shadow used to do; there is nothing behind the card to see through any more. */
   .card {
-    background: rgba(28,28,30,0.55);
-    -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
+    background: var(--surface);
     /* (r97) margin-bottom was 28px and leaked into the layout, stacking with the module margin to make
        a 44px gap in some places and 16px in others. The card owns its padding; the LAYOUT owns the
        space between cards. */
-    border: 1px solid rgba(255,255,255,0.08); border-radius: 18px; padding: var(--sp-3); margin-bottom: 0;
-    box-shadow: 0 8px 28px rgba(10,10,14,0.30), inset 0 1px 0 rgba(255,255,255,0.05);   /* (r97) tinted to the page hue, not flat black */
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 16px; padding: var(--sp-3); margin-bottom: 0;
     transition: border-color .4s ease;
   }
   /* "clear" sections — no glass, content sits straight on the glow */
@@ -323,15 +323,14 @@
      default while the glass cards inset 18px. Give them real left/right padding so their content (timer
      bar, indicator rows, the score grid + Recent Rounds) lines up with the glass cards, not the edges. */
   .card.flat.timerCard, .card.flat.collapseCard, #autoMod > .card.flat { padding-left: var(--sp-3); padding-right: var(--sp-3); }
-  #autoMod > .card.flat { padding-top: var(--sp-2); padding-bottom: var(--sp-2); }   /* (r97) was 14/16 — off the scale */
-  #autoMod > .card.flat { padding-top: 14px; padding-bottom: 16px; }
+  #autoMod > .card.flat { padding-top: var(--sp-2); padding-bottom: var(--sp-2); }
   /* glowing cards a touch more glassy so the orb reads through, like the Figma */
-  .card.orb { background: rgba(28,28,30,0.26); }   /* glassier so the glow behind reads through */
+  .card.orb { background: var(--surface); }
   /* ---------- Flat, calm card treatment — match the clean mockup (no animated aurora/glow) ----------
      Additive overrides only; the glow rules above are untouched, so reverting is a one-block delete. */
   .card.orb::before, .card.orb::after { display: none; }
   .pageGlow { display: none; }
-  .card.orb { background: rgba(43,43,43,0.20); border-color: rgba(255,255,255,0.09); box-shadow: 0 8px 28px rgba(0,0,0,0.20), inset 0 1px 0 rgba(255,255,255,0.06); }
+  .card.orb { background: var(--surface); border-color: rgba(255,255,255,0.07); box-shadow: none; }
   /* Timer card stays clean like the mockup — hide the next-round preview line in the timer. The
      next-round pick is NOT lost: it still surfaces in the Auto Pick panel's "Next round" column
      when it locks in the final 2 min. One-line revert. (id selector so it wins over .nextPick below.) */
@@ -493,13 +492,10 @@
      colliding. Note the divider is inset by the same --sp-3 as the padding: an edge-to-edge rule is
      what made it look like a join. */
   .callCard {
-    background: rgba(28,28,30,0.55);
-    -webkit-backdrop-filter: blur(22px) saturate(150%); backdrop-filter: blur(22px) saturate(150%);
-    border: 1px solid rgba(255,255,255,0.08); border-radius: 18px;
-    box-shadow: 0 8px 28px rgba(10,10,14,0.30), inset 0 1px 0 rgba(255,255,255,0.05);
-    overflow: hidden;   /* the inner glows can never poke past the rounded corner */
+    background: var(--surface);
+    border: 1px solid rgba(255,255,255,0.07); border-radius: 16px;
+    overflow: hidden;
   }
-  .glassui .callCard { background: rgba(28,28,30,0.26); }
   .callCard > .module > .card,
   .callCard > .module > .card.orb {
     background: none; border: 0; border-radius: 0; box-shadow: none; margin: 0;
@@ -521,7 +517,7 @@
   .recTitle { font-size: 13px; font-weight: 700; color: var(--label); letter-spacing: -.01em; }
   .recTitle::before { content: ""; display: inline-block; vertical-align: middle; width: 3px; height: 14px;
     border-radius: 2px; margin-right: 9px; margin-bottom: 2px;
-    background: linear-gradient(180deg, rgba(var(--accent-rgb), .85), rgba(var(--accent-rgb), .3)); }
+    background: rgba(var(--accent-rgb), .8); }
   .recHit { display: flex; align-items: baseline; gap: 6px; }
   .recHit .v { font-family: var(--font-num); font-size: 21px; font-weight: 700; line-height: 1; }
   .recHit .k { font-size: 11px; color: var(--label-3); font-weight: 500; }
@@ -634,21 +630,16 @@
   .timer { font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
   .timer.warn { color: var(--red); }
   .timerBarWrap { height: 4px; border-radius: 3px; background: rgba(118,118,128,0.24); margin-top: 16px; overflow: hidden; }
+  /* (r98) FLAT: one solid colour, no gradient fill, no sweeping sheen, no glow shadows. Urgency is
+     carried by the colour change and an opacity pulse instead of bloom. */
   #timerBar { height: 100%; width: 100%; position: relative; overflow: hidden; border-radius: 3px;
-    background: linear-gradient(90deg, #0bbf4e, var(--green));
-    box-shadow: 0 0 9px rgba(13,224,89,.5); transition: width .9s linear, background .4s ease, box-shadow .5s ease; }
-  #timerBar.warn { background: linear-gradient(90deg, #ff6b3d, var(--red)); box-shadow: 0 0 9px rgba(255,69,58,.55);
-    animation: barWarnPulse 1.05s ease-in-out infinite; }
-  /* A soft sheen sweeps the bar so it feels alive as it ticks down; it pulses in the final 2 min. */
-  #timerBar::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
-    background: linear-gradient(100deg, transparent 18%, rgba(255,255,255,.32) 50%, transparent 82%);
-    transform: translateX(-100%); animation: barSheen 2.8s ease-in-out infinite; }
-  @keyframes barSheen { 0% { transform: translateX(-100%); } 55%, 100% { transform: translateX(240%); } }
-  @keyframes barWarnPulse { 0%,100% { box-shadow: 0 0 6px rgba(255,69,58,.45); } 50% { box-shadow: 0 0 17px 2px rgba(255,69,58,.95); } }
+    background: var(--green); transition: width .9s linear, background .4s ease; }
+  #timerBar.warn { background: var(--red); animation: barWarnPulse 1.05s ease-in-out infinite; }
+  @keyframes barWarnPulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
   /* Urgency ramps as the clock nears zero: faster pulse in the final 30s, hardest in the final 10s. */
   #timerBar.urgent { animation-duration: .6s; }
   #timerBar.critical { animation-name: barCritPulse; animation-duration: .36s; }
-  @keyframes barCritPulse { 0%,100% { box-shadow: 0 0 7px rgba(255,69,58,.55); } 50% { box-shadow: 0 0 24px 4px rgba(255,69,58,1); } }
+  @keyframes barCritPulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
   #timer.critical { animation: timerCrit .36s ease-in-out infinite; }
   @keyframes timerCrit { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.05); opacity: .8; } }
   @media (prefers-reduced-motion: reduce) { #timerBar.urgent, #timerBar.critical, #timer.critical { animation: none; } }
@@ -810,11 +801,11 @@
   .myRec .warn { color: var(--red); font-weight: 600; }
   /* (3) The clock belongs to the decision, and the card should feel the round running out. */
   .heroKicker .kClock { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
-  .hero.act .heroKicker { color: #ffc442; }
+  .hero.act .heroKicker { color: var(--green); }
   .hero.act .heroKicker .kClock { font-weight: 700; }
   /* (2) A star on another coin is the whole product — mark it in the all-coins board. */
-  .blRow .blStar { color: #ffc442; margin-right: 4px; }
-  .bestBar[data-star="1"] { border-color: rgba(255,196,66,.45); }
+  .blRow .blStar { color: var(--green); margin-right: 4px; }
+  .bestBar[data-star="1"] { border-color: rgba(48,209,88,.45); }
   /* ---- DECISION HERO (r90) — the verdict owns the top of the card ---- */
   .hero { padding: 2px 0 4px; text-align: left; }
   .heroKicker { font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--label-3); margin-bottom: 8px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
@@ -823,15 +814,15 @@
   .heroCall .hcUnder { color: var(--red); }
   .heroCall .hcSkip { color: var(--label-2); }
   .heroCall .hcQual { font-size: 19px; font-weight: 650; letter-spacing: -.02em; color: var(--label-2); }
-  .heroStar { display: inline-flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 11px; background: rgba(255,196,66,.13); border: 1px solid rgba(255,196,66,.4); box-shadow: inset 0 1px 0 rgba(255,255,255,.09); flex: none; }
-  .heroStar svg { width: 16px; height: 16px; fill: #ffc442; }
+  .heroStar { display: inline-flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 11px; background: rgba(48,209,88,.13); border: 1px solid rgba(48,209,88,.4); box-shadow: inset 0 1px 0 rgba(255,255,255,.09); flex: none; }
+  .heroStar svg { width: 16px; height: 16px; fill: var(--green); }
   .heroWhy { margin: 11px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--label-2); max-width: 42ch; }
   .heroWhy b { color: var(--label); font-weight: 650; }
   .heroChips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
   .heroChips span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; padding: 3.5px 8px; border: 1px solid var(--hair); border-radius: 7px; color: var(--label-3); white-space: nowrap; }
   .heroChips .cPos { color: var(--green); border-color: rgba(52,199,123,.32); background: rgba(52,199,123,.09); }
   .heroChips .cNeg { color: var(--red); border-color: rgba(255,92,110,.32); background: rgba(255,92,110,.09); }
-  .heroChips .cStar { color: #ffc442; border-color: rgba(255,196,66,.34); background: rgba(255,196,66,.1); }
+  .heroChips .cStar { color: var(--green); border-color: rgba(48,209,88,.34); background: rgba(48,209,88,.1); }
   .heroMeter { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--hair); }
   .hmHead { display: flex; justify-content: space-between; align-items: baseline; }
   .hmHead span { display: block; font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--label-3); margin-bottom: 2px; }
@@ -868,7 +859,7 @@
   .heroDetails .hdBody { padding-top: 4px; }
   @media (max-width: 380px) { .heroCall { font-size: 28px; } .heroCall .hcQual { font-size: 16px; } }
   @media (prefers-reduced-motion: reduce) { .hmPuck { transition: none; } }
-  .favZone { margin: 7px 0 2px; padding: 8px 13px; border-radius: 11px; background: rgba(255,196,66,.06); border: 1px solid rgba(255,196,66,.22); font-size: 12.5px; font-weight: 600; color: var(--label-2); line-height: 1.45; }
+  .favZone { margin: 7px 0 2px; padding: 8px 13px; border-radius: 11px; background: rgba(48,209,88,.06); border: 1px solid rgba(48,209,88,.22); font-size: 12.5px; font-weight: 600; color: var(--label-2); line-height: 1.45; }
   .favZone b { color: var(--label); }
   .favZone.dim { background: rgba(255,255,255,.03); border-color: var(--separator); color: var(--label-3); }
   .favZone.dim b { color: var(--label-2); }
@@ -1139,7 +1130,7 @@
     background: rgba(255,255,255,.025); border: 1px solid rgba(255,255,255,.06); border-radius: 14px; padding: 13px 15px; }
   .autoLearned:first-child, .lateRecord:first-child { margin-top: 0; }
   .autoLearned:empty, .lateRecord:empty { display: none; }
-  .autoLearned.hero { background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.012)); border-color: rgba(255,255,255,.11); }
+  .autoLearned.hero { background: rgba(255,255,255,.035); border-color: rgba(255,255,255,.11); }
   /* header row: section label (left) + a quiet mono sample-size badge (right) */
   .lhRow { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 11px; }
   .autoLearned .lh, .lateRecord .lh { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--label-2); margin: 0; }
@@ -1281,7 +1272,7 @@
   }
   @keyframes buildReveal { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
   /* Prime-opportunity banner — fires when a coin is a rare spot to win AND pay big (+EV, payout >= ~2x). */
-  .primeAlert { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 80; width: min(560px, 94vw); box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 14px; background: linear-gradient(135deg, rgba(48,209,88,.18), rgba(255,159,10,.16)); border: 1px solid rgba(48,209,88,.55); box-shadow: 0 10px 34px rgba(0,0,0,.5); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); animation: primeGlow 2.2s ease-in-out infinite; }
+  .primeAlert { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 80; width: min(560px, 94vw); box-sizing: border-box; display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 14px; background: #14201a; border: 1px solid rgba(48,209,88,.55); animation: primeGlow 2.2s ease-in-out infinite; }
   .primeAlert[hidden] { display: none; }
   .primeAlert .paBody { flex: 1 1 auto; min-width: 0; }
   .primeAlert .paTitle { font-weight: 800; font-size: 13.5px; letter-spacing: .01em; color: var(--label); }
@@ -1291,139 +1282,10 @@
   @keyframes primeGlow { 0%,100% { box-shadow: 0 10px 34px rgba(0,0,0,.5), 0 0 0 0 rgba(48,209,88,0); } 50% { box-shadow: 0 10px 34px rgba(0,0,0,.5), 0 0 0 4px rgba(48,209,88,.20); } }
   @media (prefers-reduced-motion: reduce) { .primeAlert { animation: none; } }
 
-  /* ============================================================
-     LIQUID-GLASS THEME — capability-gated via html.glassui (set by the probe after <body>).
-     Frosted glass that picks up the pick's accent colour (saturate), drifting ambient glows,
-     specular top edges, a glossy gradient title, and a real SVG-displaced glow on the pick card.
-     Applied ONLY where backdrop-filter is supported AND the user hasn't reduced transparency;
-     otherwise the clean flat theme above stays. 100% display — no logic/picker changes.
-     Apple's true Liquid Glass is native (Metal); the web-safe parts are blur+saturate+specular
-     + an SVG filter (kube.io / WebKit). The Chrome-only SVG-as-backdrop-filter trick is avoided. */
-  /* Ambient light MESH behind everything — the "light behind the pane" the frosted glass refracts. It lives
-     on a FIXED, FULL-VIEWPORT layer (not on the max-width body) so it spans edge-to-edge on any width — on an
-     ultrawide it no longer cuts off at the ~1480px content column with a hard seam. Positions are viewport-
-     relative (%) so the pools always reach every edge. Primary pools are soft NEUTRAL cool light (calm,
-     contrasts with the cards); a gentle pick-colour wash sits centred behind the content from top + bottom
-     so the accent reads in the background without flooding. Per-card colour is the #glassBack layer's job. */
-  .glassui body { background: transparent; }
-  .glassui body::before {
-    content: ""; position: fixed; inset: 0; z-index: -3; pointer-events: none;
-    /* (r95) SOFT EDGES. Two things were making these read as hard-edged rings:
-       (1) a two-stop gradient ending at `transparent` is a LINEAR ramp that stops dead at its last
-           stop — the eye reads that terminus as an arc. Each wash now uses a 7-stop, roughly
-           gaussian falloff that approaches zero asymptotically, and ends at the SAME hue with zero
-           alpha rather than `transparent` (which is transparent *black* and can dirty the ramp).
-       (2) banding: an alpha ramp from ~0.1 to 0 across 900px on a near-black base only has a handful
-           of distinct 8-bit values to work with, so it steps in visible ~100px rings. The dither
-           layer in `body::after` below is what actually kills that. */
-    background:
-      /* neutral ambient — spread across the whole viewport so the sides are never bare */
-      radial-gradient(1400px 920px at 78% -6%, rgba(158,170,198,0.115) 0%, rgba(158,170,198,0.094) 16%, rgba(158,170,198,0.063) 32%, rgba(158,170,198,0.035) 48%, rgba(158,170,198,0.016) 63%, rgba(158,170,198,0.005) 78%, rgba(158,170,198,0) 92%),
-      radial-gradient(1300px 1000px at 4% 32%, rgba(140,154,186,0.090) 0%, rgba(140,154,186,0.073) 16%, rgba(140,154,186,0.049) 32%, rgba(140,154,186,0.027) 48%, rgba(140,154,186,0.012) 63%, rgba(140,154,186,0.004) 78%, rgba(140,154,186,0) 92%),
-      radial-gradient(1500px 1040px at 98% 72%, rgba(146,160,192,0.078) 0%, rgba(146,160,192,0.063) 16%, rgba(146,160,192,0.042) 32%, rgba(146,160,192,0.023) 48%, rgba(146,160,192,0.010) 63%, rgba(146,160,192,0.003) 78%, rgba(146,160,192,0) 92%),
-      radial-gradient(1200px 900px at 48% 114%, rgba(150,164,196,0.072) 0%, rgba(150,164,196,0.058) 16%, rgba(150,164,196,0.039) 32%, rgba(150,164,196,0.021) 48%, rgba(150,164,196,0.009) 63%, rgba(150,164,196,0.003) 78%, rgba(150,164,196,0) 92%),
-      /* pick-colour wash, centred behind the content (top + bottom) */
-      radial-gradient(1150px 800px at 50% -10%, rgba(var(--accent-rgb),0.10) 0%, rgba(var(--accent-rgb),0.081) 16%, rgba(var(--accent-rgb),0.054) 32%, rgba(var(--accent-rgb),0.030) 48%, rgba(var(--accent-rgb),0.013) 64%, rgba(var(--accent-rgb),0.004) 79%, rgba(var(--accent-rgb),0) 93%),
-      radial-gradient(980px 840px at 50% 116%, rgba(var(--accent-rgb),0.055) 0%, rgba(var(--accent-rgb),0.045) 16%, rgba(var(--accent-rgb),0.030) 32%, rgba(var(--accent-rgb),0.016) 48%, rgba(var(--accent-rgb),0.007) 64%, rgba(var(--accent-rgb),0.002) 79%, rgba(var(--accent-rgb),0) 93%),
-      #070809;
-  }
-  /* (r95) DITHER. The real cause of the "sharp edges" in a dark ambient background is 8-bit banding:
-     between rgba(158,170,198,.115) and zero there are only ~12 representable steps over ~900px, so
-     the ramp paints as a dozen ~75px bands with visible boundaries. A film of fine noise at ~2%
-     randomises which side of a step each pixel lands on and the boundaries dissolve. It is a static
-     SVG texture (no runtime cost) and sits above the washes but below every card. */
-  .glassui body::after {
-    content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none; opacity: .028;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-    background-size: 160px 160px;
-  }
-  /* the drifting orbs are now just faint position anchors for the light-tracking (dimmed right down so they
-     can't blow out a hard hotspot where one sits behind a card — the visible "light behind the glass" now
-     comes from the per-card BACKING glows below, which stay aligned to each wrapper). */
-  .glassui .pageGlow { display: block; border-radius: 0;   /* (r95) drop the ellipse clip — see .gb */
-    background: radial-gradient(closest-side,
-      rgba(204,216,240,0.055) 0%, rgba(200,212,236,0.040) 20%, rgba(192,204,230,0.024) 38%,
-      rgba(var(--accent-rgb),0.014) 56%, rgba(var(--accent-rgb),0.005) 74%,
-      rgba(var(--accent-rgb),0) 90%); }
-  /* ---- BACKING LIGHT: a soft, same-coloured gradient sat DIRECTLY BEHIND each glass wrapper and aligned to
-     it (positioned by trackGlassLight). The card's translucent fill + backdrop-blur transmits it, so the
-     front gradient on the glass has a matching glow behind it → it reads as real transparency, not a flat
-     panel with a hotspot painted on. Orb (pick) cards glow in the pick colour; the rest in neutral light. */
-  #glassBack { display: none; }
-  .glassui #glassBack { display: block; position: absolute; inset: 0; z-index: -1; pointer-events: none; overflow: visible; contain: layout style; }
-  /* The backing glow is a soft BLOB that fades to fully transparent well before the card's edges (radial
-     ends ~60% out) and is heavily blurred, so it never paints the card's rounded-RECTANGLE shape — that
-     rectangular halo was the "hard edge" showing in the margins on wide screens. Now it's an organic pool. */
-  /* (r95) The `border-radius: 50%` here was a HARD ELLIPTICAL CLIP. The gradient is centred on the
-     tracked light position (--lx/--ly), so whenever that drifts off-centre the gradient was still at
-     meaningful alpha where the ellipse cut it — a crisp curved edge that 38px of blur only softened.
-     The gradient already *is* the blob's shape; the clip was redundant. Removed, falloff extended and
-     given more stops so it reaches zero on its own, well inside the box. */
-  .glassui #glassBack .gb { position: absolute; pointer-events: none; filter: blur(44px); }
-  .glassui #glassBack .gb.orb   { background: radial-gradient(58% 52% at var(--lx,50%) var(--ly,40%), rgba(var(--accent-rgb),0.38) 0%, rgba(var(--accent-rgb),0.22) 18%, rgba(var(--accent-rgb),0.11) 34%, rgba(var(--accent-rgb),0.045) 48%, rgba(var(--accent-rgb),0.015) 62%, rgba(var(--accent-rgb),0.004) 76%, rgba(var(--accent-rgb),0) 88%); }
-  .glassui #glassBack .gb.plain { background: radial-gradient(58% 52% at var(--lx,50%) var(--ly,40%), rgba(202,214,238,0.14) 0%, rgba(202,214,238,0.085) 18%, rgba(202,214,238,0.042) 34%, rgba(202,214,238,0.017) 48%, rgba(202,214,238,0.006) 62%, rgba(202,214,238,0.002) 76%, rgba(202,214,238,0) 88%); }
-  .reduce-motion #glassBack { display: none; }
-  /* Mid-resize "settle" state (see the resize handler): iPad Safari can freeze a stale backdrop-filter
-     tile / backing glow sized for the OLD layout when the window is resized (Split View, rotation) —
-     it shows up as a misplaced blue-grey box in the background. While resizing we hide the backing
-     glows and drop the backdrop blurs; on settle everything re-composites + re-tracks fresh. */
-  .resizing-glass #glassBack { display: none !important; }
-  .resizing-glass .card { -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
-  /* Inset boxes inside the glass cards — the "This Round / Next Round" split (.dualPick, was solid #141414)
-     and the "closing near…" note (.lastClose.pending, which borrows the solid .pending surface) — used to
-     sit on the glass like opaque stickers. In glass mode give them a translucent, frosted-consistent fill +
-     a hairline top highlight so the card's light and its backing glow read through and they blend in. */
-  .glassui .dualPick { background: rgba(255,255,255,0.05); box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), inset 0 0 0 1px rgba(255,255,255,0.03); }
-  .glassui .pending  { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.06); }
-  .glassui .card.orb::before, .glassui .card.orb::after { display: block; }
-  /* Light-reactive glass RIM — the stroke is no longer one flat colour. A border-box gradient makes the
-     top-left edge catch light (bright white), fade through neutral, pick up the pick's accent, then darken
-     at the bottom — like a real glass plate lit from above. The padding-box layer keeps the frosted fill so
-     backdrop-filter still shows through. (Double-background trick — coexists with the orb glow pseudo-els.) */
-  /* --lx/--ly = where the nearest drifting glow sits relative to each card (driven by trackGlassLight()).
-     @property makes them animatable, so the bright spot on the rim GLIDES toward the light instead of
-     jumping. Default (top-left) is a sensible static rim when JS is idle / reduced-motion. */
-  @property --lx { syntax: "<percentage>"; inherits: false; initial-value: 28%; }
-  @property --ly { syntax: "<percentage>"; inherits: false; initial-value: -8%; }
-  /* SUBTLE light-reactive rim — a soft specular that brightens where the nearest glow sits (driven by
-     --lx/--ly) and fades to a faint hairline elsewhere. Toned right down from the earlier strong border so
-     it reads as glass catching light, not a coloured stroke. The lighter fill lets the background mesh blur
-     through, so the card looks like it sits OVER the gradient rather than being a flat div. */
-  .glassui .card {
-    border: 1px solid transparent;
-    background:
-      /* SURFACE SHEEN — a soft neutral highlight where the light hits the glass, falling off across the
-         card. This is the "light reflecting on the pane" + it tracks the nearest glow via --lx/--ly, so
-         the card reads as lit glass, not a flat panel. Neutral white → adds light, not colour. */
-      radial-gradient(135% 105% at var(--lx,30%) var(--ly,-6%), rgba(255,255,255,0.022) 0%, rgba(255,255,255,0.008) 30%, rgba(255,255,255,0) 60%) padding-box,
-      linear-gradient(rgba(20,22,27,0.26), rgba(20,22,27,0.26)) padding-box,
-      radial-gradient(135% 120% at var(--lx,30%) var(--ly,-12%), rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.038) 16%, rgba(255,255,255,0.014) 44%, rgba(var(--accent-rgb),0.08) 78%, rgba(255,255,255,0.016) 100%) border-box;
-    -webkit-backdrop-filter: blur(26px) saturate(180%); backdrop-filter: blur(26px) saturate(180%);
-    /* The WRAPPER keeps a normal soft edge (dimmed rim). The softness lives in the GRADIENTS, not the wrapper:
-       the glow behind (#glassBack) and the orb glow inside both fade out on their own — they're no longer
-       clipped by an overflow:hidden (card or body), so the gradient never cuts at a hard line. */
-    box-shadow: 0 9px 26px rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -16px 26px rgba(0,0,0,0.10);
-    transition: border-color .4s var(--ease), box-shadow .4s var(--ease), --lx .5s linear, --ly .5s linear;
-  }
-  .glassui .card.orb {
-    border: 1px solid transparent;
-    /* let the inside glow (::before/::after) fade out past the card instead of being CLIPPED at the rounded
-       edge — that clip was the hard-edged gradient. The glow is a soft radial that's near-transparent by the
-       card boundary, so unclipping it just lets it breathe, no hard disc. */
-    overflow: visible;
-    background:
-      radial-gradient(135% 105% at var(--lx,30%) var(--ly,-6%), rgba(255,255,255,0.024) 0%, rgba(255,255,255,0.009) 30%, rgba(255,255,255,0) 60%) padding-box,
-      linear-gradient(rgba(18,20,25,0.18), rgba(18,20,25,0.18)) padding-box,
-      radial-gradient(135% 120% at var(--lx,30%) var(--ly,-12%), rgba(255,255,255,0.15) 0%, rgba(var(--accent-rgb),0.14) 22%, rgba(var(--accent-rgb),0.06) 58%, rgba(255,255,255,0.018) 100%) border-box;
-    box-shadow: 0 11px 32px rgba(0,0,0,0.26), inset 0 1px 0 rgba(255,255,255,0.055), 0 0 30px rgba(var(--accent-rgb),0.05);
-  }
-  /* real SVG refraction on the pick card's ambient glow (Safari-safe via filter:, not backdrop-filter) */
-  .glassui:not(.reduce-motion) .card.orb::before { filter: blur(30px) url(#liquidGlass); }
-  /* glossy gradient coin title */
-  .glassui .coinHero { color: #f3f5f7; filter: none; }   /* a quiet kicker now (no hero glow) so it doesn't out-rank the price + the pick below it */
-  /* frost the segmented controls + the prime banner too */
-  .glassui .seg, .glassui .playStyle { -webkit-backdrop-filter: blur(18px) saturate(170%); backdrop-filter: blur(18px) saturate(170%); }
-  .glassui .primeAlert { -webkit-backdrop-filter: blur(24px) saturate(200%); backdrop-filter: blur(24px) saturate(200%); }
+  /* (r98) The liquid-glass theme (~130 lines of .glassui rules: frosted backdrops, ambient washes,
+     the dither film, per-card backing glows, SVG refraction) was DELETED, not just disabled — the
+     capability probe stopped adding the class, so all of it was dead weight. It lives in git history
+     (r97 and earlier) if it's ever wanted back. */
 </style>
 </head>
 <body>
@@ -1431,15 +1293,14 @@
   (function(){try{var d=document.documentElement,S=window.CSS;
     var blur=!!(S&&S.supports&&(S.supports('backdrop-filter','blur(2px)')||S.supports('-webkit-backdrop-filter','blur(2px)')));
     var rt=window.matchMedia&&matchMedia('(prefers-reduced-transparency: reduce)').matches;
-    if(blur&&!rt)d.classList.add('glassui');   // frosted glass + ambient glow where supported
+    /* (r98) FLAT THEME — the liquid-glass class is no longer added, which switches off the frosted
+       backdrops, the ambient washes, the dither film, the per-card backing glows and the SVG
+       refraction in one move (every one of those rules is scoped to .glassui, and trackGlassLight
+       early-returns without it). blur/rt still probed so this stays a one-line revert. */
+    void blur; void rt;
     if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)d.classList.add('reduce-motion');
   }catch(e){}})();</script>
-  <svg width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true"><filter id="liquidGlass" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB"><feTurbulence type="fractalNoise" baseFrequency="0.008 0.011" numOctaves="2" seed="7" result="n"/><feGaussianBlur in="n" stdDeviation="2.4" result="nb"/><feDisplacementMap in="SourceGraphic" in2="nb" scale="13" xChannelSelector="R" yChannelSelector="G"/></filter></svg>
-
   <div id="glassBack" aria-hidden="true"></div>   <!-- per-card backing glows (filled by trackGlassLight) -->
-  <div class="pageGlow g1" aria-hidden="true"></div>
-  <div class="pageGlow g2" aria-hidden="true"></div>
-  <div class="pageGlow g3" aria-hidden="true"></div>
 
   <div id="primeAlert" class="primeAlert" role="status" aria-live="polite" hidden></div>
 
@@ -1818,10 +1679,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r97</span><span class="buildSep">·</span><span>2026-08-26</span>
+        <span class="buildVer">build r98</span><span class="buildSep">·</span><span>2026-08-27</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>Flat theme — the glass comes off (r98).</b> The frosted-glass look is gone: no more see-through blurred cards, no drifting ambient glows, no coloured washes behind the page, no noise film, no shimmer sweeping the timer bar. Cards are now a <b>solid dark surface on a solid near-black ground</b>, separated by hairline borders — nothing behind them to show through, so none of the artefacts that glass kept producing (seams, banding, sliced glows) can ever come back. Colour got stricter too: <b>green and red are the only accents left</b>, and they only ever mean direction — green for over/go (the ⭐ star badge is green now instead of amber), red for under/loss. Skip states went neutral grey ("nothing to do" shouldn't glow orange), and the blue brand square became the app's one green. About 130 lines of dead glass CSS were deleted outright — it lives in git history if it's ever missed. <b>Display-only — no pick, grade or logged round changed.</b></p>
         <p><b>Spacing put on one scale, and the last hard edges removed (r97).</b> <b>(1) The price block and the verdict are now one pane, not two cards jammed together.</b> They were two separately-frosted cards butted edge to edge with their facing corners squared off — and two frosted layers never render identically, so the join showed as a hard line straight across the card with a notch at each end. That's why it looked like the sections were <i>touching</i> rather than belonging together. The glass now sits on a single wrapper and the two halves inside are transparent, so it's one continuous pane divided by a hairline inset from the edges — the same divider style used elsewhere in the card, so it reads as designed. <b>(2) One spacing scale.</b> The page had six different vertical gaps — 0, 8, 16, 18, 28 and 44px — collected over twenty builds. Everything now comes from five steps, so the rhythm is 20px between cards and 34px between groups, everywhere, on every screen. The card was also holding a 28px margin under itself that leaked into the layout and stacked with other margins; the card owns its padding now and the layout owns the space between cards. <b>(3) The glows stopped being sliced.</b> Each card clips its own glow to its rounded shape, but the glows were positioned deliberately hanging over the card's edge — so the clip cut them while they were still bright, leaving a crisp arc. That's the stain with a defined boundary in the corner of the chart. They're pulled fully inside now and fade to nothing before they reach any edge. Card shadows are also tinted to the page's own colour instead of flat black. <b>Display-only — no pick, grade or logged round changed.</b></p>
         <p><b>Cents turned into money, and the picker finally has an opinion about price (r96).</b> Two changes, one of which moves real money. <b>(1) The bet calculator.</b> "≈1.3¢ taker fee" is a true sentence that tells you nothing. Type what you'd actually stake and the card now says it in dollars: how many contracts that buys, what leaves your account, what comes back if you're right, what you lose if you're wrong, and — the number that actually decides everything — <b>the win rate you'd need just to break even</b>, next to what rounds at that price have <i>actually</i> won on the record. It also compares venues: the same bet on Kalshi, Robinhood, Robinhood Gold and Coinbase, because the gap between them is bigger than it looks. <b>(2) A price gate on the pick.</b> The picker used to commit on its blended probability with no opinion about what the bet <i>cost</i> — and a 40-day audit of 26,313 rounds showed that's where the money went: at 65–70¢ it bet 1,057 times and lost, at 75–78¢ it lost badly, and only 78–82¢ actually cleared its break-even. Everything it committed, at any price, ran −2.5¢ per dollar over the 16 days with full crowd data; restricted to 78–82¢ it ran +5.5¢. So the app now simply won't bet outside 78–82¢, and the ⭐ band moved 73–90 → 78–82 to match. <b>That's about 9 bets a day instead of 36.</b> <b>Told straight:</b> that window is 160 bets, roughly 1.4 sigma, and a fair statistical test says a search across 70 possible bands finds one looking this good by luck about a third of the time. It is the best available rule, not a proven edge — which is exactly what was said about the last two bands before they decayed. <b>This changes what you're told to bet.</b> Set PRICE_MIN=0 in the Worker to turn it off.</p>
         <p><b>The background stops showing rings (r95).</b> The ambient glows had visible hard arcs in them. Three causes, all fixed. <b>(1) Banding</b> — this was the main one. Between a faint tint and nothing there are only about a dozen shades a screen can actually display, so a glow spread over 900px painted as a dozen ~75px bands with visible seams between them. A film of very fine noise at ~2% now sits over the background; it randomises which side of each step a pixel falls on and the seams dissolve. <b>(2) The glows stopped dead.</b> Each was a straight ramp from tint to nothing that simply ended at a fixed radius, and the eye reads that ending as an arc. They now fade on a curve that trails off to nothing instead of stopping. <b>(3) A hard clip.</b> The glow behind each card was being cut to an ellipse; because the glow follows the light position, it was often still bright where the cut happened, leaving a crisp curved edge that blurring only smudged. The clip is gone — the glow's own falloff is its shape. The liquid-glass ripple was also turned down and given more room, so it can't tear at its edges. <b>Display-only.</b></p>

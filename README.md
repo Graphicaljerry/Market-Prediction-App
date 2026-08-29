@@ -19,6 +19,28 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **r98 — flat theme: the glass comes off.** Requested directly ("remove the gradients/glassmorphism
+  and keep 1-2 accent colors"), executed under the newly vendored `conductor-claude` skill (whose own
+  Step-0 gate routes a single-file redesign to direct execution — no worker fan-out) with
+  `design-taste-frontend` driving the aesthetic. **Display-only.**
+  - **No more glass.** The capability probe no longer adds `.glassui`, and the entire liquid-glass
+    theme (~130 lines: frosted backdrops, ambient washes, dither film, per-card backing glows, the
+    SVG refraction filter and its markup, the drifting page orbs) was **deleted**, not just disabled.
+    Cards are solid `--surface` on a solid `--bg` ground with hairline borders; the sticky best-bet
+    ticker, coin pickers and prime banner went solid too. Every decorative gradient is gone — the
+    timer bar is one solid colour with an opacity pulse instead of a sheen sweep and glow shadows;
+    section spines are solid; `.card` drop/inset shadows removed. (The price-vs-line rail keeps its
+    red→neutral→green ramp — that one is data, not decoration.)
+  - **Two accents, strictly semantic.** Green = over/go — the ⭐ star system (badge, chips, ticker
+    border, act-now kicker) converted from amber to green, and the blue brand mark became the one
+    green brand square. Red = under/loss. Orange retired: `--orange` and the `glow-skip` accent are
+    neutral grey now (skip means "nothing to do", not "caution!"), and the blue Coinbase dot is grey.
+  - Also fixed: a stale r97 duplicate rule that was still overriding the record card's tokenised
+    padding. Suites: 128 + 25 + 11 assertions pass; page heights unchanged.
+  - **Tooling:** the uploaded `conductor-claude` skill was installed at
+    `.claude/skills/conductor-claude/` plus its Opus worker agent at
+    `.claude/agents/conductor-worker.md`, for future multi-task builds.
+
 - **r97 — one spacing scale, and the last hard edges.** Applied the vendored
   `redesign-existing-projects` / `design-taste-frontend` skills to the two things that still looked
   unfinished. **Display-only.**
@@ -975,12 +997,11 @@ and the cached value/age. A coin with no series ticker simply shows crowd `n/a`.
 
 iOS/Apple-inspired dark theme:
 
-- **Near-black** `#0a0a0b` background (not pure black), layered translucent glass cards.
-- **Recommendation-driven aurora** — a fixed, slowly-drifting glow that stays **green** (the
-  signature color, always visible) and crossfades to **red** when the pick is UNDER; the
-  centre stays near-black (~70% dark / ~30% gradient). Honors `prefers-reduced-motion`.
-- **System accent colors:** green `#30d158` (OVER/bull), red `#ff453a` (UNDER/bear),
-  orange `#ff9f0a` (skip/caution), blue `#0a84ff` (info/next-round).
+- **Near-black** `#0a0a0b` ground with **solid** `#1c1c1e` cards and hairline borders (r98 —
+  the translucent glass cards and the drifting accent aurora are gone; deleted, in git history).
+- **Two accents, strictly semantic (r98):** green `#30d158` (over/go — also the ⭐ star and the
+  brand mark) and red `#ff453a` (under/loss). Skip/caution surfaces are neutral grey; the old
+  orange and blue accents are retired.
 - **Brand coin icons** as crisp inline **SVG** (ETH diamond, BTC ₿, SOL bars, DOGE Ð, SHIB,
   XRP) — tiny and impossible to corrupt.
 - **Hairlines:** `--hair` `rgba(255,255,255,.09)` and `--hair2` `rgba(255,255,255,.06)` — the
