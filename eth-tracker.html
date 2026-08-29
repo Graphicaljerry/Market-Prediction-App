@@ -19,14 +19,19 @@
 <title>15-Min Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
   :root {
-    --bg: #0a0a0b;
-    --surface: #1c1c1e;
-    --surface-2: #2c2c2e;
-    --surface-3: #3a3a3c;
-    --separator: rgba(84,84,88,0.55);
+    /* (r99) WARM GROUND. The greys were dead-neutral blue-black (#0a0a0b / #1c1c1e), which is why the
+       flat theme read as "unfinished" rather than "restrained": with no glass and no gradients left to
+       carry warmth, a neutral grey has nothing to be. Every surface now has a few points of red/yellow
+       in it, so the near-black reads as ink rather than as switched-off screen. Same lightness ladder,
+       same contrast ratios — only the hue moved. */
+    --bg: #0b0a09;
+    --surface: #17150f;
+    --surface-2: #221f19;
+    --surface-3: #302c24;
+    --separator: rgba(88,84,78,0.55);
     /* (r93) The r90 decision-hero CSS referenced --hair / --hair2 for its internal dividers and the
        "I took this bet" button, but the tokens were never defined — so those borders fell back to
        currentColor and drew as bright white lines instead of hairlines. Defining them here is the fix. */
@@ -40,16 +45,21 @@
     --sp-5: 34px;   /* between groups, and before the footer */
     --hair: rgba(255,255,255,0.09);
     --hair2: rgba(255,255,255,0.06);
-    --label: #ffffff;
-    --label-2: rgba(235,235,245,0.62);
-    --label-3: rgba(235,235,245,0.46);   /* lifted from .32 for legibility (closer to WCAG AA) while staying muted */
+    /* (r99) Text warms with the ground. Pure #fff on a warm black is the one combination that always
+       looks wrong — it reads blue by contrast. #edeae6 is the same practical brightness without it. */
+    --label: #edeae6;
+    --label-2: rgba(237,234,230,0.64);
+    --label-3: rgba(237,234,230,0.48);   /* lifted from .32 for legibility (closer to WCAG AA) while staying muted */
     --green: #30d158;
     --red: #ff453a;
     --orange: #a8adb8;   /* (r98) the "caution" tone is neutral now — green and red are the only accents */
     --blue: #0a84ff;
     /* live status accent — flips green↔red↔amber with the current pick (see body.glow-*) */
     --accent: var(--green);
-    --accent-rgb: 13,224,89;
+    /* (r99) The page carried TWO greens: this token was rgb(13,224,89) while --green is #30d158 =
+       rgb(48,209,88). Every rgba() border, focus ring and pulse drawn from the token therefore sat a
+       visibly different hue right next to a solid --green fill. All 18 uses now match --green. */
+    --accent-rgb: 48,209,88;
     /* shared easing curves so motion across the app feels consistent and polished */
     --ease: cubic-bezier(.22,1,.36,1);            /* strong ease-out — punchier than the built-ins (per Emil's animation guidance) */
     --ease-soft: cubic-bezier(.4,0,.2,1);          /* gentle in-out for panels/larger moves */
@@ -59,7 +69,7 @@
     --font-num: "Space Mono", "Geist Mono", ui-monospace, "SF Mono", monospace;
   }
   /* the whole UI's accent follows the up/down status of the pick */
-  body.glow-over  { --accent: var(--green);  --accent-rgb: 13,224,89; }
+  body.glow-over  { --accent: var(--green);  --accent-rgb: 48,209,88; }
   body.glow-under { --accent: var(--red);    --accent-rgb: 255,69,58; }
   /* (r98) skip = "nothing to do" = neutral. Orange was a third accent doing decoration's job. */
   body.glow-skip  { --accent: #8e939d; --accent-rgb: 142,147,157; }
@@ -213,7 +223,10 @@
   .topbar .brandText { flex: 1 1 auto; min-width: 0; }
   .guideBtn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 700; color: var(--label); text-decoration: none; background: var(--surface-2); border: 1px solid var(--separator); border-radius: 999px; padding: 7px 13px; margin-right: 10px; white-space: nowrap; flex: 0 0 auto; transition: border-color .18s, color .18s; }
   .guideBtn:hover { border-color: rgba(48,209,88,.5); color: var(--green); }
-  .appname { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
+  /* (r99) The wordmark carries the personality the rest of the page can't afford to: heavy italic,
+     tight tracking, and the app's one green as a full stop. It is the only italic on the page. */
+  .appname { font-size: 22px; font-weight: 800; font-style: italic; letter-spacing: -0.035em; }
+  .appname .amDot { color: var(--green); font-style: normal; }
   .live { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--label-2); }
   .live .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: livepulse 2s infinite; }
   .brandMark { width: 30px; height: 30px; border-radius: 8px; flex: 0 0 auto; display: none;
@@ -477,12 +490,34 @@
      to run into the countdown. Let the word truncate rather than collide. */
   .nowSide .price { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .nowClock .nowVal { justify-content: flex-end; }
-  .nowTop .price, .nowTop .timer { font-size: 34px; line-height: 1; }
-  .nowTop .changePill { font-size: 12px; padding: 4px 9px; }
+  /* (r99) SIZED SO THE PRICE NEVER TRUNCATES. Boxing the digits made the clock ~80px wider than the
+     bare numerals it replaced, and on the desktop two-pane layout this row is only ~410px — wide enough
+     that six-figure coins ("104,182.55") were losing their last digits to an ellipsis. The price is the
+     one number that must never be abbreviated, so the clock gives up the room: it runs a few points
+     smaller than the price, and its box padding makes the two blocks finish the same height anyway.
+     Sizes are set against the longest realistic price string ("104,182.55") measured at
+     360 / 393 / 430 / 820 / 1024 / 1280 / 1440px. Re-measure before changing any of them. */
+  .nowTop .price { font-size: 32px; line-height: 1; }
+  .nowTop .timer { font-size: 23px; line-height: 1.05; }
+  .nowTop .changePill { font-size: 12px; padding: 4px 9px; flex: none; }
   .m-hero .timerBarWrap { margin-top: 13px; }
   .m-hero .roundStatus { margin-top: 12px; }
-  @media (min-width: 1024px) { .nowTop .price, .nowTop .timer { font-size: 38px; } }
-  @media (max-width: 360px) { .nowTop .price, .nowTop .timer { font-size: 27px; } .nowLbl { letter-spacing: .1em; } }
+  @media (min-width: 1024px) { .nowTop .price { font-size: 34px; } .nowTop .timer { font-size: 25px; } }
+  /* On a phone the row genuinely cannot hold a six-figure price, a change pill AND a boxed clock. The
+     pill is the least important of the three, so it drops to its own line rather than the price losing
+     digits — the price keeps a floor width so flex shrinks the pill's line first, not the number. */
+  @media (max-width: 480px) {
+    .nowSide .nowVal { flex-wrap: wrap; row-gap: 5px; }
+    .nowSide .price { min-width: min(100%, 12ch); }
+  }
+  @media (max-width: 420px) {
+    .nowTop .price { font-size: 26px; } .nowTop .timer { font-size: 20px; }
+    .timer { gap: 3px; } .timer .tD { padding: 3px 6px; border-radius: 8px; }
+  }
+  @media (max-width: 360px) {
+    .nowTop .price { font-size: 23px; } .nowTop .timer { font-size: 18px; }
+    .timer .tD { padding: 2px 5px; border-radius: 7px; } .nowLbl { letter-spacing: .1em; }
+  }
 
   /* One card, not two: the price/clock card and the verdict card are welded together, because they
      answer one question. The seam between them is removed rather than styled. */
@@ -598,11 +633,11 @@
   .primeCue { display: none; }
   .primeCue.show { display: block; margin-top: 14px; padding: 12px 14px; border-radius: 14px; text-align: center;
     font-size: 16px; font-weight: 800; letter-spacing: -0.01em; border: 1px solid; }
-  .primeCue.over  { color: var(--green); border-color: rgba(13,224,89,.55); background: rgba(13,224,89,.10); animation: primePulseG 1.3s ease-in-out infinite; }
+  .primeCue.over  { color: var(--green); border-color: rgba(48,209,88,.55); background: rgba(48,209,88,.10); animation: primePulseG 1.3s ease-in-out infinite; }
   .primeCue.under { color: var(--red);   border-color: rgba(255,69,58,.55); background: rgba(255,69,58,.10); animation: primePulseR 1.3s ease-in-out infinite; }
   .primeCue .pcBolt { font-weight: 900; letter-spacing: .02em; }
   .primeCue .pcSub { display: block; margin-top: 4px; font-size: 11.5px; font-weight: 600; letter-spacing: 0; opacity: .9; }
-  @keyframes primePulseG { 0%,100% { box-shadow: 0 0 0 0 rgba(13,224,89,0); } 50% { box-shadow: 0 0 16px 1px rgba(13,224,89,.55); } }
+  @keyframes primePulseG { 0%,100% { box-shadow: 0 0 0 0 rgba(48,209,88,0); } 50% { box-shadow: 0 0 16px 1px rgba(48,209,88,.55); } }
   @keyframes primePulseR { 0%,100% { box-shadow: 0 0 0 0 rgba(255,69,58,0); } 50% { box-shadow: 0 0 16px 1px rgba(255,69,58,.55); } }
   @media (prefers-reduced-motion: reduce) { .primeCue.show { animation: none; } }
   /* .lateRecord (Value-entry record) now shares the Model &amp; Accuracy tile + stat system defined below. */
@@ -629,7 +664,23 @@
   .timerLabel { font-size: 13px; color: var(--label-2); font-weight: 500; margin-bottom: 10px; }
   .timer { font-size: 52px; font-weight: 700; line-height: 1; letter-spacing: -0.02em; }
   .timer.warn { color: var(--red); }
-  .timerBarWrap { height: 4px; border-radius: 3px; background: rgba(118,118,128,0.24); margin-top: 16px; overflow: hidden; }
+  /* ---------- (r99) THE CLOCK, AS BOXED DIGITS ----------
+     The countdown used to be plain numerals the same colour as everything else, so at a glance it was
+     indistinguishable from the price sitting next to it — you had to read it to find it. Each digit now
+     sits in its own recessed well with a green rim: the shape alone says "this is the clock", so you
+     can find the time without reading, and the price stays the only large white number on the card.
+     Written per-digit by tickTimer(); the boxes are inert spans, so nothing about the round maths moved. */
+  .timer { display: inline-flex; align-items: center; gap: 4px; }
+  .timer .tD {
+    background: var(--bg); border: 1px solid rgba(var(--accent-rgb), .34); border-radius: 9px;
+    padding: 3px 7px; color: var(--green); font-weight: 700;
+    font-variant-numeric: tabular-nums; transition: border-color .3s var(--ease), color .3s var(--ease);
+  }
+  .timer .tSep { color: var(--label-3); padding: 0 1px; font-weight: 700; }
+  .timer.warn .tD { border-color: rgba(255,69,58,.5); color: var(--red); }
+  .timer.warn .tSep { color: rgba(255,69,58,.55); }
+  /* The bar under the row is the same fact told without numbers — how much of the round is left. */
+  .timerBarWrap { height: 4px; border-radius: 3px; background: rgba(237,234,230,0.10); margin-top: 16px; overflow: hidden; }
   /* (r98) FLAT: one solid colour, no gradient fill, no sweeping sheen, no glow shadows. Urgency is
      carried by the colour change and an opacity pulse instead of bloom. */
   #timerBar { height: 100%; width: 100%; position: relative; overflow: hidden; border-radius: 3px;
@@ -667,7 +718,7 @@
   .nextPick .npPick.over { color: var(--green); } .nextPick .npPick.under { color: var(--red); } .nextPick .npPick.skip { color: var(--orange); }
   .nextPick .npHint { display: block; font-size: 11px; font-weight: 600; color: var(--label-3); letter-spacing: 0; text-transform: none; margin-top: 3px; opacity: .9; }
   .nextPick .npTag { display: inline-block; font-size: 9.5px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--label-2); background: var(--surface-3); border: 1px solid var(--separator); border-radius: 5px; padding: 1px 5px; margin-left: 7px; vertical-align: middle; }
-  .liveTag { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .05em; border-radius: 5px; padding: 1px 6px; margin-right: 7px; vertical-align: middle; color: var(--green); background: rgba(13,224,89,.16); border: 1px solid rgba(13,224,89,.4); }
+  .liveTag { display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .05em; border-radius: 5px; padding: 1px 6px; margin-right: 7px; vertical-align: middle; color: var(--green); background: rgba(48,209,88,.16); border: 1px solid rgba(48,209,88,.4); }
   .liveTag.next { color: var(--label-2); background: var(--surface-3); border-color: var(--separator); }
   /* real-time "what the last round actually closed at" — appears the moment the timer turns over */
   .lastClose { margin-top: 12px; padding-top: 11px; border-top: .5px solid var(--separator); font-size: 12.5px; font-weight: 600; color: var(--label-2); line-height: 1.5; }
@@ -682,7 +733,7 @@
   .consensus:empty { display: none; }
   .consensus .consLbl { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); margin-bottom: 3px; }
   .consensus b { font-weight: 800; }
-  .consensus.over { border-color: rgba(13,224,89,.4); background: rgba(13,224,89,.08); } .consensus.over b { color: var(--green); }
+  .consensus.over { border-color: rgba(48,209,88,.4); background: rgba(48,209,88,.08); } .consensus.over b { color: var(--green); }
   .consensus.under { border-color: rgba(255,69,58,.4); background: rgba(255,69,58,.08); } .consensus.under b { color: var(--red); }
   .consensus.split { border-color: rgba(255,159,10,.45); background: rgba(255,159,10,.08); } .consensus.split b { color: var(--orange); }
   /* Playbook — the "which to follow" verdict and the AI's game plan, consolidated into ONE panel.
@@ -721,7 +772,7 @@
   .msMore:hover { color: var(--label); border-color: rgba(var(--accent-rgb), .45); }
   .moveStrip .msLbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--label-3); margin-right: 2px; white-space: nowrap; }
   .moveStrip .msDot { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; line-height: 1; flex: none; }
-  .moveStrip .msDot.up { background: rgba(13,224,89,.16); color: var(--green); border: 1px solid rgba(13,224,89,.4); }
+  .moveStrip .msDot.up { background: rgba(48,209,88,.16); color: var(--green); border: 1px solid rgba(48,209,88,.4); }
   .moveStrip .msDot.down { background: rgba(255,69,58,.16); color: var(--red); border: 1px solid rgba(255,69,58,.4); }
   .moveStrip .msDot.flat { background: rgba(118,118,128,.18); color: var(--label-2); border: 1px solid rgba(118,118,128,.4); }
   .moveStrip .msDot.est { opacity: .4; background: transparent; border-style: dashed; }
@@ -796,9 +847,17 @@
              transition: transform .12s ease, background .2s ease; }
   .tookBtn:active { transform: translateY(1px) scale(.985); }
   .tookBtn.on { color: var(--green); border-color: rgba(52,199,123,.45); background: rgba(52,199,123,.1); }
-  .myRec { font-size: 12px; color: var(--label-3); line-height: 1.45; flex: 1; min-width: 150px; }
+  .myRec { display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+    font-size: 12px; color: var(--label-3); line-height: 1.45; flex: 1; min-width: 150px; }
   .myRec b { color: var(--label-2); }
   .myRec .warn { color: var(--red); font-weight: 600; }
+  /* (r99) Your last six settled bets, as solid squares. Colour alone carries it, so the letters are
+     small and the row is hidden from screen readers — the sentence beside it says the same thing. */
+  .formChips { display: inline-flex; gap: 4px; flex: none; }
+  .formChips span { width: 22px; height: 22px; border-radius: 7px; display: inline-flex;
+    align-items: center; justify-content: center; font-size: 10.5px; font-weight: 800; }
+  .formChips .fW { background: var(--green); color: #04160a; }
+  .formChips .fL { background: var(--red); color: #2b0300; }
   /* (3) The clock belongs to the decision, and the card should feel the round running out. */
   .heroKicker .kClock { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0; }
   .hero.act .heroKicker { color: var(--green); }
@@ -809,14 +868,63 @@
   /* ---- DECISION HERO (r90) — the verdict owns the top of the card ---- */
   .hero { padding: 2px 0 4px; text-align: left; }
   .heroKicker { font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: var(--label-3); margin-bottom: 8px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
-  .heroCall { font-size: 34px; line-height: .98; font-weight: 750; letter-spacing: -.035em; margin: 0; display: flex; align-items: center; gap: 11px; flex-wrap: wrap; }
+  /* ---------- (r99) THE VERDICT SLAB ----------
+     Three states, and the state is legible from across the room before any text is read:
+       .go / .no  filled solid green / red — the app wants you to act
+       .soft      outlined                 — it leans, which is not the same as a bet
+       .skip      grey                     — sit this one out (about 88% of rounds)
+     The block keeps the same size and position in all four cases, so nothing below it jumps around
+     as rounds turn over — only the fill changes. */
+  .verdict { border-radius: 16px; padding: 17px 19px; margin-top: 2px;
+    transition: background-color .45s var(--ease), border-color .45s var(--ease), color .45s var(--ease); }
+  .verdict.go   { background: var(--green); color: #04160a; border: 1px solid var(--green); }
+  .verdict.no   { background: var(--red);   color: #2b0300; border: 1px solid var(--red); }
+  .verdict.soft { background: rgba(var(--accent-rgb), .07); border: 1px solid rgba(var(--accent-rgb), .34); }
+  .verdict.skip { background: rgba(237,234,230,.045); border: 1px solid var(--hair); }
+  .heroCall { font-size: 34px; line-height: 1; font-weight: 700; letter-spacing: -.035em; margin: 0;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .heroCall .hcMain { display: inline-flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
+  /* The two-weight sentence: the verb stays light and quiet, the SIDE is the loud word. It's the one
+     piece of typographic personality in the app, and it only ever falls on the word that matters. */
+  .heroCall .hcVerb { font-weight: 300; opacity: .82; }
+  .heroCall .hcWord { font-weight: 800; font-style: italic; letter-spacing: -.04em; }
   .heroCall .hcOver { color: var(--green); }
   .heroCall .hcUnder { color: var(--red); }
   .heroCall .hcSkip { color: var(--label-2); }
-  .heroCall .hcQual { font-size: 19px; font-weight: 650; letter-spacing: -.02em; color: var(--label-2); }
-  .heroStar { display: inline-flex; align-items: center; justify-content: center; width: 31px; height: 31px; border-radius: 11px; background: rgba(48,209,88,.13); border: 1px solid rgba(48,209,88,.4); box-shadow: inset 0 1px 0 rgba(255,255,255,.09); flex: none; }
-  .heroStar svg { width: 16px; height: 16px; fill: var(--green); }
-  .heroWhy { margin: 11px 0 0; font-size: 13.5px; line-height: 1.5; color: var(--label-2); max-width: 42ch; }
+  /* On a filled slab the side's colour token would fight the fill, so the headline inherits instead.
+     Scoped to .hcMain and NOT to every span in .heroCall: `.verdict.go .heroCall span` also matched the
+     A-grade chip — and beat the chip's own rule on specificity — painting it near-black on near-black. */
+  .verdict.go .hcMain, .verdict.go .hcMain span,
+  .verdict.no .hcMain, .verdict.no .hcMain span { color: inherit; }
+  .heroCall .hcQual { font-size: 17px; font-weight: 600; letter-spacing: -.02em; color: var(--label-2); }
+  .verdict.go .hcQual, .verdict.no .hcQual { opacity: .72; }
+  /* The A-grade mark is a chip, not an icon: "★" alone made you learn what it meant. */
+  .heroStar { display: inline-flex; align-items: center; gap: 5px; flex: none;
+    padding: 5px 10px; border-radius: 8px; font-size: 11.5px; font-weight: 800; letter-spacing: .04em;
+    font-style: normal; }
+  .heroStar svg { width: 12px; height: 12px; fill: currentColor; }
+  .verdict.go .heroStar { background: #04160a; color: var(--green); }
+  .verdict.no .heroStar { background: #2b0300; color: var(--red); }
+  .verdict.soft .heroStar, .verdict.skip .heroStar {
+    background: rgba(var(--accent-rgb), .12); color: var(--green); border: 1px solid rgba(var(--accent-rgb), .4); }
+  /* The bet in four terms. Uppercase mono so it reads as a slip, not as prose. */
+  .heroSlip { display: flex; flex-wrap: wrap; gap: 5px 22px; margin-top: 14px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; }
+  .heroSlip:empty { display: none; }
+  .verdict.go .heroSlip, .verdict.no .heroSlip { opacity: .8; }
+  .verdict.soft .heroSlip, .verdict.skip .heroSlip { color: var(--label-3); }
+  .heroSlip .sGood { color: var(--green); }
+  .heroSlip .sBad { color: var(--red); }
+  .verdict.go .heroSlip .sGood, .verdict.go .heroSlip .sBad,
+  .verdict.no .heroSlip .sGood, .verdict.no .heroSlip .sBad { color: inherit; opacity: 1; font-weight: 700; }
+  @media (min-width: 1024px) { .heroCall { font-size: 38px; } }
+  @media (max-width: 420px) {
+    .verdict { padding: 15px 16px; }
+    .heroCall { font-size: 28px; gap: 9px; }
+    .heroCall .hcQual { font-size: 15px; }
+    .heroSlip { gap: 4px 16px; font-size: 11px; }
+  }
+  .heroWhy { margin: 14px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--label-2); max-width: 44ch; }
   .heroWhy b { color: var(--label); font-weight: 650; }
   .heroChips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 12px; }
   .heroChips span { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; padding: 3.5px 8px; border: 1px solid var(--hair); border-radius: 7px; color: var(--label-3); white-space: nowrap; }
@@ -919,7 +1027,7 @@
   @keyframes badgeShine { 0% { left: -65%; } 55%,100% { left: 135%; } }
   @keyframes badgeIn { from { opacity: 0; transform: translateY(-5px) scale(.9); } to { opacity: 1; transform: none; } }
   .liveTag:not(.next) { animation: livePulse 2s ease-in-out infinite; }
-  @keyframes livePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(13,224,89,0); } 50% { box-shadow: 0 0 10px 0 rgba(13,224,89,.55); } }
+  @keyframes livePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(48,209,88,0); } 50% { box-shadow: 0 0 10px 0 rgba(48,209,88,.55); } }
   /* round rollover: the pick "deals in" */
   #dualPick.dealIn { animation: dealIn .55s cubic-bezier(.2,.8,.2,1) both; }
   @keyframes dealIn { from { opacity: 0; transform: translateY(8px) scale(.97); } to { opacity: 1; transform: none; } }
@@ -928,7 +1036,7 @@
   @keyframes lockSnap { 0% { transform: scale(.9); filter: brightness(1.9); } 40% { transform: scale(1.06); } 100% { transform: scale(1); filter: brightness(1); } }
   /* win: the stat number flashes green as it ticks up */
   .scoreGrid .v.statUp, .recHit .v.statUp { animation: statUp 1.1s ease-out; }   /* (r93) the hit rate now lives in the record strip, not the grid */
-  @keyframes statUp { 0% { color: var(--green); text-shadow: 0 0 14px rgba(13,224,89,.8); transform: scale(1.18); } 100% { text-shadow: 0 0 0 transparent; transform: scale(1); } }
+  @keyframes statUp { 0% { color: var(--green); text-shadow: 0 0 14px rgba(48,209,88,.8); transform: scale(1.18); } 100% { text-shadow: 0 0 0 transparent; transform: scale(1); } }
   /* "reading…" shimmer while the AI thinks */
   .shimmerText { background: linear-gradient(90deg, var(--label-3) 30%, #fff 50%, var(--label-3) 70%); background-size: 200% 100%;
     -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; animation: shimmer 1.3s linear infinite; }
@@ -1080,7 +1188,7 @@
     margin: 0 0 14px; padding: 9px 13px; border-radius: 12px; font-weight: 800; font-size: 13px; letter-spacing: .02em; border: 1px solid transparent;
     transition: background .28s var(--ease), border-color .28s var(--ease), color .28s var(--ease), box-shadow .28s var(--ease); }
   .pickStrength .psSub { flex-basis: 100%; margin-top: 3px; font-weight: 600; font-size: 11px; letter-spacing: 0; opacity: .9; }
-  .pickStrength.strong { color: var(--green); background: rgba(13,224,89,.12); border-color: rgba(13,224,89,.45); box-shadow: 0 0 18px rgba(13,224,89,.22); }
+  .pickStrength.strong { color: var(--green); background: rgba(48,209,88,.12); border-color: rgba(48,209,88,.45); box-shadow: 0 0 18px rgba(48,209,88,.22); }
   /* "bet" = the clearest setup (app + AI + momentum aligned). Picks up the side's accent color, eases in, then pulses. */
   .pickStrength.bet { color: rgba(var(--accent-rgb),1); background: rgba(var(--accent-rgb),.16); border-color: rgba(var(--accent-rgb),.62);
     font-size: 14px; padding-right: 30px; box-shadow: 0 0 24px rgba(var(--accent-rgb),.34);
@@ -1308,7 +1416,7 @@
   <div class="topbar">
     <div class="brandMark" aria-hidden="true"></div>
     <div class="brandText">
-      <div class="appname" id="title">15-Min Tracker</div>
+      <div class="appname" id="title">15-Min Tracker<span class="amDot">.</span></div>
       <div class="brandSub" id="brandSub">Live terminal · ETH selected</div>
     </div>
     <div class="live navLive"><span class="dot"></span> Live</div>
@@ -1377,7 +1485,7 @@
       </div>
       <div class="nowSide nowClock">
         <div class="nowLbl">Closes in</div>
-        <div class="nowVal"><span id="timer" class="timer mono">--:--</span></div>
+        <div class="nowVal"><span id="timer" class="timer mono"><span class="tD">-</span><span class="tD">-</span><span class="tSep">:</span><span class="tD">-</span><span class="tD">-</span></span></div>
       </div>
     </div>
     <div class="timerBarWrap"><div id="timerBar"></div></div>
@@ -1410,7 +1518,17 @@
         <!-- (r91) Closing the loop: what happened to the round you were just looking at. -->
         <div class="heroOutcome" id="heroOutcome" hidden></div>
         <div class="heroKicker" id="heroKicker"></div>
-        <h2 class="heroCall" id="heroCall"></h2>
+        <!-- (r99) THE VERDICT IS A BET SLIP. The call used to be a coloured headline floating on the card
+             with its numbers scattered into chips below it. It is now one block you could almost press:
+             filled solid when the app wants you to act, outlined when it only leans, grey when it wants
+             you to sit out — so the SHAPE tells you what to do before you've read a word. The mono row
+             inside is the whole bet in four terms: what it costs, what it pays, the hit rate you need,
+             and the hit rate rounds at this price have actually managed.
+             Rendered from the same values the old chips used. It decides nothing. -->
+        <div class="verdict" id="verdict">
+          <h2 class="heroCall" id="heroCall"></h2>
+          <div class="heroSlip mono" id="heroSlip"></div>
+        </div>
         <p class="heroWhy" id="heroWhy"></p>
         <div class="heroChips" id="heroChips"></div>
         <div class="heroMeter" id="heroMeter" hidden>
@@ -1679,7 +1797,7 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r98</span><span class="buildSep">·</span><span>2026-08-27</span>
+        <span class="buildVer">build r99</span><span class="buildSep">·</span><span>2026-08-29</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
@@ -3778,7 +3896,16 @@
     var remaining = Math.max(0, Math.floor((currentRoundEnd - now) / 1000));
     state.remaining = remaining;
     if (remaining > 2 && remaining <= 60 && state._abLateBucket !== lockBucket()) { state._abLateBucket = lockBucket(); abLateSample(); }   // capture the ~1-min pick once, for the lock-timing A/B
-    elTimer.textContent = pad(Math.floor(remaining / 60)) + ":" + pad(remaining % 60);
+    // (r99) Boxed digits. Same string as before (mm:ss, zero-padded) — each character just gets its own
+    // span so CSS can put a well around the numerals and leave the colon bare. Rewritten only when the
+    // string actually changes, so the DOM isn't rebuilt 60 times a minute for nothing.
+    var clockTxt = pad(Math.floor(remaining / 60)) + ":" + pad(remaining % 60);
+    if (elTimer._txt !== clockTxt) {
+      elTimer._txt = clockTxt;
+      elTimer.innerHTML = clockTxt.split("").map(function (ch) {
+        return ch === ":" ? '<span class="tSep">:</span>' : '<span class="tD">' + ch + "</span>";
+      }).join("");
+    }
     var warn = remaining <= 120;
     elTimer.classList.toggle("warn", warn);
     elTimerBar.classList.toggle("warn", warn);
@@ -5288,7 +5415,15 @@
       if (done[i].res === "W") w++;
       if (!done[i].onBook) { off++; if (done[i].res === "W") offW++; }
     }
-    var out = "Your record: <b>" + w + " of " + done.length + "</b> (" + Math.round(w / done.length * 100) + "%)";
+    // (r99) FORM CHIPS. "Your record: 12 of 15 (80%)" is a sentence you have to parse; five solid
+    // squares are a shape you read instantly, and the shape is what tells you whether you're on a run
+    // or in a hole. myBets stores newest-first, so the slice is reversed to read left-to-right in time
+    // order like every other form guide. Display only — the same wins and losses, counted the same way.
+    var recent = done.slice(0, 6).reverse(), chips = "";
+    for (i = 0; i < recent.length; i++)
+      chips += '<span class="f' + recent[i].res + '">' + recent[i].res + "</span>";
+    var out = '<span class="formChips" aria-hidden="true">' + chips + "</span>" +
+      "you're <b>" + w + "–" + (done.length - w) + "</b> (" + Math.round(w / done.length * 100) + "%)";
     // The pattern that actually cost money in July: betting rounds the app had skipped or opposed.
     if (off >= 3 && offW / off < 0.5) out += ' · <span class="warn">' + offW + " of " + off + " on rounds the app skipped</span>";
     else if (off >= 3) out += " · " + offW + " of " + off + " off-book";
@@ -5408,6 +5543,43 @@
       });
     }
   }
+  // (r99) The two-weight headline: a quiet verb and a loud side. Kept as a helper so every tier builds
+  // its headline the same way and no branch can forget the treatment.
+  function v(verb, word) {
+    return (verb ? '<span class="hcVerb">' + verb + "</span>" : "") + '<span class="hcWord">' + word + "</span>";
+  }
+  // (r99) The bet slip row. PURE DISPLAY — it reads mp, the venue and the graded history and returns a
+  // string; it never touches a pick, a lock or a grade. Break-even comes from betMath so it matches the
+  // calculator exactly (and so it follows the venue you've chosen — Kalshi and Robinhood need different
+  // win rates at the same price). "RUNS" is the measured hit rate at this price from the 24/7 record;
+  // it only appears once there are at least 20 graded rounds in the band, otherwise the app's own
+  // estimate is shown and labelled as such, because a hit rate off six rounds is not a hit rate.
+  function slipRow(dir, mp, nextMode, fe) {
+    var sided = (dir === "OVER" || dir === "UNDER");
+    var p = mp;
+    // On a SKIP round there is no side to price, so we price the crowd's FAVOURITE — that's the bet
+    // you'd have made. That fallback must never run on a sided round: if marketPct() came back empty
+    // for an OVER call, the favourite could well be UNDER, and the row would then quote the price of
+    // the opposite bet. Better to show nothing than to show a confident wrong number.
+    if (p == null && !sided) {
+      var c = activeCrowd();
+      if (c && typeof c.overPct === "number") p = Math.max(c.overPct, 100 - c.overPct) / 100;
+    }
+    if (!(p > 0 && p < 1)) return "";
+    var cents = Math.round(p * 100);
+    if (nextMode) return "<span>crowd " + cents + "¢</span><span>preview only</span>";
+    var bm = betMath(getStake(), p, getVenue());
+    var be = bm ? bm.breakEven : (p + takerFee(p));
+    var beTxt = "<span>need " + (be * 100).toFixed(1) + "%</span>";
+    if (!sided)
+      return "<span>crowd " + cents + "¢</span><span>band " + FAV_ZONE_LO + "–" + FAV_ZONE_HI + "¢</span>" + beTxt;
+    var meas = measuredAtPrice(p), out =
+      "<span>" + cents + "¢ in</span><span>$1.00 out</span>" + beTxt;
+    if (meas) out += '<span class="' + (meas.hit >= be ? "sGood" : "sBad") + '">runs ' +
+      Math.round(meas.hit * 100) + "%</span>";
+    else if (fe && fe.appP != null) out += "<span>app " + Math.round(fe.appP * 100) + "%</span>";
+    return out;
+  }
   function renderHero() {
     var el = $("hero"); if (!el) return;
     var dir = state.shownDir || "SKIP";
@@ -5426,45 +5598,57 @@
     var outEl = $("heroOutcome"), outTxt = lastOutcomeLine();
     if (outTxt) { outEl.hidden = false; outEl.innerHTML = outTxt; } else { outEl.hidden = true; outEl.textContent = ""; }
 
-    // 1) Kicker — which round, and how long you have to act. The clock now lives WITH the decision
-    //    (it used to sit four screens below it), and the card changes state as the round runs out:
-    //    normal -> act now (last 3 min) -> too late to enter (last 45s).
+    // 1) Kicker — WHICH round this is, and whether you can still act on it.
+    //    (r99) It no longer repeats the time. It used to print "· 4:57 left" because the countdown was
+    //    small and four screens away; the boxed digits now sit directly above at the price's own size,
+    //    so this was one more place on one screen saying the same number. The kicker keeps only what
+    //    the clock can't say. The card still changes state as the round runs out.
     var rem = state.remaining;
-    var mins = rem != null ? Math.max(0, Math.floor(rem / 60)) : null;
-    var secs = rem != null ? Math.max(0, Math.floor(rem % 60)) : null;
-    var clock = mins != null ? '<span class="kClock">' + mins + ":" + ("0" + secs).slice(-2) + "</span> left" : "";
     // The urgent window is 5:00 -> 2:00. It cannot run tighter than that: at BET_WINDOW (2:00) the app
     // switches to showing the NEXT round, so any "too late" state below that is unreachable by design.
     var urgent = rem != null && !nextMode && rem <= 300;
     el.className = "hero" + (urgent ? " act" : "");
-    var lead = urgent ? "Act now" : (nextMode ? "Next round" : "This round");
-    $("heroKicker").innerHTML = lead + (clock ? " · " + clock : "");
+    $("heroKicker").textContent = urgent ? "Act now" : (nextMode ? "Next round" : "This round");
 
     // 2) The verdict itself. One headline per tier — the qualifier lives INSIDE it (never a separate,
     //    contradicting line), which is how "right side, wrong price" reads as one sentence.
-    var head = "", qual = "", cls = "hcSkip";
-    if (dir !== "OVER" && dir !== "UNDER") { head = "Sit this one out"; }
-    else if (s.tier === "flip" && /OVERPRICED/.test(s.label)) { head = dir === "OVER" ? "Over" : "Under"; qual = "— but overpriced"; cls = dir === "OVER" ? "hcOver" : "hcUnder"; }
-    else if (s.tier === "flip") { head = "Too close — pass"; }
-    else if (nextMode) { head = dir === "OVER" ? "Over" : "Under"; qual = "— next-round preview"; cls = "hcSkip"; }
-    else if (s.tier === "lean") { head = "Lean " + (dir === "OVER" ? "Over" : "Under"); cls = dir === "OVER" ? "hcOver" : "hcUnder"; }
-    else { head = "Bet " + (dir === "OVER" ? "Over" : "Under"); cls = dir === "OVER" ? "hcOver" : "hcUnder"; }
-    $("heroCall").innerHTML = '<span class="' + cls + '">' + head + '</span>' +
-      (qual ? '<span class="hcQual">' + qual + '</span>' : "") +
-      (isStar ? '<span class="heroStar" title="A-grade: the crowd\'s favorite is in the 73-90c band AND the 24/7 tracker committed the same side.">' + STAR_SVG + '</span>' : "");
+    // (r99) The headline is now built as verb + SIDE so the two carry different weights — the quiet word
+    // and the loud word. `slab` picks the block's fill: filled = act, outlined = only a lean, grey = pass.
+    // The tier logic below is UNCHANGED from r90; only how it's dressed changed.
+    var word = dir === "OVER" ? "OVER" : "UNDER";
+    var head = "", qual = "", cls = "hcSkip", slab = "skip";
+    if (dir !== "OVER" && dir !== "UNDER") { head = v("Sit this ", "OUT"); }
+    else if (s.tier === "flip" && /OVERPRICED/.test(s.label)) {
+      head = v("", word); qual = "— but overpriced"; cls = dir === "OVER" ? "hcOver" : "hcUnder"; slab = "skip";
+    }
+    else if (s.tier === "flip") { head = v("Too close — ", "PASS"); }
+    else if (nextMode) { head = v("", word); qual = "— next-round preview"; cls = "hcSkip"; slab = "soft"; }
+    else if (s.tier === "lean") { head = v("Lean ", word); cls = dir === "OVER" ? "hcOver" : "hcUnder"; slab = "soft"; }
+    else { head = v("Bet ", word); cls = dir === "OVER" ? "hcOver" : "hcUnder"; slab = dir === "OVER" ? "go" : "no"; }
+    $("verdict").className = "verdict " + slab;
+    $("heroCall").innerHTML =
+      '<span class="hcMain"><span class="' + cls + '">' + head + '</span>' +
+        (qual ? '<span class="hcQual">' + qual + '</span>' : "") + '</span>' +
+      (isStar ? '<span class="heroStar" title="A-grade: the crowd\'s favorite is in the ' + FAV_ZONE_LO + '-' + FAV_ZONE_HI + 'c band AND the 24/7 tracker committed the same side.">' + STAR_SVG + 'A-GRADE</span>' : "");
+
+    // 2b) (r99) The bet slip row — the whole trade in four terms, inside the slab. NEED vs RUNS is the
+    //     comparison that decides everything: if the price demands 81% and rounds at this price have
+    //     managed 83%, you have an edge; if it's the other way round you don't, however good the call
+    //     looks. Reads the same numbers the cost row and the calculator use, so they cannot disagree.
+    $("heroSlip").innerHTML = slipRow(dir, mp, nextMode, fe);
 
     // 3) Why, in one plain sentence — the strength tier's own reasoning, upgraded when it's a star.
     $("heroWhy").innerHTML = isStar
       ? 'Crowd has <b>' + (star.side === "OVER" ? "Over" : "Under") + ' at ' + Math.round(star.pct) + '¢</b> and the tracker committed the same side. This setup hit <b>83%</b> over the last month.'
       : s.sub;
 
-    // 4) Chips — the few numbers worth seeing without tapping anything.
-    var chips = [];
-    if (isStar) chips.push('<span class="cStar">A-GRADE</span>');
-    if (fe) chips.push('<span class="' + (fe.edge >= 0.01 ? "cPos" : fe.edge <= -0.01 ? "cNeg" : "") + '">edge ' + (fe.edge >= 0 ? "+" : "−") + Math.abs(fe.edge * 100).toFixed(1) + '¢ after fees</span>');
-    if (mp != null) chips.push('<span>crowd ' + Math.round(mp * 100) + '¢</span>');
-    if (fe && fe.appP != null) chips.push('<span>app ' + Math.round(fe.appP * 100) + '%</span>');
-    $("heroChips").innerHTML = chips.join("");
+    // 4) (r99) The chip row is retired. It said A-GRADE, the crowd price and the app's own % — all three
+    //    now live inside the slab (as the chip and the slip row), and saying them twice was exactly the
+    //    repetition the r93 audit set out to remove. The node stays in the DOM and stays empty;
+    //    `.heroChips:empty { display: none }` keeps it from drawing a gap.
+    //    The one thing that only lived here was the "edge ±x¢ after fees" cents figure — the slip's
+    //    NEED vs RUNS pair is the same fact stated as the comparison you actually make.
+    $("heroChips").innerHTML = "";
 
     // 5) Price vs the line — the one chart that matters, as a single dot on a rail.
     var meter = $("heroMeter"), strike = roundStrike(), px = state.lastPrice;

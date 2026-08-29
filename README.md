@@ -19,6 +19,48 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **r99 — the verdict becomes a bet slip, and the clock finally reads as a clock.** Three personality
+  directions were mocked as a published design canvas and reviewed before any code moved; the chosen
+  one was a hybrid — the *Scoreboard*'s energy on the *Quiet Desk*'s structure. **Display-only: no pick,
+  price gate, fee model, grade or logged round changed.**
+  - **The countdown is boxed digits, next to the price.** It had been plain numerals in the same colour
+    and weight as everything around them, so at a glance it was indistinguishable from the price beside
+    it — you had to *read* it to find it. Each digit now sits in its own recessed well with a green rim,
+    so the shape alone says "clock". `tickTimer()` writes the same `mm:ss` string it always did, one
+    span per character, and only when the string actually changes.
+  - **The verdict is one block you could almost press.** The call used to be a coloured headline
+    floating on the card with its numbers scattered into chips underneath. It's now a slab whose *fill*
+    is the instruction: **solid green/red = act, outlined = it only leans, grey = sit this one out.**
+    The block keeps the same size and position in all four states, so nothing below it jumps as rounds
+    turn over. The headline splits into a light verb and a heavy italic side (`Bet` + **OVER**) — the
+    one piece of typographic personality in the app, and it only ever lands on the word that matters.
+  - **The bet, in four terms.** Inside the slab: `78¢ IN · $1.00 OUT · NEED 79.2% · RUNS 83%`. **NEED vs
+    RUNS is the comparison that decides everything** — if the price demands 79% and rounds at this price
+    have managed 83%, there's an edge; if it's the other way round there isn't, however good the call
+    looks, and the RUNS figure turns red to say so. NEED comes from `betMath`, so it follows the venue
+    you picked (Kalshi and Robinhood need different win rates at the same price). RUNS is the *measured*
+    rate at that price from the 24/7 record and appears only past 20 graded rounds in the band —
+    otherwise the app's own estimate shows, labelled `APP`, because a hit rate off six rounds isn't one.
+  - **Warm ground.** The greys were dead-neutral blue-black; with no glass left to carry warmth, that
+    read as "unfinished" rather than "restrained". Every surface gained a few points of red/yellow and
+    `--label` went `#fff` → `#edeae6` (pure white on a warm black reads blue by contrast). Same
+    lightness ladder, same contrast ratios — only the hue moved.
+  - **Your form, as squares.** "Your record: 12 of 15 (80%)" is a sentence you have to parse; the last
+    six settled bets are now solid green/red W/L chips, which is a shape you read instantly.
+  - **Two things got said once instead of twice.** The chip row (A-GRADE, crowd price, app %) is retired
+    — all three live inside the slab now. And the kicker stopped printing "· 4:57 left", which was the
+    fifth place on one screen quoting the same number.
+  - Fixed in passing: the page carried **two different greens** — `--accent-rgb` was `13,224,89` while
+    `--green` is `#30d158` (`48,209,88`), so every border, focus ring and pulse drawn from the token sat
+    a visibly different hue beside a solid green fill. All 18 uses aligned.
+  - Caught by the new tests, both in code written for this change: the slip row would fall back to the
+    crowd's *favourite* price on a sided round whose own price was missing — quoting the cost of the
+    opposite bet — and `.verdict.go .heroCall span` out-specified the A-grade chip's own rule, painting
+    it near-black on near-black. Boxing the digits also made the clock ~80px wider than the numerals it
+    replaced, which truncated six-figure prices ("104,182.55") on the 410px desktop column; sizes are
+    now measured against the worst-case string at seven widths. Suites: **207 assertions pass**
+    (128 layout + 43 fee maths + 25 new slip/form + 11 stake UI).
+
 - **r98 — flat theme: the glass comes off.** Requested directly ("remove the gradients/glassmorphism
   and keep 1-2 accent colors"), executed under the newly vendored `conductor-claude` skill (whose own
   Step-0 gate routes a single-file redesign to direct execution — no worker fan-out) with
@@ -720,6 +762,34 @@ disturbing the locked call).
 > they restated it. The suppressed set is `#pickStrength`, `#recoScope`, `#buyLine`, `#buyHint`,
 > `#dualPick`, `#payout`, `#favZone`, `#offBook`.
 
+> **The verdict is a bet slip (r99).** `renderHero()` now renders the call into `#verdict`, a block
+> whose **fill is the instruction**: solid green/red = act on it, outlined = it only *leans*, grey =
+> sit this one out. The block keeps the same size and position in every state, so nothing below it
+> moves as rounds turn over — only the fill changes. Inside it sit the headline (a light verb plus a
+> heavy italic side) and `#heroSlip`, the bet in four terms:
+>
+> ```
+> 78¢ IN · $1.00 OUT · NEED 79.2% · RUNS 83%
+> ```
+>
+> **`NEED` vs `RUNS` is the comparison the whole app exists to make.** `NEED` is the break-even win
+> rate — the price plus the fee — and it comes from `betMath()`, so it follows the venue you selected
+> (Kalshi and Robinhood demand materially different win rates at the same price). `RUNS` is the
+> **measured** hit rate for rounds bought at this price, from the 24/7 graded record via
+> `measuredAtPrice()`. If RUNS clears NEED there is an edge and it prints green; if it doesn't, it
+> prints red, however good the call itself looks. RUNS only appears once at least **20** graded rounds
+> sit in the ±2.5¢ band — under that, the app's own estimate shows instead, labelled `APP`, because a
+> hit rate off six rounds is not a hit rate.
+>
+> On a **SKIP** round the slip prices the crowd's favourite anyway (`CROWD 61¢ · BAND 78–82¢ ·
+> NEED 62.4%`) — "what would this have cost me" is exactly the question worth being able to ask on a
+> round you were told to pass. That fallback is deliberately **not** applied to a sided round whose own
+> price is missing: the favourite could be the opposite side, and quoting it would state the cost of a
+> bet you weren't offered.
+>
+> `slipRow()` is pure display — it reads the price, the venue and the graded history and returns a
+> string. It never touches a pick, a lock or a grade.
+
 The headline card (`renderPickCard()`) turns everything into one plain instruction:
 
 - **BUY OVER ↑ / BUY UNDER ↓** in large type, with a plain-language subtitle and a hint.
@@ -995,13 +1065,31 @@ and the cached value/age. A coin with no series ticker simply shows crowd `n/a`.
 
 ## Design system
 
-iOS/Apple-inspired dark theme:
+A flat, warm-black theme:
 
-- **Near-black** `#0a0a0b` ground with **solid** `#1c1c1e` cards and hairline borders (r98 —
+- **Warm near-black** `#0b0a09` ground with **solid** `#17150f` cards and hairline borders (r98 —
   the translucent glass cards and the drifting accent aurora are gone; deleted, in git history).
+  r99 warmed the whole ladder: the greys were dead-neutral blue-black (`#0a0a0b` / `#1c1c1e`), which
+  with no glass left to carry warmth read as *unfinished* rather than *restrained*. Text warmed with
+  it — `--label` is `#edeae6`, not `#fff`, because pure white on a warm black reads blue by contrast.
+  Same lightness ladder and contrast ratios throughout; only the hue moved.
 - **Two accents, strictly semantic (r98):** green `#30d158` (over/go — also the ⭐ star and the
   brand mark) and red `#ff453a` (under/loss). Skip/caution surfaces are neutral grey; the old
-  orange and blue accents are retired.
+  orange and blue accents are retired. r99: `--accent-rgb` now matches `--green` exactly
+  (`48,209,88`) — it had been `13,224,89`, a second green, so tokenised borders and focus rings sat a
+  visibly different hue next to a solid green fill.
+- **Typography carries the personality, in exactly two places (r99).** The wordmark is heavy italic
+  with the app's green as its full stop, and the verdict headline splits into a light 300-weight verb
+  and a heavy italic side — `Bet` **OVER**. Nothing else on the page is italic. The rule is that the
+  loud weight only ever falls on the word that changes what you do.
+- **The clock is boxed digits (r99).** Each character of the countdown sits in its own recessed well
+  (page-ground fill, green rim) beside the price, at a size chosen so the two blocks finish the same
+  height. Before this it was plain numerals in the same colour and weight as everything else, which
+  made it invisible at a glance — you had to read it to find it. The digits are sized against the
+  *longest realistic price string* at seven widths: boxing them made the clock ~80px wider than the
+  numerals it replaced, and the desktop call column is only ~410px, so a six-figure coin was losing
+  digits to an ellipsis. On phones the change pill drops to its own line rather than the price
+  shrinking — of the three things in that row, the price is the one that must never be abbreviated.
 - **Brand coin icons** as crisp inline **SVG** (ETH diamond, BTC ₿, SOL bars, DOGE Ð, SHIB,
   XRP) — tiny and impossible to corrupt.
 - **Hairlines:** `--hair` `rgba(255,255,255,.09)` and `--hair2` `rgba(255,255,255,.06)` — the
@@ -1017,9 +1105,10 @@ iOS/Apple-inspired dark theme:
   - `.stackL` is a real flex column with **zero gap**, which is what welds the price card and the
     verdict card into one; `.stackR` is `display: contents` so its modules place themselves as
     grid items.
-  - **No column may end in a void.** A short verdict (a SKIP round draws no chips, rail or cost
-    row) used to leave a tall empty patch beside the chart, and an empty region reads as a bug
-    rather than as breathing room — that was the r92 iPad complaint.
+  - **No column may end in a void.** A short verdict (a SKIP round draws no rail or cost row) used
+    to leave a tall empty patch beside the chart, and an empty region reads as a bug rather than as
+    breathing room — that was the r92 iPad complaint. r99 helps here by keeping the verdict slab the
+    same size in every state, so the column's height no longer swings with the call.
 - **One door per thing you set once.** The gear in the nav opens Settings (play style, AI weighting
   and trust, worker/model/spend, alerts). Diagnostics — AI read, Live Indicators, the full round log,
   the chart's overlay switches — are `<details>`, collapsed by default at every width.
@@ -1137,6 +1226,12 @@ sanity check on the JS: extract the `<script>` and run `node --check`.
 - probability engine: `indOver` / `aiOver` / `crowdOver` / `obiOver` / `momOver` / `barrierOver`
   (+ `normCdf`, `sigmaRoundFallback`) → `rawCombinedOdds` → `calibrate` → `combinedOdds`.
 - `renderPickCard` (locked call + next-round ribbon + glow) / `renderLean` / `setGlow`.
+- `renderHero` — the verdict slab: picks the fill (`go`/`no`/`soft`/`skip`), builds the two-weight
+  headline via `v(verb, side)`, and calls `slipRow`. Derives no pick of its own.
+- `slipRow` / `measuredAtPrice` / `betMath` — the bet in four terms (`IN`/`OUT`/`NEED`/`RUNS`).
+  `NEED` is venue-aware break-even; `RUNS` is the measured hit rate at that price, gated at n ≥ 20.
+- `myRecordLine` / `resolveMyBets` / `toggleMyBet` — your own logged bets (`myBets.v1`) and the
+  W/L form chips.
 - `drawMiniChart` → `drawLiveChart` / `drawTFChart`, `loadTFCloses` — zoomable chart.
 - `nextBoundary` / `tickTimer` — round clock, grading, per-round refresh.
 - `openRound` / `gradeRound` / `snapshotFeat` / `historySummary` — record + calibration data.
