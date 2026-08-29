@@ -22,16 +22,19 @@
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 <style>
   :root {
-    /* (r99) WARM GROUND. The greys were dead-neutral blue-black (#0a0a0b / #1c1c1e), which is why the
-       flat theme read as "unfinished" rather than "restrained": with no glass and no gradients left to
-       carry warmth, a neutral grey has nothing to be. Every surface now has a few points of red/yellow
-       in it, so the near-black reads as ink rather than as switched-off screen. Same lightness ladder,
-       same contrast ratios — only the hue moved. */
-    --bg: #0b0a09;
-    --surface: #17150f;
-    --surface-2: #221f19;
-    --surface-3: #302c24;
-    --separator: rgba(88,84,78,0.55);
+    /* (r99b) THE GROUND CARRIES THE CALL. r99 made every surface warm — a few points of red/yellow —
+       which read as musty rather than as ink. The ground is TRUE NEUTRAL again by default, and instead
+       of a fixed hue it now takes the faintest possible tint from whatever the picker is saying:
+       green while it wants Over, red while it wants Under, plain neutral while it wants you to sit out
+       (which is ~88% of rounds, so neutral is what you see most of the time).
+       The tint is 3-4 points of channel difference — under conscious notice on its own, but enough
+       that the screen has a temperature you can feel change when the call flips. The defaults below
+       ARE the neutral/sit-out values; body.glow-over / .glow-under override them. */
+    --bg: #0b0b0c;
+    --surface: #161618;
+    --surface-2: #232326;
+    --surface-3: #313135;
+    --separator: rgba(84,84,88,0.55);
     /* (r93) The r90 decision-hero CSS referenced --hair / --hair2 for its internal dividers and the
        "I took this bet" button, but the tokens were never defined — so those borders fell back to
        currentColor and drew as bright white lines instead of hairlines. Defining them here is the fix. */
@@ -45,11 +48,12 @@
     --sp-5: 34px;   /* between groups, and before the footer */
     --hair: rgba(255,255,255,0.09);
     --hair2: rgba(255,255,255,0.06);
-    /* (r99) Text warms with the ground. Pure #fff on a warm black is the one combination that always
-       looks wrong — it reads blue by contrast. #edeae6 is the same practical brightness without it. */
-    --label: #edeae6;
-    --label-2: rgba(237,234,230,0.64);
-    --label-3: rgba(237,234,230,0.48);   /* lifted from .32 for legibility (closer to WCAG AA) while staying muted */
+    /* (r99b) Text is neutral again — it was warmed in r99 to sit on the warm ground, and with the
+       ground back to neutral it would read yellow. Still not pure #fff: a hair off white takes the
+       glare off a large dark screen without tinting anything. */
+    --label: #f0f0f2;
+    --label-2: rgba(235,235,240,0.64);
+    --label-3: rgba(235,235,240,0.48);   /* lifted from .32 for legibility (closer to WCAG AA) while staying muted */
     --green: #30d158;
     --red: #ff453a;
     --orange: #a8adb8;   /* (r98) the "caution" tone is neutral now — green and red are the only accents */
@@ -69,9 +73,17 @@
     --font-num: "Space Mono", "Geist Mono", ui-monospace, "SF Mono", monospace;
   }
   /* the whole UI's accent follows the up/down status of the pick */
-  body.glow-over  { --accent: var(--green);  --accent-rgb: 48,209,88; }
-  body.glow-under { --accent: var(--red);    --accent-rgb: 255,69,58; }
-  /* (r98) skip = "nothing to do" = neutral. Orange was a third accent doing decoration's job. */
+  /* (r99b) ...and so now does the ground beneath it, very faintly. setGlow() already put one of these
+     three classes on <body> for the accent; the same class now also shifts --bg and the card surfaces
+     a few points toward the call's colour. Everything downstream inherits it for free: the page, every
+     card, and the recessed wells behind the countdown digits all read from these two tokens.
+     Deliberately weak — you should notice the room's temperature changed, not see a coloured page. */
+  body.glow-over  { --accent: var(--green);  --accent-rgb: 48,209,88;
+                    --bg: #080d09; --surface: #131a15; --surface-2: #1e2620; --surface-3: #2b342e; }
+  body.glow-under { --accent: var(--red);    --accent-rgb: 255,69,58;
+                    --bg: #0e0909; --surface: #1c1415; --surface-2: #29201f; --surface-3: #372c2b; }
+  /* (r98) skip = "nothing to do" = neutral. Orange was a third accent doing decoration's job.
+     (r99b) It also gets no tint — sitting out is the absence of a call, so the ground stays plain. */
   body.glow-skip  { --accent: #8e939d; --accent-rgb: 142,147,157; }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
@@ -87,11 +99,22 @@
     button:active, .tfBtn:active, .playStyle button:active, .seeMore:active,
     .clearBtn:active, .ihelp:active, .closeBtn:active, .aiBtn:active, .msMore:active { transform: scale(.95); }
     .tfBtn:hover, .playStyle button:hover, .seeMore:hover, .clearBtn:hover, .aiBtn:hover, .msMore:hover { transform: translateY(-1px); }
-    .card { transition: border-color .4s var(--ease), box-shadow .4s var(--ease), transform .25s var(--ease-soft); }
+    /* (r99b) background-color joins the list so cards drift with the tinted ground, not snap. */
+    .card { transition: background-color .9s var(--ease-soft), border-color .4s var(--ease),
+      box-shadow .4s var(--ease), transform .25s var(--ease-soft); }
     .secChevron { transition: transform .28s var(--ease-soft); }
   }
 
   html { background: var(--bg); overflow-x: clip; overscroll-behavior: none; }
+  /* (r99b) The ground follows the call, so it has to CHANGE like the call does — over a beat, not as a
+     cut. A custom property can't be transitioned, but the background-color it resolves to can, so the
+     transition lives on the painted elements. Slow and soft on purpose: a page that snaps colour when
+     a pick flips reads as a glitch; one that drifts reads as the room's light changing. */
+  @media (prefers-reduced-motion: no-preference) {
+    html, body, .callCard, .timer .tD {
+      transition: background-color .9s var(--ease-soft), border-color .9s var(--ease-soft);
+    }
+  }
   html, body {
     color: var(--label);
     font-family: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
@@ -667,24 +690,35 @@
   /* ---------- (r99) THE CLOCK, AS BOXED DIGITS ----------
      The countdown used to be plain numerals the same colour as everything else, so at a glance it was
      indistinguishable from the price sitting next to it — you had to read it to find it. Each digit now
-     sits in its own recessed well with a green rim: the shape alone says "this is the clock", so you
-     can find the time without reading, and the price stays the only large white number on the card.
+     sits in its own recessed well with a rim in the call's colour: the shape alone says "this is the
+     clock", so you can find the time without reading, and the price stays the only large white number
+     on the card.
+     (r99b) Digits and rim both follow --accent rather than being hard-coded green — on an UNDER round
+     green numerals inside red-tinted rims looked like a mistake. Green while it wants Over, red while
+     it wants Under, neutral grey while it wants you to sit out, matching the ground beneath.
      Written per-digit by tickTimer(); the boxes are inert spans, so nothing about the round maths moved. */
   .timer { display: inline-flex; align-items: center; gap: 4px; }
   .timer .tD {
     background: var(--bg); border: 1px solid rgba(var(--accent-rgb), .34); border-radius: 9px;
-    padding: 3px 7px; color: var(--green); font-weight: 700;
-    font-variant-numeric: tabular-nums; transition: border-color .3s var(--ease), color .3s var(--ease);
+    padding: 3px 7px; color: var(--accent); font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    transition: background-color .9s var(--ease-soft), border-color .3s var(--ease), color .3s var(--ease);
   }
   .timer .tSep { color: var(--label-3); padding: 0 1px; font-weight: 700; }
-  .timer.warn .tD { border-color: rgba(255,69,58,.5); color: var(--red); }
-  .timer.warn .tSep { color: rgba(255,69,58,.55); }
+  /* (r99b) The final two minutes FILL the boxes instead of just recolouring them. It used to turn the
+     numerals red — which says nothing on an UNDER round, where they are already red. A shape change
+     reads in every state. */
+  .timer.warn .tD { background: var(--red); border-color: var(--red); color: #2b0300; }
+  .timer.warn .tSep { color: var(--red); }
   /* The bar under the row is the same fact told without numbers — how much of the round is left. */
-  .timerBarWrap { height: 4px; border-radius: 3px; background: rgba(237,234,230,0.10); margin-top: 16px; overflow: hidden; }
+  .timerBarWrap { height: 4px; border-radius: 3px; background: rgba(255,255,255,0.10); margin-top: 16px; overflow: hidden; }
   /* (r98) FLAT: one solid colour, no gradient fill, no sweeping sheen, no glow shadows. Urgency is
      carried by the colour change and an opacity pulse instead of bloom. */
+  /* (r99b) was hard-coded green, which clashed on an UNDER round. Follows the call like everything
+     else in the clock cluster; the final-two-minutes state overrides it to red AND pulses, so urgency
+     still reads on a round whose accent is already red. */
   #timerBar { height: 100%; width: 100%; position: relative; overflow: hidden; border-radius: 3px;
-    background: var(--green); transition: width .9s linear, background .4s ease; }
+    background: var(--accent); transition: width .9s linear, background .4s ease; }
   #timerBar.warn { background: var(--red); animation: barWarnPulse 1.05s ease-in-out infinite; }
   @keyframes barWarnPulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
   /* Urgency ramps as the clock nears zero: faster pulse in the final 30s, hardest in the final 10s. */
@@ -880,7 +914,7 @@
   .verdict.go   { background: var(--green); color: #04160a; border: 1px solid var(--green); }
   .verdict.no   { background: var(--red);   color: #2b0300; border: 1px solid var(--red); }
   .verdict.soft { background: rgba(var(--accent-rgb), .07); border: 1px solid rgba(var(--accent-rgb), .34); }
-  .verdict.skip { background: rgba(237,234,230,.045); border: 1px solid var(--hair); }
+  .verdict.skip { background: rgba(255,255,255,.045); border: 1px solid var(--hair); }
   .heroCall { font-size: 34px; line-height: 1; font-weight: 700; letter-spacing: -.035em; margin: 0;
     display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
   .heroCall .hcMain { display: inline-flex; align-items: baseline; gap: 10px; flex-wrap: wrap; min-width: 0; }
@@ -1797,7 +1831,7 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r99</span><span class="buildSep">·</span><span>2026-08-29</span>
+        <span class="buildVer">build r99b</span><span class="buildSep">·</span><span>2026-08-29</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">

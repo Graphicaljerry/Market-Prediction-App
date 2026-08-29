@@ -19,6 +19,27 @@ then tells you what to play for the **next round** right before the clock runs o
 
 Recent work, newest first:
 
+- **r99b — the ground carries the call.** r99's warm surfaces read as *musty yellow* rather than as
+  ink, so the ground is **true neutral again by default** — and instead of a fixed hue it now takes the
+  faintest possible tint from whatever the picker is saying. **Display-only.**
+  - **Green while it wants Over, red while it wants Under, plain neutral while it wants you to sit
+    out** — which is ~88% of rounds, so neutral is what you see most of the time. The tint is 3–5
+    points of channel difference: under conscious notice on its own, but enough that the screen has a
+    temperature you feel change when the call flips. All three grounds sit at the same measured
+    darkness, so nothing gets lighter or heavier as the call moves.
+  - It rides the `body.glow-over/under/skip` classes `setGlow()` already sets for the accent, so the
+    page, every card and the wells behind the countdown digits all inherit it from two tokens. The
+    change is transitioned over 0.9s on the painted elements (a custom property can't transition, the
+    `background-color` it resolves to can) — a page that *snaps* colour when a pick flips reads as a
+    glitch; one that drifts reads as the room's light changing.
+  - **The clock cluster stopped contradicting itself.** The countdown digits and the progress bar were
+    hard-coded green, so an UNDER round drew green numerals inside red-tinted rims above a red bar.
+    Both follow `--accent` now. That broke the final-two-minutes warning — recolouring the numerals red
+    says nothing on a round where they're *already* red — so **urgency is now a shape change**: the
+    boxes fill solid red with dark numerals, which reads in every state.
+  - Text went neutral again to match (`--label` `#edeae6` → `#f0f0f2`); on a neutral ground the warm
+    grey read yellow.
+
 - **r99 — the verdict becomes a bet slip, and the clock finally reads as a clock.** Three personality
   directions were mocked as a published design canvas and reviewed before any code moved; the chosen
   one was a hybrid — the *Scoreboard*'s energy on the *Quiet Desk*'s structure. **Display-only: no pick,
@@ -1065,14 +1086,22 @@ and the cached value/age. A coin with no series ticker simply shows crowd `n/a`.
 
 ## Design system
 
-A flat, warm-black theme:
+A flat, near-black theme whose ground carries the current call:
 
-- **Warm near-black** `#0b0a09` ground with **solid** `#17150f` cards and hairline borders (r98 —
+- **Neutral near-black** `#0b0b0c` ground with **solid** `#161618` cards and hairline borders (r98 —
   the translucent glass cards and the drifting accent aurora are gone; deleted, in git history).
-  r99 warmed the whole ladder: the greys were dead-neutral blue-black (`#0a0a0b` / `#1c1c1e`), which
-  with no glass left to carry warmth read as *unfinished* rather than *restrained*. Text warmed with
-  it — `--label` is `#edeae6`, not `#fff`, because pure white on a warm black reads blue by contrast.
-  Same lightness ladder and contrast ratios throughout; only the hue moved.
+  r99 tried warming the whole ladder and it read as musty yellow, so **r99b went neutral and made the
+  hue follow the pick instead**: `#080d09` while the call is Over, `#0e0909` while it's Under, plain
+  neutral while it's a sit-out. Three to five points of channel difference — the screen has a
+  temperature you feel change, not a colour you look at. All three grounds are measured to the same
+  darkness so nothing gets visually heavier as the call moves, and the shift is transitioned over
+  0.9s so it drifts rather than snaps. Text is `#f0f0f2` — a hair off white, to take the glare off a
+  large dark screen without tinting it.
+- **The clock cluster follows the call too (r99b).** The countdown digits, their rims and the progress
+  bar all read `--accent`, so they can't contradict the ground: an UNDER round used to draw green
+  numerals inside red rims above a green bar. Because that leaves the final-two-minutes warning with
+  nothing to say on a round whose accent is already red, **urgency is a shape change** — the digit
+  boxes fill solid red with dark numerals rather than merely recolouring.
 - **Two accents, strictly semantic (r98):** green `#30d158` (over/go — also the ⭐ star and the
   brand mark) and red `#ff453a` (under/loss). Skip/caution surfaces are neutral grey; the old
   orange and blue accents are retired. r99: `--accent-rgb` now matches `--green` exactly
