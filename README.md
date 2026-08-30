@@ -13,11 +13,34 @@ then tells you what to play for the **next round** right before the clock runs o
 > Supports **ETH**, **BTC**, **SOL**, **XRP**, **DOGE**, **HYPE**, and **BNB** (segmented control on
 > desktop, a dropdown on mobile).
 
+**Changing the code?** Read **[`map/`](map/)** first — one card per part, with line numbers and
+what each change hits. It exists because this app is three big files (`eth-tracker.html` is
+6,106 lines) with no modules to navigate by.
+
 ---
 
 ## What's new (latest)
 
 Recent work, newest first:
+
+- **A code map, so changing something stops meaning reading everything.** The app is three big
+  files with no modules — `eth-tracker.html` alone is 6,106 lines — so "change the probability
+  engine" used to mean scrolling to find it. New **[`map/`](map/)** has one card per part
+  (probability engine, market data, round clock, pick surface, bet slip, my bets, charts, AI
+  co-pilot, crowd odds, auto-tracker, worker), each with **line numbers** into the source and an
+  explicit *what this change hits / does not hit*. **[`map/effects/CONTEXT.md`](map/effects/CONTEXT.md)**
+  answers it from the other end: "I am changing X, what do I open?" **Docs and structure only —
+  no app code changed, picks are untouched.**
+  - Every card is tagged **picks** or **log**, matching the rule in `CLAUDE.md` that changes to
+    the picks matter more than changes to the measurement — so the risk is visible before you
+    open the file, not after.
+  - Two things the audit caught: the old "Crucial code map" named a function **`gradeRound`
+    that does not exist** (the real ones are `settleGrades()` and `finalizeGrade()`) — it was
+    wrong in two places and both are fixed; and **grading happens twice**, once in the browser
+    and once in the Worker cron, which have to agree on what a win is or the two records quietly
+    drift apart. That is now written on the cards.
+  - Also removed **37 broken shortcuts** under `.claude/skills/` that pointed at a folder which
+    no longer exists.
 
 - **r99b — the ground carries the call.** r99's warm surfaces read as *musty yellow* rather than as
   ink, so the ground is **true neutral again by default** — and instead of a fixed hue it now takes the
@@ -588,7 +611,7 @@ Recent work, newest first:
 - [Deployment](#deployment)
 - [Repository layout](#repository-layout)
 - [Local development](#local-development)
-- [Crucial code map](#crucial-code-map)
+- [Crucial code map](#crucial-code-map) → now [`map/`](map/)
 - [Disclaimer](#disclaimer)
 
 ---
@@ -835,7 +858,7 @@ The headline card (`renderPickCard()`) turns everything into one plain instructi
 
 Every locked pick is stored with its strike, direction, round time, and a **signal snapshot**
 (indicator net, model probability, order-book imbalance, AI verdict, crowd, conviction). When
-the round ends, `gradeRound()` compares the close to the strike — scoring the pick you actually
+the round ends, `settleGrades()` / `finalizeGrade()` compare the close to the strike — scoring the pick you actually
 **committed** (the locked one) — and records the outcome. `historySummary()` derives, over the
 retained window (~7 days):
 
@@ -1248,33 +1271,15 @@ sanity check on the JS: extract the `<script>` and run `node --check`.
 
 ## Crucial code map
 
-`eth-tracker.html`
-- `COINS` / `COIN_ICONS` — per-coin config + inline-SVG brand icons.
-- `connectWS` / live price handling; `loadCoinbaseCandles` / `refreshMicro` / `refreshOrderBook`
-  — candles, 1-min volatility + momentum, order-book imbalance.
-- probability engine: `indOver` / `aiOver` / `crowdOver` / `obiOver` / `momOver` / `barrierOver`
-  (+ `normCdf`, `sigmaRoundFallback`) → `rawCombinedOdds` → `calibrate` → `combinedOdds`.
-- `renderPickCard` (locked call + next-round ribbon + glow) / `renderLean` / `setGlow`.
-- `renderHero` — the verdict slab: picks the fill (`go`/`no`/`soft`/`skip`), builds the two-weight
-  headline via `v(verb, side)`, and calls `slipRow`. Derives no pick of its own.
-- `slipRow` / `measuredAtPrice` / `betMath` — the bet in four terms (`IN`/`OUT`/`NEED`/`RUNS`).
-  `NEED` is venue-aware break-even; `RUNS` is the measured hit rate at that price, gated at n ≥ 20.
-- `myRecordLine` / `resolveMyBets` / `toggleMyBet` — your own logged bets (`myBets.v1`) and the
-  W/L form chips.
-- `drawMiniChart` → `drawLiveChart` / `drawTFChart`, `loadTFCloses` — zoomable chart.
-- `nextBoundary` / `tickTimer` — round clock, grading, per-round refresh.
-- `openRound` / `gradeRound` / `snapshotFeat` / `historySummary` — record + calibration data.
-- `callWorker` (paid + `crowdOnly`) / `marketContext` / `aiWorthIt` / `refreshCrowd` /
-  `applyCrowd` — AI + free crowd, visibility + smart-spend gating.
-- `fetchAutoTracker` / `renderAutoTracker` — the 24/7 panel; `hm`/`hma`/`hms`/`rangeHM` — 12h clock.
+Moved to **[`map/`](map/)** — a card per part, with line citations into `eth-tracker.html`
+and `cloudflare-worker/worker.js`, plus what a change to each one hits and does not hit.
 
-`cloudflare-worker/worker.js`
-- `fetch` handler — health check, `?discover`, `?crowd`, `?picks` diagnostics, the POST path
-  (crowd + AI, or `noAI` crowd-only).
-- `scheduled` — the cron: `runCoinPick` (grade + `freePick` + KV) using `cbMicro` / `cbObi`.
-- `getKalshiCrowd` / `fetchCrowd` — crowd (current + `next`) with KV + stale-serve.
-- `buildPrompt` — market-anchored, physics + calibration + auto-tracker, numeric `probOver`.
-- `pickProvider` / `getAIRead` / `readAnthropic` / `readGemini` / `readGroq` / `normalize`.
+Start at [`map/objects/_index.md`](map/objects/_index.md), or
+[`map/effects/CONTEXT.md`](map/effects/CONTEXT.md) if you already know what you are changing.
+
+The list that used to live here had drifted: it named a function `gradeRound` that does not
+exist. The real grading functions are `settleGrades:4104` and `finalizeGrade:4117`. Line-cited
+cards are harder to let rot than a bare list of names.
 
 ---
 

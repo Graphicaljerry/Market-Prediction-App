@@ -3,6 +3,20 @@
 Project memory for the **15-Minute Crypto Over/Under Tracker**. Read this at the start of
 every session and follow the conventions below.
 
+## Where things live
+
+| If you want | Go to |
+|---|---|
+| what the app is and why | `README.md` |
+| **where a piece of code lives, and what changing it hits** | **`map/objects/_index.md`** |
+| "I am changing X — what do I open?" | `map/effects/CONTEXT.md` |
+| Worker setup: keys, providers, deploy, cron | `cloudflare-worker/README.md` |
+| what shipped recently | `README.md` → *What's new (latest)* |
+
+The app is three big files — `eth-tracker.html` (6,106 lines), `cloudflare-worker/worker.js`
+(2,088), `README.md` (1,272) — with no modules to navigate by. **Read the map before opening
+the code**, not after.
+
 ## Tell me what changed, in plain terms (standing rule)
 
 When you ship something, explain it to me **in chat** in **simple, concise language**: what changed
