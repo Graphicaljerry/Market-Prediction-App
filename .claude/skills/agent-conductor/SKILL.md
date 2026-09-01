@@ -29,6 +29,12 @@ Subagent routing is guaranteed by frontmatter and needs no attention. The sessio
 
 Never switch models silently, and never claim to have switched — a skill cannot change the session model, only the user can.
 
+### Context pre-flight (before Phase 1, every build)
+
+Check `/context` before starting anything big and report it in one line. Everything already in the window — files read, tool definitions, MCP servers, earlier tasks — is re-sent with every message for the rest of the session, so a build started in a loaded window pays that tax on every turn.
+
+If the window is more than roughly half full, recommend `/clear` before starting. Nothing is lost: the plan lives in `.conductor/plan.md`, and the architect is about to re-derive the rest anyway.
+
 ### Project default (offer once per repo)
 
 If `.claude/settings.json` in the project root has no `"model"` key, offer to add `{"model": "sonnet"}`. That makes every *new* session in this repo start cheap automatically. It does not affect resumed sessions.
@@ -97,6 +103,7 @@ The main session does the cheap checks. The frontier reviewer only sees work tha
 - Build/dev server runs clean, no console errors
 - Every acceptance criterion in the spec is present
 - No hardcoded secrets or keys in the diff
+- **For any visual task: actually look at it.** A passing build is not a rendered page. Open the running app — Playwright screenshot, a browser tool, or ask the user to glance at it — and confirm the thing appears and behaves as specced. "Done" from a worker means the code compiles, not that the layout is right.
 
 Failures go straight back to the worker with a numbered fix list. The frontier model is never spent on "you forgot to run the build."
 

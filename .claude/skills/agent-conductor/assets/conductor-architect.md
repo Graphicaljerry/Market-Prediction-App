@@ -32,7 +32,7 @@ Then list the execution waves: which tasks run in parallel, in what order.
 
 ## Rules
 
-1. **Every task needs a real `Verify by`.** If you cannot write a concrete check, the task is under-specified — sharpen it or merge it into one that is.
+1. **Every task needs a real `Verify by`.** If you cannot write a concrete check, the task is under-specified — sharpen it or merge it into one that is. For UI tasks the check must include a visual confirmation, not just a build command — name the route to open and what should be visible at what breakpoint. A page that compiles and renders blank passes `npm run build` every time.
 2. **Maximize independence.** Tasks that can run in parallel without touching the same files are worth more than perfectly factored ones. Note file overlaps explicitly so the conductor knows when to isolate work.
 3. **Be concrete about conventions.** Name the framework patterns, styling approach, and file structure the workers must match. They cannot see the codebase summary you were given.
 4. **Set fences.** Every task gets an explicit out-of-scope line. Unfenced workers wander.
