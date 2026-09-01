@@ -1,9 +1,14 @@
 ---
 name: agent-conductor
 description: Cost-efficient orchestrator-worker workflow for building apps, websites, and features. The session runs on a cheap model and acts as clerk; a frontier-model architect subagent writes the spec, Sonnet workers implement in parallel, and a frontier-model reviewer subagent judges the result — so the expensive model only ever sees small, focused context. ALWAYS use this skill when the user asks to build a new feature, build an app, build or rebuild a website, kick off a client project, ship an MVP, or drops a list/brain dump of tasks — even if they never say "orchestrate," "conductor," or "subagents." Do NOT use it for one-file tweaks, quick fixes, copy changes, config edits, or questions — handle those directly.
+metadata:
+  version: "3.5.0"
+  updated: "2026-09-01"
 ---
 
 # Agent Conductor
+
+**v3.5.0** · updated 2026-09-01 · full changelog in `assets/CHANGELOG.md`
 
 ## The cost model (read this first — it drives every rule below)
 
@@ -13,6 +18,7 @@ So this skill inverts the obvious design:
 
 - **The main session is the clerk, not the brain.** It runs on a cheap model and does bookkeeping: dispatching, running verify commands, merging, git, writing files. Cheap work at cheap rates.
 - **The frontier model is a consultant, not the driver.** It appears twice per build — once as the architect writing specs, once as the reviewer judging results — each time as a subagent with a fresh, tiny context. It never carries the session transcript.
+- **The frontier consultants run at high effort; the workers don't.** Effort is spent where reasoning decides the outcome, not where it multiplies. The architect and reviewer are each one small-context call, and they are the two calls that determine whether the build is right — a wrong plan cascades through every worker and every review round, then costs the user a re-prompt on top. A few thousand extra thinking tokens on those two calls is the cheapest insurance in the pipeline. Sonnet workers stay at medium: they execute specs the architect already reasoned through, the review loop protects their output, and their cost multiplies across parallel agents. Expensive effort on implementation is reserved for the hard and critical workers, reached by the architect's tagging or by evidence of failure at a lower tier — never by default. The frontier model can implement a task, but only one per build, only when the architect justifies it, and only when the user has seen that justification. (Anthropic's guidance is that medium-on-Fable-5.1 matches high-on-Fable-5, so medium remains a sound cost-saving option for the two frontier calls if the user wants it.)
 - **Workers are Sonnet, not Opus.** A well-written spec plus a review loop protects quality. Paying frontier or Opus rates for bricklaying is the waste this skill exists to eliminate.
 
 Subagents are not free — each reloads system prompts and tool definitions, and subagent-heavy workflows can multiply token use several times over. That is exactly why the gate below matters, and why small work never gets orchestrated.
@@ -44,8 +50,9 @@ Three agent files must exist in `.claude/agents/` (project) or `~/.claude/agents
 | Agent | Model | Job |
 |---|---|---|
 | `conductor-architect` | frontier | Turns a brain dump into a task plan |
-| `conductor-worker` | sonnet | Implements a standard task |
-| `conductor-worker-hard` | opus | Implements a task tagged hard |
+| `conductor-worker` | sonnet · medium | Standard tasks — most UI and app work |
+| `conductor-worker-hard` | opus · high | Hard tasks — novel logic, auth, perf, concurrency |
+| `conductor-worker-critical` | frontier · high | Critical tasks — costly-to-reverse or beyond a spec. Max 1 per build |
 | `conductor-reviewer` | frontier | Judges quality after mechanical checks pass |
 
 Also run `echo $CLAUDE_CODE_SUBAGENT_MODEL` once. If it's set, warn the user — that variable outranks every `model:` field in frontmatter and will silently route all three agents to the same model, destroying the cost split.
@@ -87,8 +94,9 @@ Orchestration has real overhead. It only pays off above a certain size.
 ## Phase 2 — Dispatch (Sonnet workers)
 
 1. Spawn one worker per task in the current wave, **all in a single message** so they run in parallel. Cap a wave at 5.
-   - **Route by the task's `Tier`:** `standard` → `conductor-worker` (Sonnet). `hard` → `conductor-worker-hard` (Opus).
-   - The architect assigns tiers while writing the plan, so this costs nothing extra — the model that understands the work best is the one deciding how much horsepower it needs.
+   - **Route by the task's `Tier`:** `standard` → `conductor-worker`. `hard` → `conductor-worker-hard`. `critical` → `conductor-worker-critical`. Each tier bundles a model and an effort level, so the architect's one decision sets both.
+   - The architect assigns tiers while writing the plan, so this costs nothing extra — the model that understands the work best is the one deciding how much horsepower it needs. Its rule is quality first, cost as tiebreaker: when torn, it goes up a tier, within the budget caps.
+   - A `critical` task must carry a `Why critical:` line from the architect. Surface it explicitly when showing the user the plan — this is the one tag they'll most want to veto or confirm.
    - The user can override any tier when they approve the plan ("make task 3 hard", "run all of these on Opus"). Their call wins.
 2. Each worker prompt contains: the TASK block from the plan, relevant file paths, project conventions, and nothing else. Workers read what they need themselves — do not paste file contents into their prompts.
 3. **Worktrees:** only when 2+ parallel tasks would edit overlapping files. Then `git worktree add ../<repo>-task-<n> -b task/<n>` and tell each worker its directory. Disjoint files means no worktrees — they add merge overhead for nothing.
@@ -117,11 +125,11 @@ Batch the whole wave into one review call, not one per task. Pass condensed diff
 
 **Loop cap: 3 rounds per task.** After round 3, finish it in the main session.
 
-**Escalate on evidence, not on hunches.** If a `standard` worker fails the same criterion twice, do not send it a third time. Decide which failure this is:
-- **The spec was unclear** → rewrite the spec, re-dispatch as standard. A bigger model cannot read your mind either.
-- **The spec was clear and the work was genuinely beyond it** → re-dispatch the same task to `conductor-worker-hard`, with the failed attempts summarized so Opus doesn't repeat them.
+**Escalate on evidence, not on hunches.** If a worker fails the same criterion twice, do not send it a third time. Decide which failure this is:
+- **The spec was unclear** → rewrite the spec, re-dispatch at the same tier. A bigger model cannot read your mind either.
+- **The spec was clear and the work was genuinely beyond it** → re-dispatch the same task one tier up — `standard` → `hard` → `critical` — with the failed attempts summarized so the next worker doesn't repeat them. Never skip a rung without evidence; each step up should be earned by a failure at the tier below.
 
-This is cheaper than it looks. Two failed rounds plus a third cost more than one Opus pass, and Opus costs a fraction of what the frontier reviewer costs to run again. Start cheap, escalate on proof.
+This is cheaper than it looks. Two failed rounds plus a third cost more than one pass at the next tier up. Start where the architect put it, escalate on proof.
 
 **Security:** if any surface touches auth, payments, uploads, forms, or user input, run the `security-patch` skill before calling the wave done.
 
@@ -130,6 +138,19 @@ This is cheaper than it looks. Two failed rounds plus a third cost more than one
 1. Merge worktree branches, resolve conflicts, `git worktree remove <path>`.
 2. Run the full build and test suite once on the integrated result. Passing in isolation is not passing together.
 3. Deliver ONE report: what was built (plain language), task-by-task status, how it was verified, anything deferred.
+4. **End the report with a models ledger.** Build it from your own dispatch records — which agent you invoked for what — never by asking a model what it is (self-identification is not reliable). Format:
+
+```
+MODELS USED
+Session (clerk):     <session model>
+Architect:           fable · 1 call
+Task 1  <name>:      sonnet
+Task 2  <name>:      opus (tagged hard)
+Task 3  <name>:      sonnet → opus (escalated, round 3)
+Reviewer:            fable · 1 call per wave (2 waves)
+```
+
+Tell the user `/usage` shows the actual spend attributed per subagent if they want to cross-check the ledger against reality — the ledger reports what was dispatched; `/usage` reports what was billed.
 
 ## Cost discipline
 
