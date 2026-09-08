@@ -13,8 +13,8 @@ every session and follow the conventions below.
 | Worker setup: keys, providers, deploy, cron | `cloudflare-worker/README.md` |
 | what shipped recently | `README.md` → *What's new (latest)* |
 
-The app is three big files — `eth-tracker.html` (6,167 lines), `cloudflare-worker/worker.js`
-(2,181), `README.md` (1,320) — with no modules to navigate by. **Read the map before opening
+The app is three big files — `eth-tracker.html` (6,247 lines), `cloudflare-worker/worker.js`
+(2,250), `README.md` (1,430) — with no modules to navigate by. **Read the map before opening
 the code**, not after.
 
 ## Tell me what changed, in plain terms (standing rule)

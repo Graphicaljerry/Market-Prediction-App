@@ -9,16 +9,17 @@ explicitly.
 
 | Part | Lives at | Risk | One line |
 |---|---|---|---|
-| [probability-engine](probability-engine.md) | 2156–2451 | **picks** | Six independent signals combined, then calibrated, into one number. The heart. |
-| [market-data](market-data.md) | 2001–3359 | **picks** | Live price, candles, volatility, momentum, order-book imbalance. |
-| [round-clock](round-clock.md) | 3907–4149 | **picks** | The 15-minute boundary, per-round refresh, and settlement. |
-| [pick-surface](pick-surface.md) | 2856–3273, 5674 | **picks** | What the call looks like on screen. Derives nothing. |
-| [bet-slip](bet-slip.md) | 2537, 5559–5648 | log | IN / OUT / NEED / RUNS — the bet in four terms. |
-| [my-bets](my-bets.md) | 5468–5500 | log | Your own logged bets and the W/L chips. `myBets.v1`. |
-| [charts](charts.md) | 3456–3761 | log | The zoomable price chart. |
-| [ai-copilot](ai-copilot.md) | 4674–4753, worker.js:835–1119 | **picks** | The paid AI read, its budget gate, and the prompt. |
-| [crowd-odds](crowd-odds.md) | 4766, worker.js:652–691 | **picks** | Kalshi crowd probability, free. |
-| [auto-tracker](auto-tracker.md) | 4845–5127, worker.js:1927 | log | The 24/7 cron that grades itself. |
+| [probability-engine](probability-engine.md) | 2175–2470 | **picks** | Six independent signals combined, then calibrated, into one number. The heart. |
+| [market-data](market-data.md) | 2020–3378 | **picks** | Live price, candles, volatility, momentum, order-book imbalance. |
+| [round-clock](round-clock.md) | 2207–4168 | **picks** | The 15-minute boundary, per-round refresh, and settlement. |
+| [pick-surface](pick-surface.md) | 2890–5753 | **picks** | What the call looks like on screen. Derives nothing. |
+| [bet-slip](bet-slip.md) | 2556, 5625–5714 | log | IN / OUT / NEED / RUNS — the bet in four terms. |
+| [my-bets](my-bets.md) | 5489–5521 | log | Your own logged bets and the W/L chips. `myBets.v1`. |
+| [charts](charts.md) | 3475–3780 | log | The zoomable price chart. |
+| [ai-copilot](ai-copilot.md) | 4743–4822, worker.js:835–1119 | **picks** | The paid AI read, its budget gate, and the prompt. |
+| [crowd-odds](crowd-odds.md) | 4785, worker.js:653–692 | **picks** | Kalshi crowd probability, free. |
+| [alerts](alerts.md) | worker.js:1326–1545, 5588 | **money** | The Discord/ntfy pings. No pick logic, but they decide when you actually bet. |
+| [auto-tracker](auto-tracker.md) | 4917–5199, worker.js:1927 | log | The 24/7 cron that grades itself. |
 | [worker](worker.md) | worker.js (all) | both | The Cloudflare proxy: AI, crowd, cron, KV. |
 | coin config | 1900–1915 | picks | `COINS` / `COIN_ICONS`. stub — read the source. |
-| history & calibration | 2653, 4614 | log | `snapshotFeat:2653`, `historySummary:4655`. stub. |
+| history & calibration | 2653, 4655 | log | `snapshotFeat:2653`, `historySummary:4655`. stub. |

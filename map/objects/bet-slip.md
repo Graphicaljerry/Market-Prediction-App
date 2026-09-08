@@ -15,9 +15,9 @@ verified_at: a8bd703 2026-09-08
 
 | Function | Line | Does |
 |---|---|---|
-| `betMath` | 2537 | the arithmetic |
-| `measuredAtPrice` | 5559 | historical hit rate at a given price |
-| `slipRow` | 5648 | renders the row |
+| `betMath` | 2556 | the arithmetic |
+| `measuredAtPrice` | 5625 | historical hit rate at a given price |
+| `slipRow` | 5714 | renders the row |
 
 Two rules worth knowing: **`NEED` is venue-aware break-even** (it accounts for the fee, so it is
 not just `1/price`), and **`RUNS` is gated at n ≥ 20** — below that the sample is not shown
@@ -25,7 +25,7 @@ rather than shown small.
 
 ## If you change this
 
-**Hits** — [pick-surface](pick-surface.md), since `renderHero:5674` calls `slipRow:5648`.
+**Hits** — [pick-surface](pick-surface.md), since `renderHero:5753` calls `slipRow:5714`.
 
 **Does not hit** — [probability-engine](probability-engine.md). This reads the odds; it never
 feeds them.

@@ -1,6 +1,6 @@
 ---
 type: part
-source: eth-tracker.html:1986-3331
+source: eth-tracker.html:2020-3378
 status: verified
 universe: live
 risk: picks
@@ -15,15 +15,15 @@ verified_at: a8bd703 2026-09-08
 
 | Function | Line | Does |
 |---|---|---|
-| `loadCoinbaseCandles` | 2001 | historical candles |
-| `refreshMicro` | 2037 | 1-minute volatility + momentum |
-| `refreshOrderBook` | 2062 | order-book imbalance |
-| `connectWS` | 3359 | live price socket |
+| `loadCoinbaseCandles` | 2020 | historical candles |
+| `refreshMicro` | 2056 | 1-minute volatility + momentum |
+| `refreshOrderBook` | 2081 | order-book imbalance |
+| `connectWS` | 3378 | live price socket |
 
 ## If you change this
 
-**Hits** — [probability-engine](probability-engine.md): `momOver:2259` eats `refreshMicro`,
-`obiOver:2247` eats `refreshOrderBook`, and `sigmaRoundFallback:2321` is the guard for when
+**Hits** — [probability-engine](probability-engine.md): `momOver:2278` eats `refreshMicro`,
+`obiOver:2266` eats `refreshOrderBook`, and `sigmaRoundFallback:2340` is the guard for when
 candles are thin. Also [charts](charts.md), which draws the same closes.
 
 **Does not hit** — [crowd-odds](crowd-odds.md) and [ai-copilot](ai-copilot.md); both come over

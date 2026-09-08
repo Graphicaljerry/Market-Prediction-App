@@ -1,6 +1,6 @@
 ---
 type: part
-source: eth-tracker.html:5414-5443
+source: eth-tracker.html:5489-5521
 status: verified
 universe: live
 risk: log
@@ -13,9 +13,9 @@ Stored in `localStorage` under **`myBets.v1`**.
 
 | Function | Line | Does |
 |---|---|---|
-| `toggleMyBet` | 5468 | log or un-log a bet |
-| `resolveMyBets` | 5484 | settle against the round result |
-| `myRecordLine` | 5500 | the W/L form chips |
+| `toggleMyBet` | 5489 | log or un-log a bet |
+| `resolveMyBets` | 5505 | settle against the round result |
+| `myRecordLine` | 5521 | the W/L form chips |
 
 ## If you change this
 

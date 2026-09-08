@@ -1195,6 +1195,23 @@
   .hrow .hcoin { color: var(--label); }
   .hrow .hdir.over { color: var(--green); } .hrow .hdir.under { color: var(--red); }
   .hrow .hpred.skip { color: var(--label-3); font-weight: 500; }
+  /* (r101) What each PRICE has actually returned, from this coin's own 24/7 record. The hit rate alone
+     never answered the only question that matters — did the money come back — because a 72% hit rate is
+     a win at 65¢ and a loss at 80¢. Deliberately plain rows: this is a ledger, not a chart. */
+  .bandReturns { margin-top: 16px; font-size: 12px; }
+  .bandReturns .brHead { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--label-3);
+    font-weight: 700; margin-bottom: 9px; }
+  .bandReturns table { width: 100%; border-collapse: collapse; font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+  .bandReturns th { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--label-3);
+    font-weight: 600; text-align: right; padding: 0 0 6px; font-family: inherit; }
+  .bandReturns th:first-child, .bandReturns td:first-child { text-align: left; }
+  .bandReturns td { padding: 6px 0; border-top: 1px solid var(--separator); color: var(--label-2); text-align: right; }
+  .bandReturns tr.brNow td { color: var(--label); font-weight: 700; }
+  .bandReturns tr.brNow td:first-child::after { content: " ← now"; font-size: 9px; letter-spacing: .08em;
+    color: var(--label-3); font-weight: 600; }
+  .bandReturns .brPos { color: var(--green); } .bandReturns .brNeg { color: var(--red); }
+  .bandReturns .brThin { color: var(--label-3); font-weight: 500; }
+  .bandReturns .brNote { margin-top: 9px; font-size: 11px; color: var(--label-3); line-height: 1.5; font-weight: 500; }
   .autoCoverage { margin-top: 12px; font-size: 12px; font-weight: 600; color: var(--label-3); line-height: 1.5; text-align: center; }
   .autoCoverage:empty { display: none; }
   .autoCoverage b { color: var(--label); font-weight: 800; }
@@ -1675,6 +1692,7 @@
           <div class="stat"><div class="v mono" id="aStreak">0</div><div class="k">Streak</div></div>
         </div>
         <div id="autoCoverage" class="autoCoverage"></div>
+        <div id="bandReturns" class="bandReturns"></div>
         <details class="collapsePanel" id="modelPanel">
           <summary class="sec secToggle" style="margin-top:18px">Model &amp; Accuracy <span class="tiny" id="modelPanelSummary"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
           <div class="collapseCard">
@@ -1842,10 +1860,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r100</span><span class="buildSep">·</span><span>2026-09-08</span>
+        <span class="buildVer">build r101</span><span class="buildSep">·</span><span>2026-09-08</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>The alerts are worth acting on again (r101).</b> Every Discord star alert had been arriving at about <b>1.1x</b> — nothing worth betting. Checked against the record, a 1.1x quote is a <b>90¢ favourite, the worst price in the whole archive</b>: it wins often but pays so little that one loss wipes out nine wins (−10.8¢ per dollar). Two causes, both fixed. The alert ceiling is now <b>locked at 88¢ in the code</b>, so no leftover setting can push it back into the losing zone. And the alert now fires <b>the moment the pick is committed, about 11 minutes before the close</b>, instead of 7 minutes out when the price has already run away — roughly <b>7 alerts a day</b>, priced around 1.25x. The message finally says what you'd make: <i>ETH OVER @ 80c · pays 1.25x · $20→$25.00 (+$5.00) · ~11 min left</i>. In the app, the bet slip swaps the useless "$1.00 out" for the real payout and adds the verdict in money (<i>+3.2¢ per $1</i>), and <b>Full log &amp; accuracy</b> gains <b>What each price actually returned</b> — your own bets grouped by the price you paid, so you can see for yourself which prices pay. The honest part: there is no setting that pays big <i>and</i> wins. Cheap contracts pay 1.4x and lose money. The lever for making more is bet size, not payout. <b>No change to how picks are made.</b></p>
         <p><b>The audit round (r100).</b> Six weeks untouched, so everything got a fresh look. <b>The 24/7 record was re-analysed from scratch — 21,412 rounds.</b> Plain result: the Kalshi crowd price is the only input that predicts anything; every technical signal and the learned model scored at a coin flip; the one edge after fees is buying a 78–82¢ favorite, and buying it a few minutes <i>into</i> the round instead of at the open was worth about 5¢ more per dollar. <b>That last point is the one change to live picks:</b> the tracker's cron now fires four minutes into each round instead of on the boundary — same picker, later look. <b>Security:</b> the Worker could be told to wipe the record, spend the AI budget or spam your alerts by anyone who knew its URL; destructive calls now need the access token (new field in Settings), every caller is rate-limited, and CORS is pinned to this site. <b>Bugs fixed:</b> Claude reads were failing silently on the default model (an API parameter it no longer accepts); a failed AI read was being frozen for the whole round; "I took this bet" never scored itself; the crowd was being re-fetched once a second; "both say OVER" could compare picks about different rounds; and the "already settled" card left the bet slip still saying Bet. <b>Display:</b> on desktop the AI read sits under the call and the indicators under the chart; the price can no longer truncate before the font loads; a flat round says <i>at the line</i>; a new call lands with one short settle motion.</p>
         <p><b>Flat theme — the glass comes off (r98).</b> The frosted-glass look is gone: no more see-through blurred cards, no drifting ambient glows, no coloured washes behind the page, no noise film, no shimmer sweeping the timer bar. Cards are now a <b>solid dark surface on a solid near-black ground</b>, separated by hairline borders — nothing behind them to show through, so none of the artefacts that glass kept producing (seams, banding, sliced glows) can ever come back. Colour got stricter too: <b>green and red are the only accents left</b>, and they only ever mean direction — green for over/go (the ⭐ star badge is green now instead of amber), red for under/loss. Skip states went neutral grey ("nothing to do" shouldn't glow orange), and the blue brand square became the app's one green. About 130 lines of dead glass CSS were deleted outright — it lives in git history if it's ever missed. <b>Display-only — no pick, grade or logged round changed.</b></p>
         <p><b>Spacing put on one scale, and the last hard edges removed (r97).</b> <b>(1) The price block and the verdict are now one pane, not two cards jammed together.</b> They were two separately-frosted cards butted edge to edge with their facing corners squared off — and two frosted layers never render identically, so the join showed as a hard line straight across the card with a notch at each end. That's why it looked like the sections were <i>touching</i> rather than belonging together. The glass now sits on a single wrapper and the two halves inside are transparent, so it's one continuous pane divided by a hairline inset from the edges — the same divider style used elsewhere in the card, so it reads as designed. <b>(2) One spacing scale.</b> The page had six different vertical gaps — 0, 8, 16, 18, 28 and 44px — collected over twenty builds. Everything now comes from five steps, so the rhythm is 20px between cards and 34px between groups, everywhere, on every screen. The card was also holding a 28px margin under itself that leaked into the layout and stacked with other margins; the card owns its padding now and the layout owns the space between cards. <b>(3) The glows stopped being sliced.</b> Each card clips its own glow to its rounded shape, but the glows were positioned deliberately hanging over the card's edge — so the clip cut them while they were still bright, leaving a crisp arc. That's the stain with a defined boundary in the corner of the chart. They're pulled fully inside now and fade to nothing before they reach any edge. Card shadows are also tinted to the page's own colour instead of flat black. <b>Display-only — no pick, grade or logged round changed.</b></p>
@@ -5191,6 +5210,7 @@
       $("aGraded").textContent = "—"; $("aCorrect").textContent = "—";
       $("aHit").textContent = "—"; $("aHit").className = "v mono"; $("aHit").title = "";
       var _cv = $("autoCoverage"); if (_cv) _cv.innerHTML = "";
+      var _br = $("bandReturns"); if (_br) _br.innerHTML = "";
       var _rf = $("recentForm"); if (_rf) _rf.innerHTML = "";
       var _le2 = $("autoLearned"); if (_le2) _le2.innerHTML = "";
       var _ca2 = $("autoCalib"); if (_ca2) _ca2.innerHTML = "";
@@ -5305,6 +5325,7 @@
         cov.innerHTML = 'Bet <span class="cov-skip">' + betRate + '%</span> of <b>' + seenN + '</b> rounds · <b>' + shadowHit + '%</b> if it bet them all' + loose;
       } else cov.innerHTML = '';
     }
+    renderBandReturns(d.history);
     _autoHistLen = (d.history || []).length;
     updateSeeMore("autoHistory", "moreAuto", _autoHistLen);
     // what the per-coin online model has learned
@@ -5556,6 +5577,51 @@
   // Source is the 24/7 graded history (state.lastAuto.history) — the only record that carries BOTH the
   // crowd price the round was bought at and whether it won. (The arrow log has neither: it stores the
   // round's direction and nothing about price, so it cannot answer this question.)
+  // (r101) The audit, made permanent and self-updating. The Sept-2026 study of 21,412 archived rounds
+  // found that PRICE, not the call, decided whether the money came back: buying a favourite at 70–75¢
+  // lost 1.2¢ per dollar while 78–82¢ made 3.2¢, and 90¢+ lost nearly 11¢. A hit rate alone can never
+  // show that — 73% is a win at one price and a loss at another. This rebuilds that same table live from
+  // THIS coin's own graded record, so the finding keeps re-measuring itself instead of ageing in a README.
+  // Bands match the ones in `worker.js` (freePick's price gate) so the app and the picker describe one rule.
+  // PURE DISPLAY: reads graded history, writes a table, touches no pick.
+  var BAND_EDGES = [[70, 75], [75, 78], [78, 82], [82, 86], [86, 90], [90, 96]];
+  function renderBandReturns(hist) {
+    var el = $("bandReturns"); if (!el) return;
+    el.innerHTML = "";
+    if (!Array.isArray(hist) || !hist.length) return;
+    var bands = BAND_EDGES.map(function (b) { return { lo: b[0], hi: b[1], n: 0, w: 0, sum: 0 }; }), any = 0;
+    for (var i = 0; i < hist.length; i++) {
+      var e = hist[i];
+      if (!e || e.correct == null || typeof e.crowd !== "number" || (e.side !== "OVER" && e.side !== "UNDER")) continue;
+      var cents = e.side === "OVER" ? e.crowd : 100 - e.crowd;   // what THAT round's committed side cost
+      for (var b = 0; b < bands.length; b++) {
+        if (cents >= bands[b].lo && cents < bands[b].hi) { bands[b].n++; bands[b].sum += cents; if (e.correct) bands[b].w++; any++; break; }
+      }
+    }
+    if (!any) return;
+    // Which band is live right now, so the row you care about is the one that stands out.
+    var liveCents = null, mp = marketPct(state.shownDir);
+    if (typeof mp === "number") liveCents = mp;
+    var rows = "";
+    for (var k = 0; k < bands.length; k++) {
+      var g = bands[k]; if (!g.n) continue;
+      var avg = g.sum / g.n / 100, hit = g.w / g.n;
+      var bm = betMath(getStake(), avg, getVenue()), need = bm ? bm.breakEven : (avg + takerFee(avg));
+      var edge = hit / need - 1, thin = g.n < 20;
+      var cls = thin ? "brThin" : (edge > 0 ? "brPos" : "brNeg");
+      var live = liveCents != null && liveCents >= g.lo && liveCents < g.hi;
+      rows += '<tr' + (live ? ' class="brNow"' : '') + '><td>' + g.lo + '–' + g.hi + '¢</td><td>' + g.n +
+        '</td><td>' + Math.round(hit * 100) + '%</td><td>' + Math.round(need * 100) + '%</td>' +
+        '<td class="' + cls + '">' + (thin ? '—' : (edge > 0 ? '+' : '−') + Math.abs(edge * 100).toFixed(1) + '¢') + '</td></tr>';
+    }
+    if (!rows) return;
+    el.innerHTML = '<div class="brHead">What each price actually returned</div>' +
+      '<table><thead><tr><th>Price paid</th><th>Bets</th><th>Won</th><th>Needed</th><th>Per $1</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table>' +
+      '<div class="brNote">Your own graded bets, after ' + ((VENUES[getVenue()] || VENUES.kalshi).label) +
+      ' fees. A band shows a dash until it has 20 bets — a rate off six rounds is not a rate. ' +
+      'Across 21,412 archived rounds only <b>78–82¢</b> was positive in every period tested.</div>';
+  }
   function measuredAtPrice(p) {
     var hist = (state.lastAuto && Array.isArray(state.lastAuto.history)) ? state.lastAuto.history : null;
     if (!hist) return null;
@@ -5664,10 +5730,23 @@
     var beTxt = "<span>need " + (be * 100).toFixed(1) + "%</span>";
     if (!sided)
       return "<span>crowd " + cents + "¢</span><span>band " + FAV_ZONE_LO + "–" + FAV_ZONE_HI + "¢</span>" + beTxt;
+    // (r101) "$1.00 out" was the one dead term in the row — it is $1.00 on every contract, at every
+    // price, forever. It now carries the payout MULTIPLE instead, which is the number you actually
+    // weigh ("is this worth the trouble?") and the one the Discord alerts quote. It is the NET
+    // multiple from betMath, so fees are already taken out: at 80¢ you receive 1.23x, not 1.25x.
+    var mult = (bm && bm.cost > 0) ? (bm.payout / bm.cost) : (1 / be);
     var meas = measuredAtPrice(p), out =
-      "<span>" + cents + "¢ in</span><span>$1.00 out</span>" + beTxt;
-    if (meas) out += '<span class="' + (meas.hit >= be ? "sGood" : "sBad") + '">runs ' +
-      Math.round(meas.hit * 100) + "%</span>";
+      "<span>" + cents + "¢ → " + mult.toFixed(2) + "x</span>" + beTxt;
+    if (meas) {
+      // The conclusion, in money. NEED 81% vs RUNS 84% is a comparison you still have to do in your
+      // head; "+3.2¢ per $1" is the answer. Break-even already includes this venue's exact fees, so
+      // returns = hit ÷ need, and anything under 1.00 is a losing buy however good the call looks.
+      var edge = meas.hit / be - 1, good = edge > 0;
+      out += '<span class="' + (good ? "sGood" : "sBad") + '">runs ' + Math.round(meas.hit * 100) + "%</span>" +
+        '<span class="' + (good ? "sGood" : "sBad") + '" title="Measured over ' + meas.n +
+        ' graded bets at this price, after ' + (VENUES[getVenue()] || VENUES.kalshi).label + ' fees.">' +
+        (good ? "+" : "−") + Math.abs(edge * 100).toFixed(1) + "¢ per $1</span>";
+    }
     else if (fe && fe.appP != null) out += "<span>app " + Math.round(fe.appP * 100) + "%</span>";
     return out;
   }
@@ -6018,6 +6097,7 @@
     var al = $("autoLatest"); if (al) { al.className = "autoLatest"; al.textContent = ""; }
     var alr = $("autoLearned"); if (alr) alr.innerHTML = "";
     var cov = $("autoCoverage"); if (cov) cov.innerHTML = "";
+    var brc = $("bandReturns"); if (brc) brc.innerHTML = "";
     var rfc = $("recentForm"); if (rfc) rfc.innerHTML = "";
     var ahy = $("autoHistory"); if (ahy) ahy.innerHTML = '<div class="empty">' + (msg || "Cleared — rebuilding as new rounds settle.") + '</div>';
   }

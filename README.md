@@ -15,13 +15,39 @@ then tells you what to play for the **next round** right before the clock runs o
 
 **Changing the code?** Read **[`map/`](map/)** first — one card per part, with line numbers and
 what each change hits. It exists because this app is three big files (`eth-tracker.html` is
-6,166 lines) with no modules to navigate by.
+6,247 lines) with no modules to navigate by.
 
 ---
 
 ## What's new (latest)
 
 Recent work, newest first:
+
+- **r101 — the Discord ping stops quoting 1.1x, and the app shows what each price actually returned.**
+  Reported from real use: every star alert arrived at about **1.1x**, so there was nothing worth betting.
+  Measured against the archive, a 1.1x quote is a **90¢ favorite — the worst band in 7,344 settled rounds
+  at −10.8¢ per dollar**. Two causes, both fixed. **Alerts only; the picker is untouched.**
+  - **The ceiling is now hard-clamped at 88¢ in code.** Earlier revisions of the Worker README documented
+    `LOCK_MAX_PROB` as *default 90 ≈ 1.11x*, and a Worker still carrying that value kept firing from the
+    losing band long after the r96 default moved to 78–82. No dashboard variable can raise the ceiling
+    past 88¢ any more, and the clamp is logged when it bites. **Check your Worker for a leftover
+    `LOCK_MAX_PROB`/`PRICE_MAX` of 90+ and delete it** — plain vars are wiped by each deploy, Secrets are not.
+  - **The star now fires at lock time, ~11 minutes out, not 7 minutes before the close.** By the old
+    scan the price had usually drifted past the band; firing at the commit is exactly where the edge was
+    measured. About **6.6 alerts a day** across the seven coins. The late scan survives as a second chance
+    for a price that drifts *into* the band and no longer double-pings the same round.
+  - **The message says what you will make.** `ETH OVER @ 80c · pays 1.25x · $20->$25.00 (+$5.00) · ~11 min
+    left` instead of `ETH - Over 1.1x`. Set `PING_STAKE` to your usual bet and the dollars match your ticket.
+  - **The bet slip carries the payout and the verdict in money.** `$1.00 out` was the one dead term in the
+    row — it is $1.00 at every price, forever. It now reads `80¢ → 1.23x · need 81.1% · runs 84% · +3.2¢
+    per $1`, so NEED versus RUNS resolves to an answer instead of a comparison you do in your head.
+  - **New in Full log & accuracy: "What each price actually returned."** A live table of your own graded
+    bets by the price you paid, showing won, needed and cents per dollar, with the current band marked and
+    any band under 20 bets shown as a dash. The audit's central finding now re-measures itself on your own
+    record instead of ageing in a README.
+  - **The honest ceiling, stated plainly:** there is no setting that pays a big multiple *and* wins. Cheap
+    contracts pay 1.4x and lose money; the one profitable band pays about 1.25x. The lever for making more
+    is stake size, not payout.
 
 - **r100 — the audit round: 21,412 rounds analysed, the Worker locked down, seven real bugs fixed, and the
   desktop layout tidied.** Six weeks untouched, so everything got a fresh look. **One change touches live
@@ -62,7 +88,7 @@ Recent work, newest first:
     never markup. Every line citation in `map/` was re-verified.
 
 - **A code map, so changing something stops meaning reading everything.** The app is three big
-  files with no modules — `eth-tracker.html` alone is 6,106 lines — so "change the probability
+  files with no modules — `eth-tracker.html` alone is 6,247 lines — so "change the probability
   engine" used to mean scrolling to find it. New **[`map/`](map/)** has one card per part
   (probability engine, market data, round clock, pick surface, bet slip, my bets, charts, AI
   co-pilot, crowd odds, auto-tracker, worker), each with **line numbers** into the source and an

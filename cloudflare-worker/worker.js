@@ -590,6 +590,7 @@ const handler = {
           else if (rec.pending.ts !== old.ts) rec.pending.retried = true;                   // upgraded in place — marked for the record
         }
       }
+      try { await notifyLockPings(env, st); } catch (_) {}  // (r101) the ⭐ star ping, sent at LOCK time with ~11 min to act — the moment the audited edge exists
       try { await notifyHotPicks(env, st); } catch (_) {}   // background phone push on a high-confidence pick (ntfy) — runs AFTER the retry so upgraded picks ping correctly
       try { await maybeBackup(env, st); } catch (_) {}      // once-a-day rolling snapshot of the learned state (7-slot ring); never blocks the save
       try { await archiveRounds(env, st); } catch (_) {}    // permanent per-day round archive (rounds >3h old, exactly once); never blocks the save
@@ -1330,6 +1331,67 @@ async function pushDiscord(env, text) {
     body: JSON.stringify({ content: text }),
   }).catch(() => null);
 }
+// ---- Star pings — the alert that is actually worth acting on (r101) ----------------------------
+// The Sept-2026 audit measured what each PRICE returns after fees over 7,344 Kalshi-settled rounds.
+// Read this table before touching any bound below:
+//     favorite at 70-75c  n=693  won 73.0%  pays 1.38x   -1.2c per $1   LOSES
+//     favorite at 75-78c  n=269  won 79.2%  pays 1.31x   +1.9c
+//     favorite at 78-82c  n=263  won 83.7%  pays 1.25x   +3.2c   <- the band, positive in BOTH audits
+//     favorite at 82-86c  n=191  won 88.0%  pays 1.19x   +3.6c
+//     favorite at 86-90c  n= 96  won 90.6%  pays 1.14x   +2.1c
+//     favorite at 90-95c  n= 53  won 83.0%  pays 1.08x  -10.8c   <- the WORST band in the data
+// Two consequences. (1) A ping quoting ~1.1x is a ~90c favorite — the worst band measured — so the
+// ceiling is HARD-CLAMPED at PING_CEIL_CENTS and no dashboard variable can raise it past that. A
+// LOCK_MAX_PROB/PRICE_MAX left at 90 or 92 from an older revision was exactly how a 1.1x ping got sent.
+// (2) There is no setting that pays a big multiple AND wins: cheap = big payout = negative EV. ~1.25x
+// is the ceiling of what this edge pays, so the lever for making more money is STAKE SIZE, not multiple.
+const PING_FLOOR_CENTS = 70, PING_CEIL_CENTS = 88;
+function pingBand(env) {
+  let lo = Number(env.LOCK_MIN_PROB) || Number(env.PRICE_MIN) || 78;
+  let hi = Number(env.LOCK_MAX_PROB) || Number(env.PRICE_MAX) || 82;
+  const asked = lo + "-" + hi;
+  lo = Math.max(PING_FLOOR_CENTS, Math.min(PING_CEIL_CENTS, lo));
+  hi = Math.max(lo, Math.min(PING_CEIL_CENTS, hi));
+  if (asked !== lo + "-" + hi) console.error("ping band clamped", asked, "->", lo + "-" + hi, "(see PING_CEIL_CENTS)");
+  return { lo, hi };
+}
+// One alert line with the numbers that decide whether to act: the price, what it pays, and what that
+// is in real money on your usual stake (PING_STAKE, default $20). "ETH OVER 1.2x" told you nothing.
+function starLine(coin, side, cents, minsLeft, stake) {
+  const mult = 100 / cents, ret = stake * mult;
+  const bits = [`${coin} ${side} @ ${Math.round(cents)}c`, `pays ${mult.toFixed(2)}x`,
+    `$${stake}->$${ret.toFixed(2)} (+$${(ret - stake).toFixed(2)})`];
+  if (minsLeft != null && minsLeft > 0) bits.push(`~${Math.round(minsLeft)} min left`);
+  return bits.join(" · ");
+}
+// LOCK-TIME ping (r101) — fires from the main cron the moment a pick is committed, with ~10-11 minutes
+// left. That is where the audited edge lives: the same favorite at the same price won 86% when locked
+// with 10-12 min left vs 81% at 12-14, and by the old :08/:23/:38/:53 scan (7 min out) the price has
+// usually drifted past the band entirely. Uses the crowd price the pick was ACTUALLY committed at, so
+// the ping and the tracked bet can never quote different numbers. ~6.6 of these a day across 7 coins.
+async function notifyLockPings(env, st) {
+  if (!env.NTFY_TOPIC && !env.DISCORD_WEBHOOK) return;
+  const { lo, hi } = pingBand(env);
+  const stake = Math.max(1, Number(env.PING_STAKE) || 20);
+  const now = Date.now(), lines = [];
+  for (const c of AUTO_COINS) {
+    const rec = st.coins && st.coins[c], p = rec && rec.pending;
+    if (!p || p.starPinged) continue;
+    if (p.side !== "OVER" && p.side !== "UNDER") continue;                       // SKIP rounds are not alerts
+    const mp = p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null;
+    if (mp == null) continue;                                                     // no live crowd price -> no ping (same gate the picker uses)
+    const cents = p.side === "OVER" ? mp : 100 - mp;                              // what OUR side costs
+    if (!(cents >= lo && cents <= hi)) continue;
+    const minsLeft = typeof p.closeMs === "number" ? (p.closeMs - now) / 60000 : null;
+    if (minsLeft != null && minsLeft < 4) continue;                               // too late to place it
+    lines.push(starLine(c, p.side, cents, minsLeft, stake));
+    p.starPinged = true;                                                          // one per round per coin (persisted by the saveState that follows)
+  }
+  if (!lines.length) return;
+  const msg = lines.join("\n");
+  if (env.DISCORD_WEBHOOK) await pushDiscord(env, "⭐ **Star bet** — " + lo + "-" + hi + "c band, tracker committed\n" + msg);
+  await ntfyPush(env, "Star bet — place it now", "star", msg);
+}
 async function notifyHotPicks(env, st) {
   if (!env.NTFY_TOPIC && !env.DISCORD_WEBHOOK) return;
   // STAR-ONLY MODE (default, r86.1): the user asked to be pinged ONLY on the ⭐ star bet — the
@@ -1406,8 +1468,11 @@ async function scanLateLocks(env) {
   // -2.3c per dollar over the 16 days with full crowd coverage; 78-82 ran +5.5c. Read the long note at
   // the price gate for why this is the best available rule and still not a proven one. Defaults follow
   // PRICE_MIN/PRICE_MAX so one dashboard change moves both; LOCK_MIN_PROB/LOCK_MAX_PROB still override.
-  const lo = Number(env.LOCK_MIN_PROB) || Number(env.PRICE_MIN) || 78,
-        hi = Number(env.LOCK_MAX_PROB) || Number(env.PRICE_MAX) || 82;
+  // (r101) Bounds now come from the shared, HARD-CLAMPED helper — see the table above pingBand().
+  // A dashboard LOCK_MAX_PROB/PRICE_MAX of 90+ used to make this scanner ping ~1.1x favorites, which
+  // the archive scores at -10.8c per dollar. It cannot any more; the clamp is logged when it bites.
+  const { lo, hi } = pingBand(env);
+  const stake = Math.max(1, Number(env.PING_STAKE) || 20);
   // The favorite ping requires the 24/7 tracker to have COMMITTED the same side this round — pinging only
   // the star-plus-commit subset that carried the edge. One read-only state load powers it; if it fails,
   // pings stay gated OFF for safety (a missed ping costs nothing; a bad ping costs money).
@@ -1449,9 +1514,13 @@ async function scanLateLocks(env) {
     const pnd = rec && rec.pending;
     const sameRound = pnd && typeof pnd.closeMs === "number" && closeMs > 0 && Math.abs(pnd.closeMs - closeMs) <= 90000;
     const committedSide = sameRound && (pnd.side === "OVER" || pnd.side === "UNDER") ? pnd.side : null;
-    if (!dead) {
-      if (op >= lo && op <= hi && committedSide === "OVER") lockHot.push(`${c} - Over ${(100 / op).toFixed(1)}x`);
-      else if (op <= 100 - lo && op >= 100 - hi && committedSide === "UNDER") lockHot.push(`${c} - Under ${(100 / (100 - op)).toFixed(1)}x`);
+    // (r101) The lock-time ping (notifyLockPings) already covers picks that were IN the band when they
+    // were committed. This scanner is now only the second chance: a pick whose price DRIFTED into the
+    // band since. Skipping the ones already sent means no duplicate alert for the same round.
+    if (!dead && !(pnd && pnd.starPinged && sameRound)) {
+      const mins = closeMs > now ? (closeMs - now) / 60000 : null;
+      if (op >= lo && op <= hi && committedSide === "OVER") lockHot.push(starLine(c, "OVER", op, mins, stake));
+      else if (op <= 100 - lo && op >= 100 - hi && committedSide === "UNDER") lockHot.push(starLine(c, "UNDER", 100 - op, mins, stake));
     }
     // (2) VALUE ENTRY — the big-payout longshot the price is racing toward (needs live Coinbase momentum).
     // OFF by default since r86.1 (PING_MODE=all restores it): longshots lost ~9%/bet in the audit, and
@@ -1474,9 +1543,9 @@ async function scanLateLocks(env) {
     }
   }
   if (lockHot.length) {
-    const msg = "Star bet (" + lockHot.join(", ") + ")";
-    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "⭐ " + msg);
-    await ntfyPush(env, "Star bet — A-grade setup, time to act", "star", msg);
+    const msg = lockHot.join("\n");
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "⭐ **Star bet** (late entry) — " + lo + "-" + hi + "c band\n" + msg);
+    await ntfyPush(env, "Star bet — still bettable", "star", msg);
   }
   if (valueHot.length) {
     const msg = "Predict (" + valueHot.join(", ") + ")";
