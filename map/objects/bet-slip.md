@@ -4,7 +4,7 @@ source: eth-tracker.html:2522, 5559-5648
 status: verified
 universe: live
 risk: log
-verified_at: 0e0b66a 2026-08-30
+verified_at: a8bd703 2026-09-08
 ---
 
 # bet-slip — the bet in four terms

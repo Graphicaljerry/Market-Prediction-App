@@ -4,7 +4,7 @@ source: eth-tracker.html:2856-3273, 5674
 status: verified
 universe: live
 risk: picks
-verified_at: 0e0b66a 2026-08-30
+verified_at: a8bd703 2026-09-08
 ---
 
 # pick-surface — what the call looks like

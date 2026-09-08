@@ -1,7 +1,7 @@
 # Parts — one line each
 
 Source: `eth-tracker.html` (6,167 lines) and `cloudflare-worker/worker.js` (2,181), commit
-`0e0b66a`, 2026-08-30. Citations are `line` in eth-tracker.html unless marked `worker.js:`.
+`a8bd703`, 2026-09-08. Citations are `line` in eth-tracker.html unless marked `worker.js:`.
 
 **Risk column** is the project's own distinction (see `../../CLAUDE.md`): changes to **picks**
 alter what you are told to do; changes to **log** only alter measurement. Call out pick changes

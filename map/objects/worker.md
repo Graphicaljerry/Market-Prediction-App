@@ -4,7 +4,7 @@ source: cloudflare-worker/worker.js
 status: verified
 universe: live
 risk: both
-verified_at: 0e0b66a 2026-08-30
+verified_at: a8bd703 2026-09-08
 ---
 
 # worker — the Cloudflare side

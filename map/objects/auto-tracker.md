@@ -4,7 +4,7 @@ source: eth-tracker.html:4845-5127, cloudflare-worker/worker.js:1927
 status: verified
 universe: live
 risk: log
-verified_at: 0e0b66a 2026-08-30
+verified_at: a8bd703 2026-09-08
 ---
 
 # auto-tracker — the 24/7 record

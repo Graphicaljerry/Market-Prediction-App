@@ -4,7 +4,7 @@ source: eth-tracker.html:4674-4753, cloudflare-worker/worker.js:835-1119
 status: verified
 universe: live
 risk: picks
-verified_at: 0e0b66a 2026-08-30
+verified_at: a8bd703 2026-09-08
 ---
 
 # ai-copilot — the paid read

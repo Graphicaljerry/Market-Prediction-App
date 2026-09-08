@@ -20,7 +20,7 @@ One job: let a session answer *what is X* and *what else moves if I change X* wi
 `renderHero:5617` means `eth-tracker.html`, line 5617. Worker functions are marked
 `worker.js:939`. Open with `sed -n '5617,5680p' eth-tracker.html` rather than loading the file.
 
-**Line numbers drift.** They were true at commit `0e0b66a`. If the line is wrong, grep the
+**Line numbers drift.** They were true at commit `a8bd703`. If the line is wrong, grep the
 function name — the name is stable, the number is not — and fix the card in your commit.
 
 ## The rule this map protects

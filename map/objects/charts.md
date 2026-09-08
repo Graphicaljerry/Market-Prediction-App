@@ -4,7 +4,7 @@ source: eth-tracker.html:3428-3733
 status: verified
 universe: live
 risk: log
-verified_at: 0e0b66a 2026-08-30
+verified_at: a8bd703 2026-09-08
 ---
 
 # charts — the zoomable price chart

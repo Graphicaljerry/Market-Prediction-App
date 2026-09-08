@@ -1,7 +1,7 @@
 # Tracker code map
 
 What the app is made of, where each piece lives by line, and what a change to one hits.
-Built from `eth-tracker.html` and `cloudflare-worker/worker.js` at commit `0e0b66a`, 2026-08-30.
+Built from `eth-tracker.html` and `cloudflare-worker/worker.js` at commit `a8bd703`, 2026-09-08.
 
 **The source is the truth. This map cites it.** When a card and the code disagree, the code
 wins and the card is stale — fix the card in that commit.
@@ -45,7 +45,7 @@ solves.
 ## ⚠️ One ghost
 
 `README.md`'s "Crucial code map" lists **`gradeRound`**. That function does not exist at commit
-`0e0b66a` — verified by grep. The real grading functions are `settleGrades:4136`,
+`a8bd703` — verified by grep. The real grading functions are `settleGrades:4136`,
 `finalizeGrade:4149`, `gradeLockAB:2784`, and `gradeAIReadsFromLog:2188`. Do not implement
 against `gradeRound`.
 

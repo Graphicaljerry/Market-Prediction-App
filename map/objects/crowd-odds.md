@@ -4,7 +4,7 @@ source: eth-tracker.html:4716, cloudflare-worker/worker.js:652-691
 status: verified
 universe: live
 risk: picks
-verified_at: 0e0b66a 2026-08-30
+verified_at: a8bd703 2026-09-08
 ---
 
 # crowd-odds — what Kalshi thinks
