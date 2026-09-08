@@ -1,7 +1,7 @@
 # How to walk this map
 
 One job: let a session answer *what is X* and *what else moves if I change X* without reading
-6,106 lines of `eth-tracker.html`.
+6,167 lines of `eth-tracker.html`.
 
 ## Inputs
 - Working (this session): the change you were asked to make

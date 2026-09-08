@@ -13,9 +13,9 @@ Stored in `localStorage` under **`myBets.v1`**.
 
 | Function | Line | Does |
 |---|---|---|
-| `toggleMyBet` | 5414 | log or un-log a bet |
-| `resolveMyBets` | 5430 | settle against the round result |
-| `myRecordLine` | 5443 | the W/L form chips |
+| `toggleMyBet` | 5468 | log or un-log a bet |
+| `resolveMyBets` | 5484 | settle against the round result |
+| `myRecordLine` | 5500 | the W/L form chips |
 
 ## If you change this
 

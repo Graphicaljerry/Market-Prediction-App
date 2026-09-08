@@ -11,10 +11,10 @@ verified_at: 0e0b66a 2026-08-30
 
 | Function | Line | Does |
 |---|---|---|
-| `loadTFCloses` | 3428 | closes for a timeframe |
-| `drawTFChart` | 3483 | the timeframe chart |
-| `drawMiniChart` | 3720 | the small one |
-| `drawLiveChart` | 3733 | the live one |
+| `loadTFCloses` | 3456 | closes for a timeframe |
+| `drawTFChart` | 3511 | the timeframe chart |
+| `drawMiniChart` | 3748 | the small one |
+| `drawLiveChart` | 3761 | the live one |
 
 ## If you change this
 

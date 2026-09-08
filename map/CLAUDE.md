@@ -12,8 +12,8 @@ The app is three big files:
 
 | File | Lines |
 |---|---|
-| `eth-tracker.html` | **6,106** — one `<script>` runs 1884–6104 |
-| `cloudflare-worker/worker.js` | **2,088** |
+| `eth-tracker.html` | **6,167** — one `<script>` runs 1896–6165 |
+| `cloudflare-worker/worker.js` | **2,181** |
 | `README.md` | 1,286 |
 
 There are no modules to navigate by. Without line citations, "change the probability engine"
@@ -34,19 +34,19 @@ solves.
 
 | You say | The code says |
 |---|---|
-| the pick / the call | `renderPickCard:2867`, and the verdict slab is `renderHero:5617` |
-| the odds | `combinedOdds:2436` — the calibrated number. `rawCombinedOdds:2369` is pre-calibration. |
-| a round | a 15-minute window; boundary math is `nextBoundary:3875` |
-| grading | `settleGrades:4104` / `finalizeGrade:4117`. **There is no `gradeRound`** — see below. |
-| the crowd | Kalshi odds, `refreshCrowd:4716` in the app, `getKalshiCrowd:578` in the worker |
-| the AI | `callWorker:4724` in the app → `getAIRead:939` in the worker. Two hops, two budgets. |
-| my bets | `myBets.v1` in localStorage, `toggleMyBet:5414` |
+| the pick / the call | `renderPickCard:2882`, and the verdict slab is `renderHero:5674` |
+| the odds | `combinedOdds:2451` — the calibrated number. `rawCombinedOdds:2384` is pre-calibration. |
+| a round | a 15-minute window; boundary math is `nextBoundary:3907` |
+| grading | `settleGrades:4136` / `finalizeGrade:4149`. **There is no `gradeRound`** — see below. |
+| the crowd | Kalshi odds, `refreshCrowd:4766` in the app, `getKalshiCrowd:652` in the worker |
+| the AI | `callWorker:4774` in the app → `getAIRead:1019` in the worker. Two hops, two budgets. |
+| my bets | `myBets.v1` in localStorage, `toggleMyBet:5468` |
 
 ## ⚠️ One ghost
 
 `README.md`'s "Crucial code map" lists **`gradeRound`**. That function does not exist at commit
-`0e0b66a` — verified by grep. The real grading functions are `settleGrades:4104`,
-`finalizeGrade:4117`, `gradeLockAB:2769`, and `gradeAIReadsFromLog:2173`. Do not implement
+`0e0b66a` — verified by grep. The real grading functions are `settleGrades:4136`,
+`finalizeGrade:4149`, `gradeLockAB:2784`, and `gradeAIReadsFromLog:2188`. Do not implement
 against `gradeRound`.
 
 ## Universes

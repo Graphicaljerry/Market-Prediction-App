@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - claude/eth-prediction-tracker-ktutkg
   workflow_dispatch:
 
 permissions:
@@ -33,6 +32,8 @@ jobs:
           cp eth-tracker.html _site/eth-tracker.html
           cp guide.html _site/guide.html
           cp apple-touch-icon.png _site/apple-touch-icon.png
+          cp sw.js _site/sw.js
+          cp manifest.webmanifest _site/manifest.webmanifest
 
       - name: Configure Pages (auto-enable)
         uses: actions/configure-pages@v5

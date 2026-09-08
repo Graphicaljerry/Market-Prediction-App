@@ -1,6 +1,6 @@
 ---
 type: part
-source: eth-tracker.html:4674-4753, cloudflare-worker/worker.js:761-1028
+source: eth-tracker.html:4674-4753, cloudflare-worker/worker.js:835-1119
 status: verified
 universe: live
 risk: picks
@@ -17,21 +17,21 @@ verified_at: 0e0b66a 2026-08-30
 
 | Function | Line | Does |
 |---|---|---|
-| `marketContext` | 4674 | assembles what the model is told |
-| `aiWorthIt` | 4700 | **the spend gate** — decides whether this round is worth paying for |
-| `callWorker` | 4724 | the request (paid, or `crowdOnly`) |
-| `applyCrowd` | 4753 | folds the reply in |
+| `marketContext` | 4724 | assembles what the model is told |
+| `aiWorthIt` | 4750 | **the spend gate** — decides whether this round is worth paying for |
+| `callWorker` | 4774 | the request (paid, or `crowdOnly`) |
+| `applyCrowd` | 4803 | folds the reply in |
 
-**Worker side** — `buildPrompt:761` (market-anchored; physics + calibration + auto-tracker;
-returns a numeric `probOver`), then `pickProvider:532` → `getAIRead:939` →
-`readAnthropic:972` / `readGemini:1009` / `readGroq:1028` → `normalize:880`.
+**Worker side** — `buildPrompt:835` (market-anchored; physics + calibration + auto-tracker;
+returns a numeric `probOver`), then `pickProvider:606` → `getAIRead:1019` →
+`readAnthropic:1052` / `readGemini:1100` / `readGroq:1119` → `normalize:958`.
 
 ## If you change this
 
 **Hits**
-- [probability-engine](probability-engine.md) — `aiOver:2147` consumes this read as one of six
+- [probability-engine](probability-engine.md) — `aiOver:2162` consumes this read as one of six
   signals. It is weighted, not decisive.
-- **Cost.** `aiWorthIt:4700` is the only thing between the app and unbounded spend. Loosening
+- **Cost.** `aiWorthIt:4750` is the only thing between the app and unbounded spend. Loosening
   it is a budget change, not a quality change — say so plainly.
 - [worker](worker.md) — request and response shape, unshared and untyped across the wire
 
@@ -40,5 +40,5 @@ returns a numeric `probOver`), then `pickProvider:532` → `getAIRead:939` →
   disabled.
 
 ## See
-`eth-tracker.html:4700` (the gate), `cloudflare-worker/worker.js:761` (the prompt).
+`eth-tracker.html:4700` (the gate), `cloudflare-worker/worker.js:835` (the prompt).
 Prose: `README.md` → *AI Co-Pilot (Cloudflare Worker)*.

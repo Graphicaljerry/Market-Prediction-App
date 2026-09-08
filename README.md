@@ -15,13 +15,51 @@ then tells you what to play for the **next round** right before the clock runs o
 
 **Changing the code?** Read **[`map/`](map/)** first — one card per part, with line numbers and
 what each change hits. It exists because this app is three big files (`eth-tracker.html` is
-6,106 lines) with no modules to navigate by.
+6,166 lines) with no modules to navigate by.
 
 ---
 
 ## What's new (latest)
 
 Recent work, newest first:
+
+- **r100 — the audit round: 21,412 rounds analysed, the Worker locked down, seven real bugs fixed, and the
+  desktop layout tidied.** Six weeks untouched, so everything got a fresh look. **One change touches live
+  picks: the 24/7 cron now fires at `:04/:19/:34/:49` instead of on the boundary** (see *What 21,412 rounds
+  say*) — same picker, later look, because the data showed the same favorite at the same price winning 86%
+  instead of 81% when locked with 10–12 minutes left. Everything else below is either a bug fix, security, or
+  display-only.
+  - **What the data said, in one line:** the Kalshi crowd price is the only input that predicts anything; every
+    technical signal and the learned model scored at chance; the only edge after fees is buying 78–82¢ favorites,
+    and buying them a few minutes into the round is worth ~5¢ per dollar more than buying them at the open. Full
+    tables in the new **[What 21,412 rounds say](#what-21412-rounds-say-data-audit-sept-2026)** section.
+  - **Security (Worker).** Anyone on the internet could run paid AI reads in a loop, wipe the learned model with
+    `?reset=all`, pin every device to the priciest model, or spam your Discord webhook — none of it needed a
+    secret. Now: destructive and costly endpoints **require `ACCESS_TOKEN`** (the app gained an *Access token*
+    field in Settings), every request is **rate-limited per IP**, CORS is **pinned to the app's origin**, the AI
+    POST has a size cap, prompt inputs are capped, and provider error bodies go to the log instead of the caller.
+    The GitHub Pages workflow also stopped auto-publishing from a stale agent branch, and finally ships `sw.js`
+    and the manifest (they were registered but never deployed). Setup in `cloudflare-worker/README.md → Hardening`.
+  - **Bugs that affected the AI read (picks).** The Anthropic request sent `temperature`, which the current API
+    rejects on Sonnet 5 / Opus 5 — the app's *default* model — so every Claude read was failing silently; fixed
+    (and `max_tokens` raised so thinking can't truncate the JSON). A round where every AI sample failed was cached
+    as if it were a real read, freezing "AI unavailable" on every device for 30 minutes; not cached any more. A
+    free provider answering `probOver: null` was turned into a near-certain UNDER by `Number(null) = 0`; now
+    treated as "no opinion". The AI's "your track record" counted sat-out rounds as misses and mixed other coins
+    into the prompt; it is now this coin's bets only.
+  - **Bugs in the app.** The "I took this bet" record never scored itself (it looked up the settle log by the
+    wrong key) — fixed, so W/L chips and "last round settled" work. The crowd refresh was being **forced on every
+    price tick** — one Worker request per second per open tab, plus a card re-render each time; now once at
+    start, then the normal once-a-minute. "Both say OVER" could compare the tracker's *this-round* pick with the
+    app's *next-round* call in the final two minutes; the two are now only compared when they're about the same
+    round. The "already nearly settled" card left the hero, bet slip and stake box still saying *Bet OVER*; they
+    now sit out together.
+  - **Display.** Desktop: the AI read now sits under the call and the indicators under the chart, instead of three
+    full-width rows with a chevron 1,800px from its label. The price can no longer truncate to `$1,729.…` before
+    the web font loads (the change pill wraps instead). A dead-flat round says *at the line* instead of
+    `· • +$0.00000000`, and the empty track-record strip says *no graded bets yet* instead of a bare dash. A new
+    call lands with one short settle motion (reduced-motion aware). The AI badge renders catalogue names as text,
+    never markup. Every line citation in `map/` was re-verified.
 
 - **A code map, so changing something stops meaning reading everything.** The app is three big
   files with no modules — `eth-tracker.html` alone is 6,106 lines — so "change the probability
@@ -600,6 +638,7 @@ Recent work, newest first:
 - [The probability engine](#the-probability-engine)
 - [Indicator engine](#indicator-engine)
 - [The Auto Pick card — "what & when to buy"](#the-auto-pick-card--what--when-to-buy)
+- [What 21,412 rounds say (data audit, Sept 2026)](#what-21412-rounds-say-data-audit-sept-2026)
 - [Accuracy tracker & calibration](#accuracy-tracker--calibration)
 - [24/7 Auto-Tracker (cron)](#247-auto-tracker-cron)
 - [AI Co-Pilot (Cloudflare Worker)](#ai-co-pilot-cloudflare-worker)
@@ -854,6 +893,78 @@ The headline card (`renderPickCard()`) turns everything into one plain instructi
 
 ---
 
+## What 21,412 rounds say (data audit, Sept 2026)
+
+The 24/7 tracker's permanent archive — **21,412 graded rounds, 7 coins, 21 June → 9 Aug 2026**, of which
+7,344 carried a live Kalshi price at lock time and were later settled by Kalshi itself — was pulled and
+re-analysed from scratch (crowd calibration, every learned feature, a walk-forward logistic model, timing,
+coins, hours, streaks). Plain-English conclusions, with the numbers that back them:
+
+**1. The crowd price is the only thing here that predicts anything.** On Kalshi-confirmed rounds the crowd's
+stated probability lands within ~2 points of reality in every band (log-loss 0.636 vs 0.693 for a coin flip).
+Every other input the app computes — order book, momentum, RSI, MACD, range position, last round's direction
+and size, time of day, cross-coin momentum, the learned per-coin weights — scored **at chance** when tested
+honestly: a model trained on all 11 of them *without* the crowd, tested day-by-day on rounds it had never seen,
+was right **50.8%** of the time. Adding those 11 signals *to* the crowd made it very slightly **worse** (0.6385
+vs 0.6365). When the app's own number disagreed with the crowd (390 rounds), the app was right **48%** of the
+time. The "similar past setups" memory leaned on 12,648 rounds and hit **51.2%**. Rounds do not repeat
+(next round same direction as this one: **48.7%**), and BTC's last round does not lead the alts (**48.1%**).
+
+**2. The only edge after fees is buying strong favorites — the favorite-longshot bias.** Buy the crowd's
+favorite at its price, pay Kalshi's 7% fee on profit, and this is what each price band returned:
+
+| Favorite priced | n | won | needed | per $1 |
+|---|---|---|---|---|
+| 50–65¢ | 4,822 | 52–62% | 54–64% | **−1.2 to −1.7¢** |
+| 65–75¢ | 1,645 | 67–73% | 68–73% | **−0.2 to −0.9¢** |
+| 75–78¢ | 269 | 79.2% | 77.3% | +1.9¢ |
+| **78–82¢** | 263 | **83.7%** | 80.5% | **+3.2¢** |
+| 82–86¢ | 191 | 88.0% | 84.3% | +3.7¢ |
+| 86–90¢ | 96 | 90.6% | 87.9% | +2.7¢ |
+| 90–95¢ | 53 | 83.0% | 92.0% | −9.0¢ |
+
+The 75–90¢ zone as a whole ran **+2.8¢ per $1** (bootstrap 95% CI +0.5 to +5.3¢, n=819); 78–82¢ alone is
++3.2¢ but with only 263 rounds its interval still touches zero. This is the same finding the r96 price gate was
+built on, from a *different* (earlier) slice of data. Combined with the later Aug 10–26 audit already recorded in
+`worker.js`, 78–82¢ is the one band positive in **both** periods; 75–78 and 82–86 were positive here and
+negative there, so **the gate stays at 78–82** — widening it is not supported once both periods are counted.
+Every committed pick in the archive (2,157 with a crowd price) took the crowd's favorite side; the app's job,
+measured, is choosing *which* favorites and *when*, not *which side*.
+
+**3. Timing moved the edge more than any signal — and this is the one change we made to the live picker.**
+The same favorite, at the same price, won far more often when the pick locked *later* in the round:
+
+| Favorite priced | locked 10–12 min left | locked 12–14 min left |
+|---|---|---|
+| 78–82¢ | 86.2% won · **+5.6¢** (n=123) | 81.3% · +0.9¢ (n=134) |
+| 82–86¢ | 91.1% · **+6.9¢** (n=101) | 84.3% · −0.1¢ (n=89) |
+| 86–90¢ | 94.8% · **+7.0¢** (n=58) | 83.8% · −4.4¢ (n=37) |
+| 70–75¢ | 76.3% · +2.9¢ (n=241) | 71.7% · −1.4¢ (n=414) |
+
+A few minutes into a round the market is sharper and the same posted price under-states the favorite more. The
+cron used to fire right on the boundary (`*/15`), so most picks locked with 12–14 min left — the worse column.
+**It now fires at `4,19,34,49`**, landing picks at ~10–11 min left. Picker logic is untouched; only *when* it
+looks changed. The lock time is now recorded on every round (`leftMin`) so the next audit can measure this
+directly instead of inferring it. (Cells are ~100 rounds each — directionally consistent across all four
+bands, but re-measure after a few weeks before trusting the exact cents.)
+
+**4. Smaller things worth knowing.** The Coinbase proxy grade is wrong **31.7%** of the time when the close
+lands within 0.02% of the line (10.4% at 0.02–0.05%, 0.3% beyond 0.1%) — the r89 "too close to call" void
+rule is exactly right. Big last-round overshoots reverse slightly more than they continue (**47.0%** repeat
+when the overshoot was large, n=5,976 — statistically real, not tradeable after fees). Hour of day and day of
+week do nothing the crowd hasn't already priced. Coins differ in noise, not in edge (BNB and SOL favorites
+ran slightly positive, BTC and XRP slightly negative — all inside the error bars).
+
+**What this means for how you use the app.** The honest strategy the data supports is: *wait a few minutes
+into a round, and buy the favorite only when it costs 78–82¢ with at least 6 minutes left* — which is what the
+24/7 tracker and the Sure-Thing pings already do. The live "next round" call the app locks two minutes before a
+close is made **before** the next round has a strike or a crowd price, so it can only lean on the signals that
+scored at chance; the app already labels it a coin-flip preview, and that label is correct. The analysis script
+that produced every number above lives with the archive export in git history (`data-audit/`, commit `e87a07d`)
+and runs on the `?archive=YYYY-MM-DD` files the Worker still serves.
+
+---
+
 ## Accuracy tracker & calibration
 
 Every locked pick is stored with its strike, direction, round time, and a **signal snapshot**
@@ -875,7 +986,8 @@ Streak / Hit Rate inline, and notes when the odds are calibrated.
 
 ## 24/7 Auto-Tracker (cron)
 
-A **scheduled** Worker (`crons = ["*/15 * * * *"]`) keeps an independent, always-on record —
+A **scheduled** Worker (`crons = ["4,19,34,49 * * * *"]` — four minutes into each round, see
+*What 21,412 rounds say* above for why it moved off the boundary) keeps an independent, always-on record —
 even when no tab is open — using **only free data and no LLM**, so it adds nothing to AI spend.
 Each run, per coin with a Kalshi series:
 
@@ -1223,7 +1335,8 @@ Server-side, in Worker **KV** (`CROWD_KV`):
 ## Deployment
 
 **App → GitHub Pages.** `.github/workflows/pages.yml` copies `eth-tracker.html` to
-`index.html` and publishes on every push to `main`.
+`index.html` (plus `guide.html`, the icon, `sw.js` and `manifest.webmanifest`) and publishes on
+every push to `main` — and only `main`; the old extra trigger on an agent branch is gone (r100).
 
 **Worker → Cloudflare (Git-connected).** The repo's root `wrangler.toml` points Cloudflare at
 `cloudflare-worker/worker.js`; **every push redeploys the Worker** (no manual `wrangler
@@ -1278,7 +1391,7 @@ Start at [`map/objects/_index.md`](map/objects/_index.md), or
 [`map/effects/CONTEXT.md`](map/effects/CONTEXT.md) if you already know what you are changing.
 
 The list that used to live here had drifted: it named a function `gradeRound` that does not
-exist. The real grading functions are `settleGrades:4104` and `finalizeGrade:4117`. Line-cited
+exist. The real grading functions are `settleGrades:4136` and `finalizeGrade:4149`. Line-cited
 cards are harder to let rot than a bare list of names.
 
 ---

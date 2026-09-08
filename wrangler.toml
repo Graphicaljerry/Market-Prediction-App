@@ -9,11 +9,25 @@ compatibility_date = "2026-06-20"
 # (Kalshi price + Coinbase candles + order book — no LLM call, no AI spend) and grades
 # the previous round. Read it at  <worker-url>/?picks=ETH . Stays within the free tier.
 [triggers]
-# */15       = the 24/7 pick / grade / learn loop (unchanged).
+# 4,19,34,49 = the 24/7 pick / grade / learn loop. It used to be */15 (right at the round boundary).
+#              The Sept-2026 data audit (21,412 archived rounds) found that WHEN the pick locks moved
+#              the edge more than any signal: a 78-82c favorite locked with 10-12 min left won 86%
+#              (+5.6c per $1 after fees) vs 81% (+0.9c) when locked with 12-14 min left, and the
+#              same pattern held in every price band — the market is sharper a few minutes in. Firing
+#              at :04 lands the lock at ~10-11 min left, still 4+ min above the 6-min floor in
+#              runCoinPick. Revert to "*/15 * * * *" to restore the old timing exactly.
 # 8,23,38,53 = ~7 min before each close: the Sure-Thing scanner that pings you while a favorite is
 #              still BETTABLE (it locks once near-certain). worker.js scanLateLocks; read-only on
 #              Kalshi crowd, no KV writes.
-crons = ["*/15 * * * *", "8,23,38,53 * * * *"]
+crons = ["4,19,34,49 * * * *", "8,23,38,53 * * * *"]
+
+# OPTIONAL but recommended: a real per-IP rate limit for the public Worker URL (the code falls back to a
+# per-isolate memory window when this binding is absent). Uncomment once your wrangler version supports
+# it (wrangler 4.x+); the binding name must stay "RL".
+# [[ratelimits]]
+# name = "RL"
+# namespace_id = "1001"
+# simple = { limit = 60, period = 60 }
 
 # Public Kalshi 15-min series tickers (not secret). Kept here so Git deploys don't
 # wipe them — plain-text dashboard variables get reset on every Worker build.

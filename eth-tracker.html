@@ -471,10 +471,12 @@
        rather than as breathing room. That was exactly the r92 bug on iPad, so the rule now is: no
        column is allowed to end in a void. */
     .layout { display: grid; grid-template-columns: minmax(400px, 452px) minmax(0,1fr); column-gap: var(--sp-4); row-gap: var(--sp-5); align-items: start;
+      /* (r100) Each closed door sits under the thing it is about: the AI read under the call, the
+         indicators under the chart they annotate, settings alone across the bottom. Three full-width
+         rows with a chevron 1,800px from their label was the last of the r93 layout's dead space. */
       grid-template-areas:
         "left  chart"
-        "read  read"
-        "ind   ind"
+        "read  ind"
         "set   set"; }
     /* The left stack is a real flex column with NO gap, so the price card and the verdict card read
        as one card (they're one thought). Everything on the right is a plain grid item. */
@@ -529,10 +531,11 @@
   /* On a phone the row genuinely cannot hold a six-figure price, a change pill AND a boxed clock. The
      pill is the least important of the three, so it drops to its own line rather than the price losing
      digits — the price keeps a floor width so flex shrinks the pill's line first, not the number. */
-  @media (max-width: 480px) {
-    .nowSide .nowVal { flex-wrap: wrap; row-gap: 5px; }
-    .nowSide .price { min-width: min(100%, 12ch); }
-  }
+  /* (r100) …and the same rule at EVERY width, not just phones: before the web font arrives (or if it
+     never does) the fallback face is wider, and the desktop row was printing "$1,729.…". Wrapping the
+     pill costs one line of height; truncating the price costs the one number the page exists to show. */
+  .nowSide .nowVal { flex-wrap: wrap; row-gap: 5px; }
+  .nowSide .price { min-width: min(100%, 12ch); }
   @media (max-width: 420px) {
     .nowTop .price { font-size: 26px; } .nowTop .timer { font-size: 20px; }
     .timer { gap: 3px; } .timer .tD { padding: 3px 6px; border-radius: 8px; }
@@ -911,6 +914,12 @@
      as rounds turn over — only the fill changes. */
   .verdict { border-radius: 16px; padding: 17px 19px; margin-top: 2px;
     transition: background-color .45s var(--ease), border-color .45s var(--ease), color .45s var(--ease); }
+  /* (r100) A new call lands with a small press-and-release — the one motion on the page that says
+     "this changed", so a flipped verdict can't slip past you while you watch the price. Runs only
+     when the slab's state actually changes (see renderHero), never on the once-a-second re-render. */
+  @keyframes verdictSettle { 0% { transform: scale(.985); } 55% { transform: scale(1.008); } 100% { transform: scale(1); } }
+  .verdict.settle { animation: verdictSettle .42s var(--ease); }
+  @media (prefers-reduced-motion: reduce) { .verdict.settle { animation: none; } }
   .verdict.go   { background: var(--green); color: #04160a; border: 1px solid var(--green); }
   .verdict.no   { background: var(--red);   color: #2b0300; border: 1px solid var(--red); }
   .verdict.soft { background: rgba(var(--accent-rgb), .07); border: 1px solid rgba(var(--accent-rgb), .34); }
@@ -1776,6 +1785,8 @@
       <div class="aiSetupBody">
         <span class="fieldCap">Worker URL</span>
         <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <span class="fieldCap">Access token <span class="capNote">— the Worker's ACCESS_TOKEN secret. Needed for Clear all and fresh AI reads; leave blank if you never set one.</span></span>
+        <input id="workerToken" class="settingsInput" type="password" placeholder="optional" autocomplete="off" autocapitalize="off" spellcheck="false" />
         <span class="fieldCap">Model <span class="capNote">— refreshed from Google, Groq and Anthropic themselves, so new models appear on their own.</span></span>
         <!-- (r94) These options are the OFFLINE FALLBACK only. loadModelCatalogue() replaces them with
              the live list the Worker pulls from each provider's own list-models endpoint, so this
@@ -1831,10 +1842,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r99b</span><span class="buildSep">·</span><span>2026-08-29</span>
+        <span class="buildVer">build r100</span><span class="buildSep">·</span><span>2026-09-08</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>The audit round (r100).</b> Six weeks untouched, so everything got a fresh look. <b>The 24/7 record was re-analysed from scratch — 21,412 rounds.</b> Plain result: the Kalshi crowd price is the only input that predicts anything; every technical signal and the learned model scored at a coin flip; the one edge after fees is buying a 78–82¢ favorite, and buying it a few minutes <i>into</i> the round instead of at the open was worth about 5¢ more per dollar. <b>That last point is the one change to live picks:</b> the tracker's cron now fires four minutes into each round instead of on the boundary — same picker, later look. <b>Security:</b> the Worker could be told to wipe the record, spend the AI budget or spam your alerts by anyone who knew its URL; destructive calls now need the access token (new field in Settings), every caller is rate-limited, and CORS is pinned to this site. <b>Bugs fixed:</b> Claude reads were failing silently on the default model (an API parameter it no longer accepts); a failed AI read was being frozen for the whole round; "I took this bet" never scored itself; the crowd was being re-fetched once a second; "both say OVER" could compare picks about different rounds; and the "already settled" card left the bet slip still saying Bet. <b>Display:</b> on desktop the AI read sits under the call and the indicators under the chart; the price can no longer truncate before the font loads; a flat round says <i>at the line</i>; a new call lands with one short settle motion.</p>
         <p><b>Flat theme — the glass comes off (r98).</b> The frosted-glass look is gone: no more see-through blurred cards, no drifting ambient glows, no coloured washes behind the page, no noise film, no shimmer sweeping the timer bar. Cards are now a <b>solid dark surface on a solid near-black ground</b>, separated by hairline borders — nothing behind them to show through, so none of the artefacts that glass kept producing (seams, banding, sliced glows) can ever come back. Colour got stricter too: <b>green and red are the only accents left</b>, and they only ever mean direction — green for over/go (the ⭐ star badge is green now instead of amber), red for under/loss. Skip states went neutral grey ("nothing to do" shouldn't glow orange), and the blue brand square became the app's one green. About 130 lines of dead glass CSS were deleted outright — it lives in git history if it's ever missed. <b>Display-only — no pick, grade or logged round changed.</b></p>
         <p><b>Spacing put on one scale, and the last hard edges removed (r97).</b> <b>(1) The price block and the verdict are now one pane, not two cards jammed together.</b> They were two separately-frosted cards butted edge to edge with their facing corners squared off — and two frosted layers never render identically, so the join showed as a hard line straight across the card with a notch at each end. That's why it looked like the sections were <i>touching</i> rather than belonging together. The glass now sits on a single wrapper and the two halves inside are transparent, so it's one continuous pane divided by a hairline inset from the edges — the same divider style used elsewhere in the card, so it reads as designed. <b>(2) One spacing scale.</b> The page had six different vertical gaps — 0, 8, 16, 18, 28 and 44px — collected over twenty builds. Everything now comes from five steps, so the rhythm is 20px between cards and 34px between groups, everywhere, on every screen. The card was also holding a 28px margin under itself that leaked into the layout and stacked with other margins; the card owns its padding now and the layout owns the space between cards. <b>(3) The glows stopped being sliced.</b> Each card clips its own glow to its rounded shape, but the glows were positioned deliberately hanging over the card's edge — so the clip cut them while they were still bright, leaving a crisp arc. That's the stain with a defined boundary in the corner of the chart. They're pulled fully inside now and fade to nothing before they reach any edge. Card shadows are also tinted to the page's own colour instead of flat black. <b>Display-only — no pick, grade or logged round changed.</b></p>
         <p><b>Cents turned into money, and the picker finally has an opinion about price (r96).</b> Two changes, one of which moves real money. <b>(1) The bet calculator.</b> "≈1.3¢ taker fee" is a true sentence that tells you nothing. Type what you'd actually stake and the card now says it in dollars: how many contracts that buys, what leaves your account, what comes back if you're right, what you lose if you're wrong, and — the number that actually decides everything — <b>the win rate you'd need just to break even</b>, next to what rounds at that price have <i>actually</i> won on the record. It also compares venues: the same bet on Kalshi, Robinhood, Robinhood Gold and Coinbase, because the gap between them is bigger than it looks. <b>(2) A price gate on the pick.</b> The picker used to commit on its blended probability with no opinion about what the bet <i>cost</i> — and a 40-day audit of 26,313 rounds showed that's where the money went: at 65–70¢ it bet 1,057 times and lost, at 75–78¢ it lost badly, and only 78–82¢ actually cleared its break-even. Everything it committed, at any price, ran −2.5¢ per dollar over the 16 days with full crowd data; restricted to 78–82¢ it ran +5.5¢. So the app now simply won't bet outside 78–82¢, and the ⭐ band moved 73–90 → 78–82 to match. <b>That's about 9 bets a day instead of 36.</b> <b>Told straight:</b> that window is 160 bets, roughly 1.4 sigma, and a fair statistical test says a search across 70 possible bands finds one looking this good by luck about a third of the time. It is the best available rule, not a proven edge — which is exactly what was said about the last two bands before they decayed. <b>This changes what you're told to bet.</b> Set PRICE_MIN=0 in the Worker to turn it off.</p>
@@ -1937,6 +1949,9 @@
   // Normalize a stored time string to 12-hour (older history rows were saved as 24-hour "HH:MM").
   function disp12(t){ if (!t) return ""; if (/[AP]M/i.test(t)) return t; var m = /^(\d{1,2}):(\d{2})/.exec(t); if (!m) return t; var h = +m[1]; return (h % 12 || 12) + ":" + m[2] + " " + ampm(h); }
   function fmtMoney(n){ var a = Math.abs(n), d = a >= 1 ? 2 : a >= 0.1 ? 4 : a >= 0.01 ? 5 : a >= 0.0001 ? 6 : 8; return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  // Format a small DIFFERENCE (a gap, a move) with the decimals its reference price uses — so a $1.34
+  // move on ETH prints "$1.34", not with DOGE-style decimals just because the number is small.
+  function fmtMoneyLike(n, ref){ var a = Math.abs(ref || 0), d = a >= 1 ? 2 : a >= 0.1 ? 4 : a >= 0.01 ? 5 : a >= 0.0001 ? 6 : 8; return "$" + n.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d }); }
 
   // ---------- Indicator math ----------
   function emaSeries(vals, p) {
@@ -2944,7 +2959,7 @@
     // Dead-money guard: when the market already prices our side near-certain it pays ~1.0x, so betting it
     // just returns your stake. Don't dress that up as a "BUY" — show it honestly and point at the payout line.
     if (mpct != null && mpct >= DEAD_MONEY_PCT && !nextMode) {
-      el.className = "reco skip"; setGlow("SKIP");
+      el.className = "reco skip"; setGlow("SKIP"); state.shownDir = "SKIP";   // one voice: the hero, slip and stake box read shownDir, so they must sit out too (2026-09 audit)
       scopeEl.innerHTML = '<span class="liveTag">● LIVE</span>THIS round · closes ' + nsH;
       buyEl.className = "buyLine skip";
       buyEl.innerHTML = call.dir + " already nearly settled" +
@@ -3027,7 +3042,7 @@
       var fe = feeEdgeFor(my);
       if (fe && fe.edge <= -0.01) return { tier: "flip", label: "OVERPRICED — don't buy", sub: "the app likes " + my + " but not at this price — after the fee it's a losing buy (payout line has the math)" };
     }
-    var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
+    var auto = trackerSideForShownRound();
     var style = getPlayStyle(), aggressive = style !== "disciplined", minEdge = style === "active" ? 0.04 : 0.06;
     if (nextMode) {
       if (auto && auto === my && edge >= 0.08) return { tier: "lean", label: "NEXT-ROUND LEAN", sub: "heads-up for the next round (it opens ~50/50) — optional, not a sure thing" };
@@ -3089,10 +3104,23 @@
       renderPickStrength();
     });
   })();
+  // The 24/7 tracker's pick, but ONLY if it is about the round the card is currently showing. In the
+  // final two minutes the card has moved on to the NEXT round while the tracker's pending pick is still
+  // about THIS one — comparing the two printed "both say OVER" about different rounds (2026-09 audit).
+  // A pick with no closeMs (older Worker) is trusted as before.
+  function trackerSideForShownRound() {
+    var p = state.lastAuto && state.lastAuto.pending; if (!p) return null;
+    if (typeof p.closeMs === "number" && currentRoundEnd) {
+      var nextMode = (state.remaining == null ? 999 : state.remaining) <= BET_WINDOW;
+      var target = currentRoundEnd.getTime() + (nextMode ? 900000 : 0);
+      if (Math.abs(p.closeMs - target) > 90000) return null;
+    }
+    return p.side;
+  }
   function renderConsensus() {
     var el = $("consensus"); if (!el) return;
     var my = state.shownDir || "SKIP";
-    var auto = state.lastAuto && state.lastAuto.pending ? state.lastAuto.pending.side : null;
+    var auto = trackerSideForShownRound();
     if (!auto) { el.className = "consensus"; el.innerHTML = ""; syncPlaybook(); return; }   // tracker not connected → nothing to reconcile
     var cls, txt;
     if (my !== "SKIP" && my === auto) { cls = my === "OVER" ? "over" : "under"; txt = "Co-Pilot and the 24/7 tracker <b>both say " + my + "</b> — higher conviction, this is your call."; }
@@ -3867,7 +3895,11 @@
     var estTag = strikeSrcLabel() === "(est.)"
       ? ' <span style="color:var(--label-3);font-weight:600;font-size:.85em" title="Estimated from the Coinbase open — Kalshi’s official strike hasn’t loaded for this round yet; it snaps to the exact line once the crowd read returns.">(est.)</span>'
       : "";
-    el.innerHTML = "Beat " + fmtMoney(strike) + estTag + " · " + arrow + " " + (d >= 0 ? "+" : "−") + fmtMoney(Math.abs(d)) +
+    // The gap is printed with the SAME decimals as the line itself (a $0 gap on ETH used to print as
+    // "$0.00000000" because fmtMoney picks decimals from the number's own size), and a dead-flat round
+    // says so in words instead of "· • +$0.00".
+    if (d === 0) { el.innerHTML = "Beat " + fmtMoney(strike) + estTag + " · at the line · " + side; return; }
+    el.innerHTML = "Beat " + fmtMoney(strike) + estTag + " · " + arrow + " " + (d >= 0 ? "+" : "−") + fmtMoneyLike(Math.abs(d), strike) +
       " (" + (pct >= 0 ? "+" : "") + pct.toFixed(3) + "%) · " + side;
   }
 
@@ -4486,9 +4518,18 @@
   $("infoSheet").addEventListener("click", function (e) { if (e.target === $("infoSheet")) setSheet(false); });
 
   // ---------- AI Co-Pilot (optional Cloudflare Worker) ----------
-  var WORKER_KEY = "workerUrl_v1", AI_MODEL_KEY = "aiModel_v1";
+  var WORKER_KEY = "workerUrl_v1", AI_MODEL_KEY = "aiModel_v1", WORKER_TOKEN_KEY = "workerToken_v1";
   var DEFAULT_WORKER = "https://market-prediction-app.jrodsuniverse.workers.dev";   // baked-in so you never retype it
   function getWorkerUrl() { try { return ((localStorage.getItem(WORKER_KEY) || "").trim()) || DEFAULT_WORKER; } catch (e) { return DEFAULT_WORKER; } }
+  // (2026-09 security audit) The Worker now refuses destructive calls (Clear all, restore) and
+  // cache-bypassing AI reads without its ACCESS_TOKEN. The token rides along as ?token= on every
+  // Worker call when one is saved here; nothing changes for a Worker with no token set.
+  function getWorkerToken() { try { return (localStorage.getItem(WORKER_TOKEN_KEY) || "").trim(); } catch (e) { return ""; } }
+  function withToken(url) {
+    var t = getWorkerToken(); if (!t || !url) return url;
+    try { var u = new URL(url); u.searchParams.set("token", t); return u.toString(); }
+    catch (e) { return url + (url.indexOf("?") < 0 ? "?" : "&") + "token=" + encodeURIComponent(t); }
+  }
   var DEFAULT_AI_MODEL = "claude-sonnet-5";   // sharpest read; the dropdown also picks the provider (Worker needs ANTHROPIC_API_KEY for Claude). No key → falls back gracefully to a free provider. Only used on a device that has never picked one — a saved choice always wins.
   function getModel() { try { return localStorage.getItem(AI_MODEL_KEY) || DEFAULT_AI_MODEL; } catch (e) { return DEFAULT_AI_MODEL; } }
 
@@ -4612,13 +4653,18 @@
   function aiAvailable() { return !!getWorkerUrl(); }
 
   function historySummary() {
-    var r = state.rounds, n = r.length, correct = 0, streak = 0, i, x, f;
+    // (2026-09 audit) The AI's "YOUR TRACK RECORD" is THIS coin's BETS. It used to count every logged
+    // round of every coin — sat-out rounds scored as misses and BTC rounds inside the ETH prompt — so
+    // the AI was told a deflated, cross-coin hit rate and pulled its number toward 50 on phantom losses.
+    var r = (state.rounds || []).filter(function (x) { return !x.coin || x.coin === state.coin; });
+    var n = 0, correct = 0, streak = 0, i, x, f;
+    for (i = 0; i < r.length; i++) if (r[i].pick === "OVER" || r[i].pick === "UNDER") n++;
     var byDir = { OVER: { n: 0, correct: 0 }, UNDER: { n: 0, correct: 0 } };
     // confidence calibration, folded by symmetry so each band = "favored-side confidence"
     var cal = [[0.5,0.6],[0.6,0.7],[0.7,0.8],[0.8,1.01]].map(function (b) { return { lo: b[0], hi: b[1], n: 0, won: 0 }; });
     var agree = { n: 0, correct: 0 };       // rounds where the indicators strongly agreed (|net|>=3)
     var obiAgree = { n: 0, correct: 0 };    // rounds where the order book agreed with the pick
-    for (i = 0; i < n; i++) {
+    for (i = 0; i < r.length; i++) {
       x = r[i];
       if (x.correct) correct++;
       if (x.pick && byDir[x.pick]) { byDir[x.pick].n++; if (x.correct) byDir[x.pick].correct++; }
@@ -4632,7 +4678,7 @@
             ((f.obi > 0) === (x.pick === "OVER"))) { obiAgree.n++; if (x.correct) obiAgree.correct++; }
       }
     }
-    for (i = 0; i < n; i++) { if (r[i].correct) streak++; else break; }
+    for (i = 0; i < r.length; i++) { if (r[i].pick !== "OVER" && r[i].pick !== "UNDER") continue; if (r[i].correct) streak++; else break; }   // streak over bets only; sat-out rounds don't break it
     return {
       graded: n,
       hitRatePct: n ? Math.round(correct / n * 100) : null,
@@ -4664,9 +4710,13 @@
 
   function maybeAutoAI() {
     if (!aiAvailable() || !aiDataReady()) return;
-    refreshCrowd(true);             // free: show the live market + real strike right away
-    if (state.aiPrimed) return;
+    // (2026-09 audit) This runs on every live price tick (~1/sec). It used to FORCE a crowd refresh each
+    // time, which turned the Worker's 60-second throttle into one POST per second per open tab —
+    // ~86k requests a day — and re-rendered the pick card on every reply. Force only the very first
+    // time (so the real strike shows right away); after that the normal once-a-minute cadence applies.
+    if (state.aiPrimed) { refreshCrowd(false); return; }
     state.aiPrimed = true;
+    refreshCrowd(true);             // free: show the live market + real strike right away
     callWorker(false);              // first paid read (gated inside)
   }
 
@@ -4743,7 +4793,7 @@
     if (fresh) payload.fresh = true;        // bypass the shared per-round read cache (only to catch up a stale read)
     var btn = $("aiRun"); if (!crowdOnly) { state._aiFetching = true; if (btn) { btn.disabled = true; btn.textContent = "Analyzing…"; } }
     var scope = scopeAt(secondsLeft);
-    fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+    fetch(withToken(url), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
       .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
       .then(function (d) { if (crowdOnly) applyCrowd(d, scope); else renderAI(d, scope); })
       .catch(function (e) { if (!crowdOnly) renderAIError(e.message); })
@@ -4817,13 +4867,16 @@
     if (!getWorkerUrl()) { el.hidden = true; return; }     // no AI wired up → no badge
     var m = getModel();
     el.className = "aiBadge " + modelProvider(m);
-    el.innerHTML = '<span class="aiBadgeDot"></span>' + modelNice(m);
+    el.textContent = "";
+    var dot = document.createElement("span"); dot.className = "aiBadgeDot"; el.appendChild(dot);
+    el.appendChild(document.createTextNode(modelNice(m)));   // catalogue display names are third-party text — never markup
     el.hidden = false;
   }
 
   // ---------- 24/7 auto-tracker (server-side, free) ----------
   function workerGet(params) {
     var base = getWorkerUrl(); if (!base) return null;
+    var t = getWorkerToken(); if (t) params = Object.assign({ token: t }, params);
     try { var u = new URL(base); Object.keys(params).forEach(function (k) { u.searchParams.set(k, params[k]); }); return u.toString(); }
     catch (e) { return base + (base.indexOf("?") < 0 ? "?" : "&") + Object.keys(params).map(function (k) { return k + "=" + encodeURIComponent(params[k]); }).join("&"); }
   }
@@ -5233,6 +5286,7 @@
     $("aHit").className = "v mono " + (graded ? (correctN / graded >= 0.5 ? "pos" : "neg") : "");   // set class BEFORE animating so the flash (statUp) isn't overwritten
     $("aHit").title = confirmedN < graded ? (confirmedN + " of " + graded + " confirmed vs Kalshi; the rest still settling") : "all confirmed vs Kalshi";
     animateStat($("aHit"), graded ? Math.round(correctN / graded * 100) : null, "%");
+    var _hk = $("aHit").nextElementSibling; if (_hk) _hk.textContent = graded ? "hit rate" : "no graded bets yet";   // a bare "—" read as broken, not as empty
     animateStat($("aStreak"), streak, "");   // current win streak shown in the stats row (replaces the old "Now" pick, which the Auto Pick panel already shows)
     // Recent form — rolling hit-rate over the last 50 BETS (not rounds): steadier than the streak and
     // not diluted by ancient history. Until there are 50 bets it shows however many there are, with a
@@ -5428,10 +5482,13 @@
   }
   // Resolve logged bets against whatever the app already knows settled (moveLog is Kalshi-priority).
   function resolveMyBets() {
-    var a = myBets(), log = state.moveLog || {}, changed = false;
+    var a = myBets(), changed = false;
     for (var i = 0; i < a.length; i++) {
       var b = a[i];
       if (b.res != null || !b.endMs) continue;
+      // moveLog is keyed by coin FIRST, then by round bucket (see moveLogFor). Indexing it by bucket
+      // alone always came back empty, so no logged bet was ever scored (2026-09 audit).
+      var log = (state.moveLog && state.moveLog[b.coin || state.coin]) || {};
       var e = log[Math.floor((b.endMs - 900000) / 900000)];
       if (!e) continue;
       var actual = e.d > 0 ? "OVER" : "UNDER";
@@ -5465,7 +5522,7 @@
   }
   // (r91) What happened to the round you were just looking at — so you don't have to go hunting.
   function lastOutcomeLine() {
-    var log = state.moveLog || {}, keys = Object.keys(log);
+    var log = (state.moveLog && state.moveLog[state.coin]) || {}, keys = Object.keys(log);   // per-coin log (audit fix, same as resolveMyBets)
     if (!keys.length || !currentRoundEnd) return null;
     var prevBucket = Math.floor(currentRoundEnd.getTime() / 900000) - 1;   // the round that just closed
     var e = log[prevBucket];
@@ -5659,7 +5716,11 @@
     else if (nextMode) { head = v("", word); qual = "— next-round preview"; cls = "hcSkip"; slab = "soft"; }
     else if (s.tier === "lean") { head = v("Lean ", word); cls = dir === "OVER" ? "hcOver" : "hcUnder"; slab = "soft"; }
     else { head = v("Bet ", word); cls = dir === "OVER" ? "hcOver" : "hcUnder"; slab = dir === "OVER" ? "go" : "no"; }
-    $("verdict").className = "verdict " + slab;
+    var _vEl = $("verdict"), _vCls = "verdict " + slab;
+    if (_vEl.className !== _vCls) {   // (r100) the slab "settles" once when its call changes — not on every re-render
+      _vEl.className = _vCls;
+      _vEl.classList.remove("settle"); void _vEl.offsetWidth; _vEl.classList.add("settle");
+    }
     $("heroCall").innerHTML =
       '<span class="hcMain"><span class="' + cls + '">' + head + '</span>' +
         (qual ? '<span class="hcQual">' + qual + '</span>' : "") + '</span>' +
@@ -5924,7 +5985,7 @@
     syncPlaybook();
   }
   $("aiRun").addEventListener("click", function () {
-    try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); } catch (e) {}
+    try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); var _tk = $("workerToken"); if (_tk) localStorage.setItem(WORKER_TOKEN_KEY, _tk.value.trim()); } catch (e) {}
     pushSharedModel($("aiModel").value);
     loadModelCatalogue(true);   // (r94) saving is also "check for new models now" — forces a re-fetch past the Worker's 6h cache
     callWorker(true);
@@ -5936,7 +5997,7 @@
   loadRounds(); loadLateRounds(); loadClearTs(); loadMoveLog(); loadLockAB(); loadLockedNext(); loadCommitted();
   renderAccuracy(); renderRounds(); renderLateRecord(); tickTimer(); refresh(); connectWS();
   wireStake();   // (r96) the bet calculator's amount + venue inputs
-  (function initAI() { $("aiModel").value = getModel(); renderAIBadge(); syncSharedModel(); loadModelCatalogue(false); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
+  (function initAI() { $("aiModel").value = getModel(); renderAIBadge(); syncSharedModel(); loadModelCatalogue(false); var bs = $("aiBudget"); if (bs) bs.value = getAIBudget(); var _tk0 = $("workerToken"); if (_tk0) _tk0.value = getWorkerToken(); var u = getWorkerUrl(); if (u) { $("workerUrl").value = u; $("aiRun").textContent = "Refresh AI Read"; $("aiIntro").classList.add("hidden"); fetchAutoTracker(state.coin, true); fetchBest(true); } })();
   // (r94) Re-check the catalogue every 6h for a tab that stays open for days, so a model released
   // this afternoon shows up without a reload. Cheap: the Worker serves it from KV.
   setInterval(function () { loadModelCatalogue(false); }, 6 * 60 * 60 * 1000);

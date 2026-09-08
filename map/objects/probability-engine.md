@@ -23,29 +23,29 @@ the model does not believe itself until the record says it should.
 
 | Signal | Line | Reads |
 |---|---|---|
-| `indOver` | 2141 | technical indicators |
-| `aiOver` | 2147 | the paid AI read |
-| `crowdOver` | 2221 | Kalshi crowd |
-| `obiOver` | 2232 | order-book imbalance |
-| `momOver` | 2244 | 1-minute momentum |
-| `barrierOver` | 2344 | the barrier/diffusion model |
+| `indOver` | 2156 | technical indicators |
+| `aiOver` | 2162 | the paid AI read |
+| `crowdOver` | 2236 | Kalshi crowd |
+| `obiOver` | 2247 | order-book imbalance |
+| `momOver` | 2259 | 1-minute momentum |
+| `barrierOver` | 2359 | the barrier/diffusion model |
 
 | Combination | Line | Does |
 |---|---|---|
-| `normCdf` | 2300 | normal CDF helper |
-| `sigmaRoundFallback` | 2306 | volatility fallback when candles are thin |
-| `rawCombinedOdds` | 2369 | weights the six |
-| `calibrate` | 2392 | bends the raw number toward measured reality |
-| `combinedOdds` | 2436 | **the number everything else consumes** |
+| `normCdf` | 2315 | normal CDF helper |
+| `sigmaRoundFallback` | 2321 | volatility fallback when candles are thin |
+| `rawCombinedOdds` | 2384 | weights the six |
+| `calibrate` | 2407 | bends the raw number toward measured reality |
+| `combinedOdds` | 2451 | **the number everything else consumes** |
 
 ## If you change this
 
 **Hits**
-- [pick-surface](pick-surface.md) — `renderPickCard:2867` and `renderHero:5617` render this
+- [pick-surface](pick-surface.md) — `renderPickCard:2882` and `renderHero:5674` render this
   number and nothing else. They derive no pick of their own.
 - [bet-slip](bet-slip.md) — `NEED` (break-even) is computed against it
-- [round-clock](round-clock.md) — `settleGrades:4104` scores the number that was live
-- **The calibration record itself.** `calibrate:2392` reads history, and history is written by
+- [round-clock](round-clock.md) — `settleGrades:4136` scores the number that was live
+- **The calibration record itself.** `calibrate:2407` reads history, and history is written by
   grading. Change the odds and today's history stops being comparable to yesterday's. This is
   the non-obvious one.
 

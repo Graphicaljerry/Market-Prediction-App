@@ -43,6 +43,7 @@ const DEFAULT_MODELS = {
 // result in KV and refresh it on the cron. So the app's dropdown tracks the providers rather
 // than a list someone has to remember to edit.
 const MODELS_KEY = "cfg:models";
+const ARCHIVE_DAYS_CACHE = { at: 0, days: [] };   // per-isolate memo of the ?archive day list (see the handler)
 const MODELS_TTL_MS = 6 * 60 * 60 * 1000;   // refresh at most every 6h (cron does it in the background)
 
 // Models that exist but cannot answer a prompt — selecting one would just break the AI read.
@@ -187,15 +188,66 @@ async function cachedModels(env) {
   return (c && c.models && c.models.length) ? c.models : null;
 }
 
+// ---- Abuse controls (2026-09 security audit) --------------------------------------------------
+// The Worker URL is baked into a public GitHub Pages site, so every endpoint is reachable by anyone
+// on the internet. Three layers keep a stranger from spending your AI budget or wiping the record:
+//   1. CORS is pinned to the app's origin (ALLOWED_ORIGINS, comma-separated, overrides the default) so
+//      a hostile web page can't fan the attack out through its own visitors' browsers.
+//   2. Every request is rate-limited per client IP. If a Cloudflare rate-limit binding named RL is
+//      bound (see cloudflare-worker/README.md) it is used; otherwise a small per-isolate memory
+//      window applies — weaker (each isolate counts separately) but free and zero-config.
+//   3. Anything destructive or costly (?reset, ?restore, ?backups, ?testpush, setModel, models=refresh,
+//      cache-bypassing AI reads) now REQUIRES the ACCESS_TOKEN secret — it used to be optional.
+const DEFAULT_ORIGINS = ["https://graphicaljerry.github.io"];
+function allowedOrigin(request, env) {
+  const o = request.headers.get("Origin");
+  if (!o) return DEFAULT_ORIGINS[0];
+  const list = String(env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const allow = list.length ? list : DEFAULT_ORIGINS;
+  if (allow.includes("*") || allow.includes(o)) return o;
+  if (o === "null" || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)) return o;   // file:// previews + local dev
+  return allow[0];
+}
+const RL_MEM = new Map();   // per-isolate fallback window: key -> recent timestamps
+async function rateLimited(request, env, bucket, limit, periodSec) {
+  const ip = request.headers.get("CF-Connecting-IP") || "unknown";
+  const key = bucket + ":" + ip;
+  if (env.RL && typeof env.RL.limit === "function") {
+    try { const r = await env.RL.limit({ key }); return !!(r && r.success === false); } catch (_) { /* fall through to memory */ }
+  }
+  const now = Date.now(), cut = now - periodSec * 1000;
+  const arr = (RL_MEM.get(key) || []).filter((t) => t > cut);
+  if (arr.length >= limit) { RL_MEM.set(key, arr); return true; }
+  arr.push(now); RL_MEM.set(key, arr);
+  if (RL_MEM.size > 5000) { for (const k of RL_MEM.keys()) { if (RL_MEM.size <= 2500) break; RL_MEM.delete(k); } }
+  return false;
+}
+function tokenOK(env, u) { return !!env.ACCESS_TOKEN && u.searchParams.get("token") === env.ACCESS_TOKEN; }
+const NEED_TOKEN = "unauthorized — set the ACCESS_TOKEN secret on the Worker and pass ?token=<it> (the app's Settings has a field for it)";
+
 const CORS = {
-  "Access-Control-Allow-Origin": "*", // tighten to your Pages origin if you like
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
+function withCors(res, request, env) {
+  const out = new Response(res.body, res);
+  out.headers.set("Access-Control-Allow-Origin", allowedOrigin(request, env));
+  out.headers.append("Vary", "Origin");
+  return out;
+}
 
-export default {
+const handler = {
   async fetch(request, env) {
+    let res;
+    try { res = await handler.handle(request, env); }
+    catch (e) { console.error("unhandled", e && e.message); res = json({ error: "internal error" }, 500); }
+    return withCors(res, request, env);
+  },
+  async handle(request, env) {
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+    // One per-IP window for everything (reads are cheap but not free — KV reads and Kalshi calls sit
+    // behind most GETs), and a tighter one for the paid POST path below.
+    if (await rateLimited(request, env, request.method === "POST" ? "post" : "get", request.method === "POST" ? 30 : 120, 60)) return json({ error: "rate limited — slow down" }, 429);
 
     const provider = pickProvider(env);
 
@@ -233,7 +285,7 @@ export default {
         const coin = (u.searchParams.get("picks") || "").toUpperCase();
         const body = coin ? (st.coins[coin] || { coin, empty: true }) : (st.coins || {});
         if (u.searchParams.has("dl")) {
-          const name = "tracker-picks-" + (coin || "all") + "-" + new Date().toISOString().slice(0, 10) + ".json";
+          const name = "tracker-picks-" + (coin.replace(/[^A-Z0-9]/g, "") || "all") + "-" + new Date().toISOString().slice(0, 10) + ".json";
           return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json", "Content-Disposition": 'attachment; filename="' + name + '"', ...CORS } });
         }
         return json(body);
@@ -245,14 +297,19 @@ export default {
         if (!env.CROWD_KV) return json({ error: "no KV namespace bound" }, 500);
         const day = u.searchParams.get("archive") || "";
         if (!day) {
-          const days = [];
-          let cursor;
-          do {
-            const l = await env.CROWD_KV.list({ prefix: "arch:", cursor });
-            for (const k of l.keys || []) days.push(k.name.slice(5));
-            cursor = l.list_complete ? null : l.cursor;
-          } while (cursor);
-          return json({ days: days.sort(), hint: "?archive=YYYY-MM-DD for a day's rounds (&dl=1 to download)" });
+          // The day list is a KV LIST walk (rate-limited on the free tier and slow) — remember it for
+          // ten minutes per isolate so a stranger refreshing this URL can't burn the list quota.
+          if (!(ARCHIVE_DAYS_CACHE.at && Date.now() - ARCHIVE_DAYS_CACHE.at < 10 * 60000)) {
+            const days = [];
+            let cursor;
+            do {
+              const l = await env.CROWD_KV.list({ prefix: "arch:", cursor });
+              for (const k of l.keys || []) days.push(k.name.slice(5));
+              cursor = l.list_complete ? null : l.cursor;
+            } while (cursor);
+            ARCHIVE_DAYS_CACHE.at = Date.now(); ARCHIVE_DAYS_CACHE.days = days.sort();
+          }
+          return json({ days: ARCHIVE_DAYS_CACHE.days, hint: "?archive=YYYY-MM-DD for a day's rounds (&dl=1 to download)" });
         }
         if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return json({ error: "use ?archive=YYYY-MM-DD" }, 400);
         const raw = await env.CROWD_KV.get("arch:" + day);
@@ -299,8 +356,12 @@ export default {
       // Gated by the topic itself: knowing it already lets you publish to the channel, so no new secret.
       if (u.searchParams.has("testpush")) {
         const tp = u.searchParams.get("testpush");
-        const gate = (env.NTFY_TOPIC && tp === env.NTFY_TOPIC) || (env.DISCORD_WEBHOOK && tp === "discord");
-        if (!gate) return json({ sent: false, error: "pass ?testpush=<your exact NTFY_TOPIC>, or ?testpush=discord once DISCORD_WEBHOOK is set" }, 401);
+        // (2026-09 audit) `?testpush=discord` used to need no secret at all, so anyone could spam your
+        // phone and Discord until the webhook got revoked. Now it needs the ACCESS_TOKEN (or, as
+        // before, the exact ntfy topic — knowing that already lets you publish to the channel).
+        const gate = tokenOK(env, u) || (env.NTFY_TOPIC && tp === env.NTFY_TOPIC);
+        if (!gate) return json({ sent: false, error: "pass ?testpush=<your exact NTFY_TOPIC>, or ?testpush=1&token=<ACCESS_TOKEN>" }, 401);
+        if (await rateLimited(request, env, "testpush", 5, 600)) return json({ sent: false, error: "rate limited" }, 429);
         const out = {};
         if (env.NTFY_TOPIC) {
           const nurl = /^https?:\/\//.test(env.NTFY_TOPIC) ? env.NTFY_TOPIC : `https://ntfy.sh/${env.NTFY_TOPIC}`;
@@ -323,7 +384,8 @@ export default {
       // into clobbering each other). The learned model is kept by default; add &model=1 to wipe it.
       // Honors ACCESS_TOKEN like the POST path — set that secret first if you want this locked down.
       if (u.searchParams.has("reset")) {
-        if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
+        if (!tokenOK(env, u)) return json({ error: NEED_TOKEN }, 401);   // (2026-09 audit) always token-gated — this wipes the learned record
+        if (await rateLimited(request, env, "destructive", 5, 600)) return json({ error: "rate limited" }, 429);
         const coin = (u.searchParams.get("reset") || "").toUpperCase();
         if (!coin) return json({ error: "specify a coin, e.g. ?reset=ETH (or ?reset=all)" }, 400);
         const st = await loadState(env);
@@ -346,7 +408,7 @@ export default {
       }
       // List both rolling backup rings of the learned state (read-only; token-gated like ?reset).
       if (u.searchParams.has("backups")) {
-        if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
+        if (!tokenOK(env, u)) return json({ error: NEED_TOKEN }, 401);
         const readRing = async (prefix, n) => {
           const out = [];
           for (let i = 0; i < n; i++) {
@@ -363,7 +425,8 @@ export default {
       // Restore the live state from a backup slot — OVERWRITES current (token-gated like ?reset).
       // Format: ?restore=hourly:<0-23> or ?restore=daily:<0-6> (find the slot via ?backups first).
       if (u.searchParams.has("restore")) {
-        if (env.ACCESS_TOKEN && u.searchParams.get("token") !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
+        if (!tokenOK(env, u)) return json({ error: NEED_TOKEN }, 401);   // (2026-09 audit) always token-gated — this overwrites the live record
+        if (await rateLimited(request, env, "destructive", 5, 600)) return json({ error: "rate limited" }, 429);
         const m = /^(daily|hourly):(\d+)$/.exec(u.searchParams.get("restore") || "");
         if (!m) return json({ error: "use ?restore=hourly:<0-23> or ?restore=daily:<0-6> (see ?backups)" }, 400);
         const kind = m[1], slot = parseInt(m[2], 10), max = kind === "hourly" ? HOURLY_SLOTS : BACKUP_SLOTS;
@@ -383,7 +446,8 @@ export default {
       // build its dropdown, so the list tracks what the providers actually serve today instead of a
       // hard-coded set. Cached ~6h in KV and warmed by the cron; ?models=refresh forces a re-fetch.
       if (u.searchParams.has("models")) {
-        const cat = await listModels(env, u.searchParams.get("models") === "refresh");
+        // A forced refresh is three provider list calls + KV writes — token-holders only (audit).
+        const cat = await listModels(env, u.searchParams.get("models") === "refresh" && tokenOK(env, u));
         return json({ ok: true, provider, ...cat });
       }
       // Quick health check: shows which provider is wired up.
@@ -391,17 +455,22 @@ export default {
     }
     if (request.method !== "POST") return json({ error: "POST only" }, 405);
 
-    if (env.ACCESS_TOKEN) {
-      const token = new URL(request.url).searchParams.get("token");
-      if (token !== env.ACCESS_TOKEN) return json({ error: "unauthorized" }, 401);
-    }
+    const pu = new URL(request.url);
+    const authed = tokenOK(env, pu);
+    if (env.ACCESS_TOKEN && !authed) return json({ error: "unauthorized" }, 401);
 
+    // (2026-09 audit) The body feeds the AI prompt, so its size is billed input tokens. Refuse anything
+    // bigger than a real app payload (~5-10 KB) before parsing it.
+    const clen = Number(request.headers.get("content-length") || 0);
+    if (clen > 32000) return json({ error: "payload too large" }, 413);
     let body;
     try { body = await request.json(); } catch { return json({ error: "bad json" }, 400); }
+    if (!body || typeof body !== "object") return json({ error: "bad json" }, 400);
 
     // Persist the SHARED AI-model choice so every device reflects it. A tiny separate KV key the cron
     // never touches (no race with the auto-tracker state); stored without a TTL so the choice sticks.
     if (body.setModel != null) {
+      if (!authed) return json({ error: NEED_TOKEN }, 401);   // (audit) a stranger could pin every device to the priciest model
       const m = String(body.setModel);
       // Groq (and other OpenAI-compatible catalogues) namespace their ids with a slash —
       // "meta-llama/llama-4-…", "openai/gpt-oss-…" — which the old pattern rejected outright, so
@@ -411,7 +480,9 @@ export default {
       return json({ ok: true, model: m });
     }
 
-    const coin = String(body.coin || "ETH").toUpperCase();
+    const coin = String(body.coin || "ETH").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 10) || "ETH";
+    if (body.model != null && !/^[a-z0-9._:\/\-]{1,80}$/i.test(String(body.model))) delete body.model;   // an unknown id would only miss the cache
+    if (body.fresh && !authed) delete body.fresh;   // (audit) cache bypass = a paid read per request; token-holders only
     const aiProvider = resolveProvider(env, body.model);   // the app's chosen model can pick the provider
 
     let crowd = null;
@@ -461,9 +532,11 @@ export default {
 
     let ai, ok = true;
     try { ai = await getAIRead(env, aiProvider, body, crowd, autopicks); }
-    catch (e) { ok = false; ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", probOver: 50, rationale: "AI error: " + e.message }; }
+    catch (e) { ok = false; ai = { verdict: "SKIP", confidence: "Low", edge: "n/a", probOver: 50, rationale: "AI error: " + e.message, unavailable: true }; }
     // Cache only a SUCCESSFUL read (~30-min TTL) so a transient API error isn't frozen in for the round.
-    if (ok) { try { if (env.CROWD_KV) await env.CROWD_KV.put(readKey, JSON.stringify({ ai, provider: aiProvider, ts: nowMs }), { expirationTtl: 1800 }); } catch (_) {} }
+    // (2026-09 audit) getAIRead also RETURNS a SKIP when every sample fails — that used to be cached as
+    // if it were a real read, freezing "AI temporarily unavailable" onto every device for the round.
+    if (ok && !ai.unavailable) { try { if (env.CROWD_KV) await env.CROWD_KV.put(readKey, JSON.stringify({ ai, provider: aiProvider, ts: nowMs }), { expirationTtl: 1800 }); } catch (_) {} }
     return json({ crowd, ai, provider: aiProvider, aiTs: nowMs });
   },
 
@@ -524,6 +597,7 @@ export default {
     })());
   },
 };
+export default handler;
 
 function json(obj, status = 200) {
   return new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json", ...CORS } });
@@ -786,13 +860,17 @@ function buildPrompt(body, crowd, autopicks) {
     typeof m.highVsLinePct === "number" && typeof m.lowVsLinePct === "number" ? `Range vs the line: the high reached ${m.highVsLinePct >= 0 ? "+" : ""}${fnum(m.highVsLinePct, 3)}% (${m.highVsLinePct >= 0 ? "above" : "below"} the line), the low ${m.lowVsLinePct >= 0 ? "+" : ""}${fnum(m.lowVsLinePct, 3)}%. Read it: price repeatedly testing a side and failing to hold = mean-reversion risk; fresh highs/lows toward the close = momentum.` : null,
   ].filter(Boolean).join("\n");
 
-  const indicators = (body.indicators || []).map((i) => `- ${i.name}: ${i.value} (${i.label})`).join("\n");
+  // Client-supplied lists are capped (2026-09 audit): the app sends ~10 indicators and 12 recent rounds;
+  // anything larger is someone padding the prompt to run up billed input tokens.
+  const s80 = (v) => String(v == null ? "" : v).slice(0, 80);
+  const indicators = (Array.isArray(body.indicators) ? body.indicators : []).slice(0, 40).map((i) => `- ${s80(i && i.name)}: ${s80(i && i.value)} (${s80(i && i.label)})`).join("\n");
 
   // --- track record / calibration ---
-  const h = body.history || {};
-  const recent = (h.recent || []).map((x) => {
+  const h = (body.history && typeof body.history === "object") ? body.history : {};
+  const recent = (Array.isArray(h.recent) ? h.recent : []).slice(0, 24).map((x) => {
     const extra = [x.net != null ? `net ${x.net > 0 ? "+" : ""}${x.net}` : null, x.said ? `said ${x.said}` : null, x.obi != null ? `book ${x.obi > 0 ? "+" : ""}${x.obi}` : null].filter(Boolean).join("/");
-    return `${x.time} ${x.pick}->${x.actual} ${x.correct ? "OK" : "X"}${extra ? " [" + extra + "]" : ""}`;
+    const bet = x.pick === "OVER" || x.pick === "UNDER";
+    return `${s80(x.time)} ${bet ? s80(x.pick) + "->" + s80(x.actual) + " " + (x.correct ? "OK" : "X") : "sat out->" + s80(x.actual)}${extra ? " [" + extra + "]" : ""}`;
   }).join(", ");
   const calLine = (h.confidenceCalibration || []).length
     ? "Confidence calibration — " + h.confidenceCalibration.map((c) => `when it claimed ${c.saidLikely}, that side truly won ${c.actuallyWonPct}% (n=${c.n})`).join("; ") + "."
@@ -881,7 +959,9 @@ function normalize(o) {
   o = o || {};
   const verdict = ["OVER", "UNDER", "SKIP"].includes(o.verdict) ? o.verdict : "SKIP";
   const confidence = ["Low", "Medium", "High"].includes(o.confidence) ? o.confidence : "Low";
-  let p = Number(o.probOver);
+  // `null` / "" must count as "omitted", not as 0 — Number(null) is 0, which used to turn a "no opinion"
+  // read from a free provider into a near-certain UNDER inside the blend (2026-09 audit).
+  let p = (o.probOver == null || o.probOver === "") ? NaN : Number(o.probOver);
   if (!Number.isFinite(p)) {                       // model omitted it → derive from verdict + confidence
     const base = confidence === "High" ? 80 : confidence === "Medium" ? 68 : 58;
     p = verdict === "OVER" ? base : verdict === "UNDER" ? 100 - base : 50;
@@ -940,7 +1020,7 @@ async function getAIRead(env, provider, body, crowd, autopicks) {
   const prompt = buildPrompt(body, crowd, autopicks);
   const model = modelForProvider(provider, body.model, env, await cachedModels(env));
   const hasKey = (provider === "anthropic" && env.ANTHROPIC_API_KEY) || (provider === "gemini" && env.GEMINI_API_KEY) || (provider === "groq" && env.GROQ_API_KEY);
-  if (!hasKey) return { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "No AI provider configured — add ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY.", plan: "" };
+  if (!hasKey) return { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "No AI provider configured — add ANTHROPIC_API_KEY, GEMINI_API_KEY, or GROQ_API_KEY.", plan: "", unavailable: true };
   const once = (t) => provider === "anthropic" ? readAnthropic(env.ANTHROPIC_API_KEY, model, prompt, t)
     : provider === "gemini" ? readGemini(env.GEMINI_API_KEY, model, prompt, t)
     : readGroq(env.GROQ_API_KEY, model, prompt, t);
@@ -951,7 +1031,7 @@ async function getAIRead(env, provider, body, crowd, autopicks) {
   if (n === 1) return await once();
   const temps = [0.2, 0.5, 0.8, 0.35, 0.65];
   const res = (await Promise.all(Array.from({ length: n }, (_, i) => once(temps[i % temps.length]).catch(() => null)))).filter(Boolean);
-  if (!res.length) return { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "AI temporarily unavailable — try again next round.", plan: "" };
+  if (!res.length) return { verdict: "SKIP", confidence: "Low", edge: "n/a", rationale: "AI temporarily unavailable — try again next round.", plan: "", unavailable: true };
   if (res.length === 1) return res[0];
   return aiConsensus(res);
 }
@@ -974,10 +1054,14 @@ async function readAnthropic(key, model, prompt, temp) {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    // (2026-09 audit, checked against the current API reference) Sonnet 5 / Opus 5 / Opus 4.7+ / Fable
+    // REJECT `temperature` with a 400 — and claude-sonnet-5 is the app's default — so every read on the
+    // default model was failing silently. Thinking is adaptive on these models and counts toward
+    // max_tokens, so 400 was also far too tight for a 6-field JSON answer. The sample-to-sample variety
+    // the ensemble wants comes from the model's own sampling; no temperature needed.
     body: JSON.stringify({
       model,
-      max_tokens: 400,
-      temperature: typeof temp === "number" ? temp : 1,
+      max_tokens: 2048,
       output_config: {
         format: {
           type: "json_schema",
@@ -999,16 +1083,23 @@ async function readAnthropic(key, model, prompt, temp) {
       messages: [{ role: "user", content: prompt }],
     }),
   });
-  if (!r.ok) throw new Error("anthropic " + r.status + " " + (await r.text()).slice(0, 140));
+  if (!r.ok) throw providerError("anthropic", r);
   const data = await r.json();
   const tb = (data.content || []).find((b) => b.type === "text");
   if (!tb) throw new Error("no text block");
   return normalize(extractJson(tb.text));
 }
 
+// A provider's raw error body goes to the Worker log (wrangler tail / dashboard), NOT back to the
+// anonymous caller — it maps out which keys exist and what they're being rejected for (2026-09 audit).
+function providerError(provider, r) {
+  r.text().then((t) => console.error(provider, r.status, String(t).slice(0, 300))).catch(() => {});
+  return new Error(provider + " HTTP " + r.status);
+}
+
 async function readGemini(key, model, prompt, temp) {
   if (!key) throw new Error("GEMINI_API_KEY missing");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`;
   const r = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -1017,7 +1108,7 @@ async function readGemini(key, model, prompt, temp) {
       generationConfig: { responseMimeType: "application/json", temperature: typeof temp === "number" ? temp : 0.3, maxOutputTokens: 400 },
     }),
   });
-  if (!r.ok) throw new Error("gemini " + r.status + " " + (await r.text()).slice(0, 140));
+  if (!r.ok) throw providerError("gemini", r);
   const data = await r.json();
   const text = data && data.candidates && data.candidates[0] && data.candidates[0].content &&
     data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text;
@@ -1041,7 +1132,7 @@ async function readGroq(key, model, prompt, temp) {
       ],
     }),
   });
-  if (!r.ok) throw new Error("groq " + r.status + " " + (await r.text()).slice(0, 140));
+  if (!r.ok) throw providerError("groq", r);
   const data = await r.json();
   const text = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
   if (!text) throw new Error("no groq text");
@@ -1909,6 +2000,7 @@ async function runCoinPick(env, coin, st) {
         // strike drift vs our price-now proxy), and whether the second-chance retry upgraded this pick.
         crowd: p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null,
         kStrike: typeof p.kStrike === "number" ? p.kStrike : null,
+        leftMin: typeof p.leftMin === "number" ? p.leftMin : null,
         retried: p.retried ? true : undefined,
         // Void bookkeeping (r89): `void` marks a round too close for the proxy to call; `provisional`
         // keeps the side it WOULD have said, so the app can show "too close to call" honestly and a
@@ -2040,6 +2132,7 @@ async function runCoinPick(env, coin, st) {
           modelOver: Math.round(modelOver * 100),
           caseMem: cmem,                                            // "similar past setups" memory — scored, fed to the AI, not yet in the pick
           closeMs: new Date(mkt.closeTime).getTime(),                // grade exactly when THIS round closes
+          leftMin: Math.round((new Date(mkt.closeTime).getTime() - nowTs) / 6000) / 10,   // minutes left at lock (2026-09 audit: timing moved the edge more than any signal — log it so the next audit can measure it directly)
           ts: nowTs,                                                 // client formats this to 12-hour local time
           label: pad2(d.getUTCHours()) + ":" + pad2(d.getUTCMinutes()) + " UTC",   // fallback for older clients
           feat,                                                      // remembered so the next run can learn from it

@@ -1,6 +1,6 @@
 ---
 type: part
-source: eth-tracker.html:2856-3273, 5617
+source: eth-tracker.html:2856-3273, 5674
 status: verified
 universe: live
 risk: picks
@@ -16,18 +16,18 @@ the bug is in [probability-engine](probability-engine.md), not here.
 
 | Function | Line | Does |
 |---|---|---|
-| `setGlow` | 2856 | the confidence glow |
-| `renderPickCard` | 2867 | locked call + next-round ribbon |
-| `renderLean` | 3273 | the lean indicator |
-| `renderHero` | 5617 | the verdict slab: picks fill (`go`/`no`/`soft`/`skip`), builds the headline via `v(verb, side)`, calls `slipRow` |
+| `setGlow` | 2871 | the confidence glow |
+| `renderPickCard` | 2882 | locked call + next-round ribbon |
+| `renderLean` | 3301 | the lean indicator |
+| `renderHero` | 5674 | the verdict slab: picks fill (`go`/`no`/`soft`/`skip`), builds the headline via `v(verb, side)`, calls `slipRow` |
 
 ## If you change this
 
-**Hits** — [bet-slip](bet-slip.md), because `renderHero:5617` calls `slipRow:5591` directly.
+**Hits** — [bet-slip](bet-slip.md), because `renderHero:5674` calls `slipRow:5648` directly.
 
 **Does not hit** — the pick itself. Changing wording, colour, or layout here cannot change what
 the model says. If you find yourself computing a probability in this file, it belongs in
-`combinedOdds:2436` instead.
+`combinedOdds:2451` instead.
 
 ## See
 `eth-tracker.html:5617`.

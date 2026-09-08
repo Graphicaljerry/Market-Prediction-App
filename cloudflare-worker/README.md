@@ -183,8 +183,11 @@ Add Text vars `KALSHI_SERIES_ETH`, `KALSHI_SERIES_BTC`, `KALSHI_SERIES_SOL` set 
 the nearest-expiry open market in that series.
 
 ## 24/7 auto-tracker (cron) — free, no AI spend
-The root `wrangler.toml` adds **two cron triggers** (`[triggers] crons = ["*/15 * * * *", "8,23,38,53 * * * *"]`).
-The `*/15` trigger is the auto-tracker loop below; the `8,23,38,53` trigger is the near-lock "bet now" scanner
+The root `wrangler.toml` adds **two cron triggers** (`[triggers] crons = ["4,19,34,49 * * * *", "8,23,38,53 * * * *"]`).
+The `4,19,34,49` trigger is the auto-tracker loop below — it fires **four minutes into each round**, not on the
+boundary, because the Sept-2026 audit of 21,412 archived rounds found the same strong favorite won far more often
+when locked with 10–12 minutes left than with 12–14 (the market is sharper a few minutes in; revert to `*/15` to
+restore the old timing exactly). The `8,23,38,53` trigger is the near-lock "bet now" scanner
 (`scanLateLocks`, ~7 min before each close — see Notifications). Every
 15 minutes the Worker's `scheduled` handler makes a market-anchored pick for each coin that has
 a `KALSHI_SERIES_*` set — using **only free data** (Kalshi price + Coinbase 1-min momentum +
@@ -321,7 +324,7 @@ Get a push **on your phone even when the app is closed** the moment a coin opens
 Cloudflare Workers (shared IPs) *even with a token*, so Discord is the dependable path:
 1. In Discord: pick a channel → **Edit Channel → Integrations → Webhooks → New Webhook → Copy Webhook URL**.
 2. Worker → **Settings → Variables and Secrets** → add a **Secret** **`DISCORD_WEBHOOK`** = that URL → **Deploy**.
-3. Test: open `…workers.dev/?testpush=discord` — it posts to your channel and returns `{"discord":{"sent":true}}`. Real pings then arrive automatically. (`pushDiscord` in `worker.js`.)
+3. Test: open `…workers.dev/?testpush=1&token=<ACCESS_TOKEN>` (r100: the old `?testpush=discord` needed no secret and was removed) — it posts to your channel and returns `{"discord":{"sent":true}}`. Real pings then arrive automatically. (`pushDiscord` in `worker.js`.)
 
 **By default (r86.1) exactly ONE kind of ping fires: the ⭐ star bet** — the user asked for star-only
 notifications. The other ping types below stay in the code but are OFF unless you set a Text var
@@ -362,6 +365,25 @@ Open the live app → **AI Co-Pilot** → paste the Worker URL → **Save & Get 
 It saves on your device. The crowd refreshes for free; the paid AI read runs at most once per
 round while the tab is open (tune it with the **AI spend** setting).
 
-## Optional hardening
-- **Abuse guard:** add a Secret `ACCESS_TOKEN`, then call the Worker as `…workers.dev/?token=VALUE`.
-- **Lock CORS:** in `worker.js`, change `Access-Control-Allow-Origin: "*"` to `https://graphicaljerry.github.io`.
+## Hardening (r100 — some of it is no longer optional)
+
+The Worker URL is baked into a public web page, so anyone on the internet can call it. The Sept-2026
+security audit found that, with no `ACCESS_TOKEN` set, a stranger could run paid AI reads in a loop, wipe the
+learned model with one `?reset=all`, pin every device to the priciest AI model, and fire your Discord webhook
+until Discord revoked it. `worker.js` now ships with these guards built in:
+
+- **Token required for anything destructive or costly.** `?reset`, `?restore`, `?backups`, `setModel`,
+  `?models=refresh`, `?testpush` and cache-bypassing (`fresh`) AI reads all refuse without
+  `?token=<ACCESS_TOKEN>` — even when no token is configured (they answer 401 with a hint). **So set the
+  Secret `ACCESS_TOKEN`** and paste the same value into the app's **Settings → AI Co-Pilot setup → Access
+  token** field; the app then sends it on every Worker call. Everything read-only (`?picks`, `?crowd`, the
+  normal AI read) still works without it, exactly as before.
+- **`?testpush=discord` no longer exists.** Use `?testpush=1&token=<ACCESS_TOKEN>` (or the exact ntfy topic, as before).
+- **Per-IP rate limits.** Every request is counted per client IP (120/min for reads, 30/min for the AI POST, 5 per
+  10 min for anything destructive). Out of the box this is a small in-memory window per Worker isolate — free,
+  zero-config, but each isolate counts separately. For a real global limit, add a rate-limit binding named `RL`
+  (the commented `[[ratelimits]]` block in `wrangler.toml`); the code uses it automatically when bound.
+- **CORS is pinned** to `https://graphicaljerry.github.io` (plus `localhost` / `file://` for previews). Serving the app
+  from another origin? Set the plain-text var `ALLOWED_ORIGINS` (comma-separated; `*` to open it back up).
+- **Request-size cap** (32 KB) on the AI POST and caps on the prompt's client-supplied lists, so nobody can pad a
+  request to run up billed tokens. Provider error bodies now go to the Worker log, not back to the caller.
