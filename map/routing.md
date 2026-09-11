@@ -13,8 +13,8 @@ The app is three big files:
 | File | Lines |
 |---|---|
 | `eth-tracker.html` | **6,299** — one `<script>` runs 1967–6297 |
-| `cloudflare-worker/worker.js` | **2,250** |
-| `README.md` | 1,464 |
+| `cloudflare-worker/worker.js` | **2,255** |
+| `README.md` | 1,471 |
 
 There are no modules to navigate by. Without line citations, "change the probability engine"
 means reading 4,330 lines of inline JavaScript to find it. That is the whole problem this map

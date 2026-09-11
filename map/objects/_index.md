@@ -1,6 +1,6 @@
 # Parts — one line each
 
-Source: `eth-tracker.html` (6,299 lines) and `cloudflare-worker/worker.js` (2,181), commit
+Source: `eth-tracker.html` (6,299 lines) and `cloudflare-worker/worker.js` (2,255), commit
 `c88fe63`, 2026-09-11. Citations are `line` in eth-tracker.html unless marked `worker.js:`.
 
 **Risk column** is the project's own distinction (see `../../CLAUDE.md`): changes to **picks**
@@ -18,7 +18,7 @@ explicitly.
 | [charts](charts.md) | 3527–3832 | log | The zoomable price chart. |
 | [ai-copilot](ai-copilot.md) | 4795–4874, worker.js:835–1119 | **picks** | The paid AI read, its budget gate, and the prompt. |
 | [crowd-odds](crowd-odds.md) | 4837, worker.js:653–692 | **picks** | Kalshi crowd probability, free. |
-| [alerts](alerts.md) | worker.js:1326–1545, 5640 | **money** | The Discord/ntfy pings. No pick logic, but they decide when you actually bet. |
+| [alerts](alerts.md) | worker.js:1326–1560, 5640 | **money** | The Discord/ntfy pings. No pick logic, but they decide when you actually bet. |
 | [auto-tracker](auto-tracker.md) | 4969–5251, worker.js:1927 | log | The 24/7 cron that grades itself. |
 | [worker](worker.md) | worker.js (all) | both | The Cloudflare proxy: AI, crowd, cron, KV. |
 | coin config | 1971–1986 | picks | `COINS` / `COIN_ICONS`. stub — read the source. |

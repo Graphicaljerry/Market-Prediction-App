@@ -373,7 +373,7 @@ const handler = {
           out.ntfy = { sent: !!(r && r.ok), httpStatus: r ? r.status : 0, authed: !!env.NTFY_TOKEN };
         }
         if (env.DISCORD_WEBHOOK) {
-          const d = await pushDiscord(env, "Test ping from the 15-min tracker — Discord notifications are working. Real pings fire only on strong, non-skip picks.");
+          const d = await pushDiscord(env, "Test ping from the 15-min tracker. Discord notifications are working. Real alerts fire only when the tracker commits a bet in the 78-82c band.");
           out.discord = { sent: !!(d && d.ok), httpStatus: d ? d.status : 0 };
         }
         return json(Object.keys(out).length ? out : { sent: false, error: "set NTFY_TOPIC and/or DISCORD_WEBHOOK first" });
@@ -1357,12 +1357,17 @@ function pingBand(env) {
 }
 // One alert line with the numbers that decide whether to act: the price, what it pays, and what that
 // is in real money on your usual stake (PING_STAKE, default $20). "ETH OVER 1.2x" told you nothing.
+//
+// PLAIN TEXT ONLY, and written to be read in a phone's notification preview (r102). A push preview
+// shows the message RAW — it does not render Discord markdown — so `**Star bet**` arrived on the
+// phone as literal asterisks, and the `·` / `->` / `~` separators piled more punctuation on top of
+// that. Every alert below is now ordinary sentences: no markdown, no arrows, no middots. The first
+// sentence carries the decision, because a preview usually shows about two lines.
 function starLine(coin, side, cents, minsLeft, stake) {
   const mult = 100 / cents, ret = stake * mult;
-  const bits = [`${coin} ${side} @ ${Math.round(cents)}c`, `pays ${mult.toFixed(2)}x`,
-    `$${stake}->$${ret.toFixed(2)} (+$${(ret - stake).toFixed(2)})`];
-  if (minsLeft != null && minsLeft > 0) bits.push(`~${Math.round(minsLeft)} min left`);
-  return bits.join(" · ");
+  let s = `${coin} ${side} at ${Math.round(cents)}c. Pays ${mult.toFixed(2)}x, $${stake} returns $${ret.toFixed(2)}.`;
+  if (minsLeft != null && minsLeft > 0) s += ` ${Math.round(minsLeft)} min left.`;
+  return s;
 }
 // LOCK-TIME ping (r101) — fires from the main cron the moment a pick is committed, with ~10-11 minutes
 // left. That is where the audited edge lives: the same favorite at the same price won 86% when locked
@@ -1389,8 +1394,8 @@ async function notifyLockPings(env, st) {
   }
   if (!lines.length) return;
   const msg = lines.join("\n");
-  if (env.DISCORD_WEBHOOK) await pushDiscord(env, "⭐ **Star bet** — " + lo + "-" + hi + "c band, tracker committed\n" + msg);
-  await ntfyPush(env, "Star bet — place it now", "star", msg);
+  if (env.DISCORD_WEBHOOK) await pushDiscord(env, "Star bet\n" + msg);
+  await ntfyPush(env, "Star bet, place it now", "star", msg);
 }
 async function notifyHotPicks(env, st) {
   if (!env.NTFY_TOPIC && !env.DISCORD_WEBHOOK) return;
@@ -1411,7 +1416,7 @@ async function notifyHotPicks(env, st) {
       const mp = p.signals && typeof p.signals.crowdOver === "number" ? p.signals.crowdOver : null;
       const sidePct = mp == null ? null : (p.side === "OVER" ? mp : 100 - mp);   // the market price of OUR side
       if (sidePct != null && sidePct >= deadPct) continue;   // dead money — skip the ping, don't even mark it (in case the price eases later)
-      const label = `${c} - ${p.side === "OVER" ? "Over" : "Under"}` + (sidePct != null ? ` ${(100 / sidePct).toFixed(1)}x` : "");
+      const label = `${c} ${p.side} at ${sidePct != null ? Math.round(sidePct) + "c. Pays " + (100 / sidePct).toFixed(2) + "x." : "no live price."}`;
       // STRONG — BET: the pick is strong AND short-term momentum is already heading its way — the server-side
       // analog of the app's "app + AI + momentum all line up". These get the louder, distinct alert; this is
       // the native notification phones get in place of the desktop banner.
@@ -1423,14 +1428,14 @@ async function notifyHotPicks(env, st) {
   }
   if (!hot.length && !strongBet.length) return;
   if (strongBet.length) {
-    const msg = "STRONG — BET (" + strongBet.join(", ") + ")";
-    if (env.NTFY_TOPIC) await ntfyPush(env, "🔥 STRONG — BET", "fire,rotating_light", msg);
-    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🔥🔥 " + msg);
+    const msg = strongBet.join("\n");
+    if (env.NTFY_TOPIC) await ntfyPush(env, "Strong pick, momentum agrees", "fire,rotating_light", msg);
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "Strong pick, momentum agrees\n" + msg);
   }
   if (hot.length) {
-    const msg = "Predict (" + hot.join(", ") + ")";
-    if (env.NTFY_TOPIC) await ntfyPush(env, "Predict — strong pick", "fire", msg);
-    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "🔥 " + msg);
+    const msg = hot.join("\n");
+    if (env.NTFY_TOPIC) await ntfyPush(env, "Round open, tracker committed", "fire", msg);
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "Round open, tracker committed\n" + msg);
   }
 }
 // Small ntfy push helper (shared by the alert scanners).
@@ -1537,20 +1542,20 @@ async function scanLateLocks(env) {
         const impU = underdog === "OVER" ? op / 100 : 1 - op / 100;
         const mult = 1 / Math.max(0.035, impU);
         if (toward && rem >= 60 && rem <= 480 && proj >= dist * 0.8 && mult >= 2.0) {
-          valueHot.push(`${c} - ${underdog === "OVER" ? "Over" : "Under"} ${mult.toFixed(1)}x`);
+          valueHot.push(`${c} ${underdog} at ${Math.round(impU * 100)}c. Pays ${mult.toFixed(2)}x, ${Math.round(rem / 60)} min left. Higher risk, size small.`);
         }
       }
     }
   }
   if (lockHot.length) {
     const msg = lockHot.join("\n");
-    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "⭐ **Star bet** (late entry) — " + lo + "-" + hi + "c band\n" + msg);
-    await ntfyPush(env, "Star bet — still bettable", "star", msg);
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "Star bet, late entry\n" + msg);
+    await ntfyPush(env, "Star bet, still bettable", "star", msg);
   }
   if (valueHot.length) {
-    const msg = "Predict (" + valueHot.join(", ") + ")";
-    if (env.DISCORD_WEBHOOK) await pushDiscord(env, "⚡ " + msg);
-    await ntfyPush(env, "Predict — longshot about to cross", "zap", msg);
+    const msg = "Longshot about to cross\n" + valueHot.join("\n");
+    if (env.DISCORD_WEBHOOK) await pushDiscord(env, msg);
+    await ntfyPush(env, "Longshot about to cross", "zap", valueHot.join("\n"));
   }
 }
 // Order-book imbalance within ±0.15% of mid (−1 = sell-heavy … +1 = buy-heavy).

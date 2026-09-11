@@ -46,6 +46,12 @@ Recent work, newest first:
     wasting beside a call card that runs about twice its height on a live round.
   - Fixed in passing: `grid-area: auto` was written *after* `grid-column: 1 / -1` on the record band,
     and being the shorthand it silently reset the span, collapsing the record back into one column.
+  - **The Discord and ntfy alerts are plain sentences now.** Reported alongside the layout: *"too many
+    `***` and other symbols."* Correct, and the cause is worth writing down — **a phone's push preview
+    shows the message raw and does not render Discord markdown**, so `**Star bet**` arrived as literal
+    asterisks. The `·`, `->` and `~` separators added more noise on top. Every alert dropped its
+    markdown, arrows, middots and emoji: `ETH OVER at 80c. Pays 1.25x, $20 returns $25.00. 11 min left.`
+    The first sentence carries the decision, because a preview shows about two lines.
 
 - **r101 — the Discord ping stops quoting 1.1x, and the app shows what each price actually returned.**
   Reported from real use: every star alert arrived at about **1.1x**, so there was nothing worth betting.
@@ -60,8 +66,9 @@ Recent work, newest first:
     scan the price had usually drifted past the band; firing at the commit is exactly where the edge was
     measured. About **6.6 alerts a day** across the seven coins. The late scan survives as a second chance
     for a price that drifts *into* the band and no longer double-pings the same round.
-  - **The message says what you will make.** `ETH OVER @ 80c · pays 1.25x · $20->$25.00 (+$5.00) · ~11 min
-    left` instead of `ETH - Over 1.1x`. Set `PING_STAKE` to your usual bet and the dollars match your ticket.
+  - **The message says what you will make.** `ETH OVER at 80c. Pays 1.25x, $20 returns $25.00. 11 min
+    left.` instead of `ETH - Over 1.1x`. Set `PING_STAKE` to your usual bet and the dollars match your
+    ticket. *(Wording tidied in r102 — see that entry.)*
   - **The bet slip carries the payout and the verdict in money.** `$1.00 out` was the one dead term in the
     row — it is $1.00 at every price, forever. It now reads `80¢ → 1.23x · need 81.1% · runs 84% · +3.2¢
     per $1`, so NEED versus RUNS resolves to an answer instead of a comparison you do in your head.

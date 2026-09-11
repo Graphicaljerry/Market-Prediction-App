@@ -1,10 +1,10 @@
 ---
 type: part
-source: cloudflare-worker/worker.js:1326-1545, eth-tracker.html:5588
+source: cloudflare-worker/worker.js:1326-1560, eth-tracker.html:5640
 status: verified
 universe: live
 risk: money
-verified_at: r101 2026-09-08
+verified_at: r102 2026-09-11
 ---
 
 # alerts — the pings that move real money
@@ -22,11 +22,11 @@ Everything else in this file exists to keep alerts inside that window.
 | Function | Where | Does |
 |---|---|---|
 | `pingBand` | worker.js:1349 | resolves the band from env and **hard-clamps it to 70–88¢** |
-| `starLine` | worker.js:1360 | the message: price, payout multiple, dollars on `PING_STAKE`, minutes left |
-| `notifyLockPings` | worker.js:1372 | **the default ping.** Fires from the `4,19,34,49` cron at lock, ~11 min out |
-| `scanLateLocks` | worker.js:1452 | the `8,23,38,53` second chance, for a price that drifts *into* band |
-| `notifyHotPicks` | worker.js:1395 | round-open + STRONG pings — OFF unless `PING_MODE=all` |
-| `pushDiscord` / `ntfyPush` | worker.js:1326 / :1437 | the two transports |
+| `starLine` | worker.js:1366 | the message: price, payout multiple, dollars on `PING_STAKE`, minutes left |
+| `notifyLockPings` | worker.js:1377 | **the default ping.** Fires from the `4,19,34,49` cron at lock, ~11 min out |
+| `scanLateLocks` | worker.js:1457 | the `8,23,38,53` second chance, for a price that drifts *into* band |
+| `notifyHotPicks` | worker.js:1400 | round-open + STRONG pings — OFF unless `PING_MODE=all` |
+| `pushDiscord` / `ntfyPush` | worker.js:1326 / :1442 | the two transports |
 | `renderBandReturns` | 5640 | the app's live version of the audit table, per price band |
 
 ## The numbers that set the bounds

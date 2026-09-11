@@ -331,8 +331,15 @@ notifications. The other ping types below stay in the code but are OFF unless yo
 **`PING_MODE`** = `all` (default `star`):
 - **⭐ Star bet — "place it now" (the default, and the only default ping)** — fires **at lock time, ~11 minutes before the close**, when the 24/7 tracker commits a side whose price is inside the favorite band (**`LOCK_MIN_PROB` 78¢ to `LOCK_MAX_PROB` 82¢, inclusive**, defaulting to `PRICE_MIN`/`PRICE_MAX` so one change moves the ping and the bet together). ~6.6 a day across 7 coins. Message now carries the numbers that decide whether to act:
 
-  > ⭐ **Star bet** — 78-82c band, tracker committed
-  > `ETH OVER @ 80c · pays 1.25x · $20->$25.00 (+$5.00) · ~11 min left`
+  > Star bet
+  > ETH OVER at 80c. Pays 1.25x, $20 returns $25.00. 11 min left.
+
+  **Plain text on purpose (r102).** A phone's push preview shows the message **raw** — it does not render
+  Discord markdown — so `**Star bet**` arrived as literal asterisks and the `·` / `->` / `~` separators
+  piled more punctuation on top. Every alert is ordinary sentences now: no markdown, no arrows, no
+  middots, no emoji. The first sentence carries the decision, because a preview usually shows about two
+  lines. Keep it that way if you edit `starLine` — the notification, not the Discord web client, is where
+  these are actually read.
 
   Set **`PING_STAKE`** (default `20`) to whatever you normally bet and the dollar figures match your real ticket.
   - **⚠️ The ceiling is hard-clamped at 88¢ and no variable can raise it (r101).** The audit of 7,344 Kalshi-settled rounds measured **90–95¢ favorites at −10.8¢ per dollar — the worst band in the entire dataset** — because a 90¢ contract pays 1.11x and one loss erases nine wins. Earlier revisions of this file documented `LOCK_MAX_PROB` **default 90 ≈ 1.11x**, so any Worker still carrying that value was sending alerts from the losing band. `pingBand()` now clamps every bound to **70–88¢** and logs `ping band clamped 78-92 -> 78-88` when it bites. **If your alerts have been quoting ~1.1x, check Settings → Variables and Secrets for a leftover `LOCK_MAX_PROB` or `PRICE_MAX` of 90+ and delete it** — plain-text vars are wiped by each Git deploy, but **Secrets persist**.

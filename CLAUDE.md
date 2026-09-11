@@ -14,7 +14,7 @@ every session and follow the conventions below.
 | what shipped recently | `README.md` → *What's new (latest)* |
 
 The app is three big files — `eth-tracker.html` (6,299 lines), `cloudflare-worker/worker.js`
-(2,250), `README.md` (1,464) — with no modules to navigate by. **Read the map before opening
+(2,255), `README.md` (1,471) — with no modules to navigate by. **Read the map before opening
 the code**, not after.
 
 ## Tell me what changed, in plain terms (standing rule)

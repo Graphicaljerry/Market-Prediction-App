@@ -9,7 +9,7 @@ verified_at: a8bd703 2026-09-08
 
 # worker — the Cloudflare side
 
-2,250 lines. Does five jobs (abuse controls joined in r100), which is why it is worth a card.
+2,255 lines. Does five jobs (abuse controls joined in r100), which is why it is worth a card.
 
 ## Shape
 
