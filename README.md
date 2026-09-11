@@ -15,13 +15,37 @@ then tells you what to play for the **next round** right before the clock runs o
 
 **Changing the code?** Read **[`map/`](map/)** first — one card per part, with line numbers and
 what each change hits. It exists because this app is three big files (`eth-tracker.html` is
-6,247 lines) with no modules to navigate by.
+6,299 lines) with no modules to navigate by.
 
 ---
 
 ## What's new (latest)
 
 Recent work, newest first:
+
+- **r102 — one left edge, three bands, and the gap under the chart is gone.** Reported from use:
+  *"Track record, Full log & Accuracy, AI Co-Pilot, Live Indicators and Settings are all over the
+  place. No clear hierarchy, too much space between the Live Indicators and the chart."* All three
+  were real and measurable. **Display-only: no pick, price, alert or grade logic changed.**
+  - **Three different left edges, now one.** Those headings were starting at **36px, 22px and 2px**
+    from their module edge — the record title sat inside its own padded box while the others were
+    bare rows, so no two lined up. Every section heading is now flush with its module, so the accent
+    bars form a single vertical line. Measured after the change: one distinct left edge on mobile,
+    and on desktop one per column, each matching the card above it.
+  - **Sections and drawers now look different.** Full log & accuracy, Model & Accuracy and Recent
+    Rounds live *inside* a section but wore the same bold-plus-accent-bar as the four top-level
+    headings. They lose the bar, drop a step in weight and colour, and indent to their real depth.
+  - **Three bands instead of a patchwork.** r100 placed things with named grid areas, which forced
+    the AI read and the indicators onto a shared row — so both waited for the **taller** column and
+    left a void beside the short one. That is exactly the gap that was reported. The page is now the
+    call beside its chart, the record across both columns, then the three drawers side by side.
+  - **Chevrons moved next to their labels.** The drawers were full-width rows, putting each control
+    up to **1,400px** from the words it belonged to. Side by side they sit within one column; the
+    sub-drawers are content-width so their chevron follows the text directly.
+  - **The chart got taller** (460 → 560px, and 540 → 640px past 1360px wide) to use the room it was
+    wasting beside a call card that runs about twice its height on a live round.
+  - Fixed in passing: `grid-area: auto` was written *after* `grid-column: 1 / -1` on the record band,
+    and being the shorthand it silently reset the span, collapsing the record back into one column.
 
 - **r101 — the Discord ping stops quoting 1.1x, and the app shows what each price actually returned.**
   Reported from real use: every star alert arrived at about **1.1x**, so there was nothing worth betting.
@@ -88,7 +112,7 @@ Recent work, newest first:
     never markup. Every line citation in `map/` was re-verified.
 
 - **A code map, so changing something stops meaning reading everything.** The app is three big
-  files with no modules — `eth-tracker.html` alone is 6,247 lines — so "change the probability
+  files with no modules — `eth-tracker.html` alone is 6,299 lines — so "change the probability
   engine" used to mean scrolling to find it. New **[`map/`](map/)** has one card per part
   (probability engine, market data, round clock, pick surface, bet slip, my bets, charts, AI
   co-pilot, crowd odds, auto-tracker, worker), each with **line numbers** into the source and an
@@ -323,6 +347,8 @@ Recent work, newest first:
     with the record under the call so no column ends in a void — that void was the r92 iPad bug.
     Three closed doors run along the bottom. **Glance/Study is retired**: every diagnostic panel is
     collapsed by default at every width, so the mode had nothing left to switch.
+    *(Superseded by r102: the doors are a 3-up band and the record spans both columns — see
+    [What's new](#whats-new-latest).)*
   - **Measured result** (same page, offline, same viewports as the r92 baseline): iPad portrait
     2121px → ~1050px, phone 2357px → ~1450px, iPad landscape 1209px → ~1110px; on-screen controls
     39 → 34 on desktop and 31 → 27 on phone.
@@ -1290,11 +1316,19 @@ A flat, near-black theme whose ground carries the current call:
   One layout engine, two shapes:
   - **< 1024px** — a single flex column, ordered by the questions you ask in order: the call
     (price + clock + verdict, one card) → the record strip → the chart → the closed doors.
-  - **≥ 1024px** — two panes, `the call | the chart`, with the record under the call and three
-    full-width doors below. iPad portrait gets the two-pane layout, not a stack.
-  - `.stackL` is a real flex column with **zero gap**, which is what welds the price card and the
-    verdict card into one; `.stackR` is `display: contents` so its modules place themselves as
-    grid items.
+  - **≥ 1024px (r102)** — **three bands of falling importance**, not a patchwork: the call beside
+    its chart, the record across the full width, then the three drawers side by side. iPad portrait
+    gets it too rather than stacking. Named grid areas are gone; they forced the AI read and the
+    indicators onto a shared row, so both had to wait for the **taller** column and a void opened
+    beside the shorter one.
+  - `.stackL` and `.stackR` are real flex columns; `.doors` is a 3-up grid from 768px. The price
+    card and the verdict card are welded because they share one `.callCard` wrapper, not because
+    the column has zero gap.
+  - **One left edge, two heading levels (r102).** Every section heading sits flush with its module,
+    so the accent bars form a single line. A heading *inside* a section — Full log & accuracy,
+    Model & Accuracy, Recent Rounds — drops the bar, loses a step of weight and colour and indents,
+    so a section never looks like a drawer. Borderless cards align their **content** to that line;
+    bordered cards align their **border** to it.
   - **No column may end in a void.** A short verdict (a SKIP round draws no rail or cost row) used
     to leave a tall empty patch beside the chart, and an empty region reads as a bug rather than as
     breathing room — that was the r92 iPad complaint. r99 helps here by keeping the verdict slab the

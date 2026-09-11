@@ -326,7 +326,11 @@
      every section (Auto Pick, AI Co-Pilot, Live Indicators, Track Record, Model & Accuracy, Recent
      Rounds…) reads as a clear waypoint and the page gets a consistent structural rhythm. The marker
      is inline-block so it works whether the header is plain flow or one of the flex variants. */
-  .sec { font-size: 13px; font-weight: 700; color: var(--label); letter-spacing: -.01em; margin: 0 2px 11px; }
+  /* (r102) ONE LEFT EDGE. Every section heading — Track record, AI Co-Pilot, Live Indicators,
+     Settings — now starts flush with its module, so their accent bars form a single vertical line
+     down the page. The old 2px nudge was invisible on its own but put these out of step with the
+     card-padded blocks beside them. */
+  .sec { font-size: 13px; font-weight: 700; color: var(--label); letter-spacing: -.01em; margin: 0 0 11px; display: flex; align-items: center; }
   .sec::before { content: ""; display: inline-block; vertical-align: middle; flex: 0 0 auto; width: 3px; height: 14px;
     border-radius: 2px; margin-right: 9px; margin-bottom: 2px; background: rgba(var(--accent-rgb), .8); }
   .sec .tiny { color: var(--label-3); font-weight: 500; letter-spacing: 0; }
@@ -358,7 +362,11 @@
   /* The flat (no-bg) sections — timer, Live Indicators, Track Record — run almost to the screen edge by
      default while the glass cards inset 18px. Give them real left/right padding so their content (timer
      bar, indicator rows, the score grid + Recent Rounds) lines up with the glass cards, not the edges. */
-  .card.flat.timerCard, .card.flat.collapseCard, #autoMod > .card.flat { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  /* (r102) A BORDERLESS card adds no edge of its own, so its content belongs on the module's left
+     edge, in line with the heading above it. Only the bordered `.orb` cards keep inner padding —
+     there the BORDER is what aligns to the heading, which is the normal reading of a framed block. */
+  .card.flat.timerCard { padding-left: var(--sp-3); padding-right: var(--sp-3); }
+  .card.flat.collapseCard, #autoMod > .card.flat { padding-left: 0; padding-right: 0; }
   #autoMod > .card.flat { padding-top: var(--sp-2); padding-bottom: var(--sp-2); }
   /* glowing cards a touch more glassy so the orb reads through, like the Figma */
   .card.orb { background: var(--surface); }
@@ -399,7 +407,17 @@
   .stack { display: contents; }
   /* (r97) stackL holds the single-pane call card AND the record strip, so unlike stackR it has to be
      a real box at every width, not just on the desktop grid. */
-  .stackL { display: flex; flex-direction: column; }
+  /* (r102) Both stacks are real flex columns at every width, each spacing its own children. The call
+     card and the verdict inside it stay welded (they live in one .callCard), so the gap only ever
+     falls BETWEEN sections — which is what makes the headings read as a ladder rather than a pile. */
+  .stackL, .stackR { display: flex; flex-direction: column; gap: var(--sp-4); }
+  /* The drawer band: stacked on a phone, three across from tablet up. `align-items: start` so opening
+     one drawer grows only that column instead of stretching its neighbours to match. */
+  .doors { display: grid; grid-template-columns: 1fr; gap: var(--sp-4); align-items: start; }
+  /* The r93 grid-area NAMES still sit on these modules and would park all three in one cell now that
+     the areas they referred to are gone. Inside the band they place themselves. */
+  .doors > .module { grid-area: auto; }
+  @media (min-width: 768px) { .doors { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
   /* ═══ (r93) TWO PANES, NOT THREE COLUMNS ═══════════════════════════════════════════════════════
      The old layout had nine modules across three columns, and the audit of what's actually on screen
@@ -440,11 +458,11 @@
      what do I do (price+clock+verdict, one card) -> how's it going -> show me -> why. */
   @media (max-width: 1023px) {
     .layout { display: flex; flex-direction: column; gap: var(--sp-4); }
-    /* stackL is a real container now (it holds the one-pane call card + the record), so the order is
-       set on the top-level items. The gap on .layout does all the vertical spacing — no per-module
-       margins to drift out of sync. */
-    .stackL { order: 1; } .m-chart { order: 2; } .m-read { order: 3; }
-    .m-indicators { order: 4; } .m-settings { order: 5; }
+    /* (r102) One column, in the order you ask the questions — the r93 rule, restated now that the
+       bands exist: what do I do (the call) → how is it going (the record) → show me (the chart) →
+       why (the three drawers). DOM order puts the chart first because on desktop it sits BESIDE the
+       call, so the phone reorders those two and nothing else. */
+    .stackL { order: 1; } .m-autotracker { order: 2; } .stackR { order: 3; } .doors { order: 4; }
     .layout .module { margin-top: 0; }
   }
 
@@ -470,24 +488,33 @@
        round renders no chips, no rail and no cost row), and an empty region reads as something broken
        rather than as breathing room. That was exactly the r92 bug on iPad, so the rule now is: no
        column is allowed to end in a void. */
-    .layout { display: grid; grid-template-columns: minmax(400px, 452px) minmax(0,1fr); column-gap: var(--sp-4); row-gap: var(--sp-5); align-items: start;
-      /* (r100) Each closed door sits under the thing it is about: the AI read under the call, the
-         indicators under the chart they annotate, settings alone across the bottom. Three full-width
-         rows with a chevron 1,800px from their label was the last of the r93 layout's dead space. */
-      grid-template-areas:
-        "left  chart"
-        "read  ind"
-        "set   set"; }
-    /* The left stack is a real flex column with NO gap, so the price card and the verdict card read
-       as one card (they're one thought). Everything on the right is a plain grid item. */
-    .stackL { grid-area: left; }
-    .stackR { display: contents; }
-    .m-chart { align-self: start; }
+    /* (r102) TWO COLUMNS THAT FLOW INDEPENDENTLY. r100 used named grid areas, which forced the AI read
+       and the indicators onto a shared row — so both had to wait for the TALLER column, leaving a tall
+       void under the short chart and a big gap above the indicators. Columns are containers now, not
+       grid rows: the left one runs call → record → AI read, the right one chart → indicators, and
+       neither can open a hole beside the other however long one of them gets. */
+    /* (r102) THREE BANDS, NOT A PATCHWORK. r100's named grid areas forced the AI read and the
+       indicators onto a shared row, so both waited for the TALLER column and left a void beside the
+       short one. The page is now read top to bottom in three bands of falling importance: the call
+       beside its chart, the record across both, then the three drawers side by side. Nothing can open
+       a hole beside anything else, and every heading in a band shares one left edge. */
+    .layout { display: grid; grid-template-columns: minmax(400px, 452px) minmax(0,1fr);
+      column-gap: var(--sp-4); row-gap: var(--sp-5); align-items: start; grid-template-areas: none; }
+    .stackL { grid-column: 1; }
+    .stackR { grid-column: 2; }
+    /* ORDER MATTERS: `grid-area` is the shorthand, so it must clear the stale r93 area name BEFORE
+       grid-column sets the span. Written the other way round it silently resets it and the record
+       collapses back into column one. */
+    .m-autotracker { grid-area: auto; grid-column: 1 / -1; }
+    .doors { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .m-chart .chartSec { display: none; }
-    .m-chart .miniChart { height: 460px; }
+    .m-chart .chartSec { display: none; }
+    /* (r102) Taller. The call card beside it runs ~990px on a live round, so a 460px chart left a
+       third of the right column empty. The chart is also the one thing here that is better bigger. */
+    .m-chart .miniChart { height: 560px; }
     .tfBar { flex-wrap: wrap; overflow-x: visible; }
   }
-  @media (min-width: 1360px) { .m-chart .miniChart { height: 540px; } }
+  @media (min-width: 1360px) { .m-chart .miniChart { height: 640px; } }
   /* The brand strapline and the exchange pill only appear once there's room for them WITHOUT
      squeezing the coin tabs — at 1024 they were crushing the seven tabs into one run of letters. */
   @media (min-width: 1240px) { .brandSub, .navExch { display: flex; } }
@@ -569,16 +596,12 @@
     content: ""; display: block; height: 1px; margin: 0 var(--sp-3) var(--sp-3);
     background: var(--hair);
   }
-  .stackL .m-autotracker { margin-top: var(--sp-4); }
 
   /* ---------- (r93) The record, as a strip ---------- */
   .recStrip { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap;
     padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.025); }
-  .recHead { display: flex; align-items: center; gap: 6px; }
-  .recTitle { font-size: 13px; font-weight: 700; color: var(--label); letter-spacing: -.01em; }
-  .recTitle::before { content: ""; display: inline-block; vertical-align: middle; width: 3px; height: 14px;
-    border-radius: 2px; margin-right: 9px; margin-bottom: 2px;
-    background: rgba(var(--accent-rgb), .8); }
+  .recSec { gap: 7px; }
+  .recSec .ihelp { margin-left: 0; }
   .recHit { display: flex; align-items: baseline; gap: 6px; }
   .recHit .v { font-family: var(--font-num); font-size: 21px; font-weight: 700; line-height: 1; }
   .recHit .k { font-size: 11px; color: var(--label-3); font-weight: 500; }
@@ -820,6 +843,18 @@
   @media (prefers-reduced-motion: reduce) { .moveStrip .msDot.pending { animation: none; opacity: .6; } }
   /* collapsible secondary panels — keep the betting signal the focus, detail one tap away */
   details.collapsePanel { margin: 0; }
+  /* (r102) TWO LEVELS, NOT ONE. "Full log & accuracy", "Model & Accuracy" and "Recent Rounds" sit
+     INSIDE a section; they were wearing the same bold + accent bar as the four top-level headings, so
+     nothing on screen said which was a section and which was a drawer within it. Sub-headings lose the
+     bar, drop a step in weight and colour, and indent to the depth they actually live at. */
+  .recDetails > .sec, .collapseCard .sec { font-size: 12px; font-weight: 600; color: var(--label-2); }
+  .recDetails > .sec::before, .collapseCard .sec::before { display: none; }
+  .collapseCard .sec { margin-left: var(--sp-2); }
+  /* A sub-drawer is content-width, so its chevron sits right after its own label. Left to stretch,
+     "Full log & accuracy" put its control 1,400px from the words it belongs to on a wide screen —
+     the same mistake the full-width door rows used to make. */
+  .recDetails > .secToggle, .collapseCard .secToggle { display: inline-flex; width: auto; }
+  .recDetails > .secToggle .secChevron, .collapseCard .secToggle .secChevron { margin-left: 8px; }
   .secToggle { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 6px; -webkit-tap-highlight-color: transparent; }
   .secToggle::-webkit-details-marker { display: none; }
   .secToggle .ihelp { pointer-events: auto; }
@@ -1672,48 +1707,30 @@
   </div>
   </div><!-- /.callCard -->
 
-  <div class="module m-autotracker" id="autoMod">
-  <!-- (r93) The record is a STRIP by default, not a panel. Hit rate + the last runs are the only parts
-       you glance at between rounds; the scoreboard, coverage, the model tests and the full round log
-       are all one tap away. Nothing was deleted — every id below still renders exactly as before, so
-       the log, the arrows and everything that reads them are untouched. -->
-  <div class="card flat">
-    <div class="recStrip">
-      <div class="recHead"><span class="recTitle">Track record</span> <button class="ihelp" data-info="autotracker">?</button></div>
-      <div class="recHit"><span class="v mono" id="aHit">—</span><span class="k">hit rate</span></div>
-      <div id="recentForm" class="recentForm"></div>
-    </div>
-    <details class="collapsePanel recDetails">
-      <summary class="sec secToggle">Full log &amp; accuracy <span class="tiny">· graded 24/7</span><span class="secChevron" aria-hidden="true">▸</span></summary>
-      <div class="collapseCard">
-        <div class="scoreGrid">
-          <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
-          <div class="stat"><div class="v mono pos" id="aCorrect">0</div><div class="k">Correct</div></div>
-          <div class="stat"><div class="v mono" id="aStreak">0</div><div class="k">Streak</div></div>
-        </div>
-        <div id="autoCoverage" class="autoCoverage"></div>
-        <div id="bandReturns" class="bandReturns"></div>
-        <details class="collapsePanel" id="modelPanel">
-          <summary class="sec secToggle" style="margin-top:18px">Model &amp; Accuracy <span class="tiny" id="modelPanelSummary"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
-          <div class="collapseCard">
-            <div id="autoLearned" class="autoLearned"></div>
-            <div id="autoCalib" class="autoLearned"></div>
-            <div id="lockABStat" class="autoLearned"></div>
-            <div id="lateRecord" class="lateRecord"></div>
-          </div>
-        </details>
-        <div class="sec" style="margin-top:20px">Recent Rounds</div>
-        <div id="autoHistory" class="history collapsed"><div class="empty">Warming up — grades a round every 15 minutes, even while you're away.</div></div>
-        <button class="seeMore" id="moreAuto" style="display:none"></button>
-        <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. The AI reads this record too.</div>
-        <div class="clearRow"><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
       </div>
-    </details>
-  </div>
-  </div>
+
+  
+  <div class="stack stackR">
+  <!-- (r93) RETIRED AS A PANEL, KEPT AS NODES. The clock and its bar moved up into the price card;
+       what's left here only restated things the pick card already says — the close time (the pick
+       card's kicker), the next-round preview (the verdict switches to next-round itself in the final
+       two minutes) and last round's result (the outcome line at the top of the verdict). The nodes
+       stay so tickTimer() / renderNextPick() / renderLastClose() keep writing to something real. -->
+  <div class="module m-timer" hidden>
+  <div class="card flat timerCard">
+    <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
+    <div id="nextPick" class="nextPick"></div>
+    <div id="lastClose" class="lastClose"></div>
   </div>
 
-  <div class="module m-chart">
+  </div>
+
+  
+  <!-- (r93) SETTINGS — one door for everything that is configured once and then never touched again.
+       These used to sit in the open on every screen. They are NOT decoration: the play-style dial and
+       the AI trust dial both change what you are told to bet, which is exactly why they now carry
+       their own explanation instead of floating unlabelled above the verdict. -->
+    <div class="module m-chart">
   <div class="sec chartSec" id="chartSec">ETH / USD <span class="tiny">· 15m</span></div>
   <div class="card orb chartCard">
     <div class="chartHead">
@@ -1749,21 +1766,57 @@
   </div>
   </div>
 
-  <div class="stack stackR">
-  <!-- (r93) RETIRED AS A PANEL, KEPT AS NODES. The clock and its bar moved up into the price card;
-       what's left here only restated things the pick card already says — the close time (the pick
-       card's kicker), the next-round preview (the verdict switches to next-round itself in the final
-       two minutes) and last round's result (the outcome line at the top of the verdict). The nodes
-       stay so tickTimer() / renderNextPick() / renderLastClose() keep writing to something real. -->
-  <div class="module m-timer" hidden>
-  <div class="card flat timerCard">
-    <div id="timerSub" class="timerSub">Aligned to :00 / :15 / :30 / :45</div>
-    <div id="nextPick" class="nextPick"></div>
-    <div id="lastClose" class="lastClose"></div>
+    </div><!-- /.stackR -->
+
+  <div class="module m-autotracker" id="autoMod">
+  <!-- (r93) The record is a STRIP by default, not a panel. Hit rate + the last runs are the only parts
+       you glance at between rounds; the scoreboard, coverage, the model tests and the full round log
+       are all one tap away. Nothing was deleted — every id below still renders exactly as before, so
+       the log, the arrows and everything that reads them are untouched. -->
+  <div class="card flat">
+    <!-- (r102) The title moved OUT of the strip. It was the only section heading in the app sitting
+         inside its own card, which pushed it 36px off the left edge while every other heading sat at
+         2px — three different left edges on one screen. It is now a plain `.sec` like AI Co-Pilot and
+         Live Indicators, so all four line up, and the strip below holds only the numbers it labels. -->
+    <div class="sec recSec">Track record <button class="ihelp" data-info="autotracker">?</button></div>
+    <div class="recStrip">
+      <div class="recHit"><span class="v mono" id="aHit">—</span><span class="k">hit rate</span></div>
+      <div id="recentForm" class="recentForm"></div>
+    </div>
+    <details class="collapsePanel recDetails">
+      <summary class="sec secToggle">Full log &amp; accuracy <span class="tiny">· graded 24/7</span><span class="secChevron" aria-hidden="true">▸</span></summary>
+      <div class="collapseCard">
+        <div class="scoreGrid">
+          <div class="stat"><div class="v mono" id="aGraded">0</div><div class="k">Rounds</div></div>
+          <div class="stat"><div class="v mono pos" id="aCorrect">0</div><div class="k">Correct</div></div>
+          <div class="stat"><div class="v mono" id="aStreak">0</div><div class="k">Streak</div></div>
+        </div>
+        <div id="autoCoverage" class="autoCoverage"></div>
+        <div id="bandReturns" class="bandReturns"></div>
+        <details class="collapsePanel" id="modelPanel">
+          <summary class="sec secToggle" style="margin-top:18px">Model &amp; Accuracy <span class="tiny" id="modelPanelSummary"></span><span class="secChevron" aria-hidden="true">▸</span></summary>
+          <div class="collapseCard">
+            <div id="autoLearned" class="autoLearned"></div>
+            <div id="autoCalib" class="autoLearned"></div>
+            <div id="lockABStat" class="autoLearned"></div>
+            <div id="lateRecord" class="lateRecord"></div>
+          </div>
+        </details>
+        <div class="sec" style="margin-top:20px">Recent Rounds</div>
+        <div id="autoHistory" class="history collapsed"><div class="empty">Warming up — grades a round every 15 minutes, even while you're away.</div></div>
+        <button class="seeMore" id="moreAuto" style="display:none"></button>
+        <div class="accNote">Computed server-side every 15 min from free data only — no AI cost. The AI reads this record too.</div>
+        <div class="clearRow"><button id="clearLog" class="clearBtn" title="Wipe this coin's recorded rounds, arrows and hit-rate and start its log fresh">Clear log</button><button id="clearAll" class="clearBtn" title="Wipe EVERY coin's recorded rounds, arrows and hit-rate and start them all fresh (learned models kept)">Clear all</button></div>
+      </div>
+    </details>
+  </div>
   </div>
 
-  </div>
-
+  <!-- (r102) THE DOOR BAND. These three were stacked as full-width rows, which put each
+       chevron a screen-width away from the label it belonged to, and left the short column
+       beside the chart empty. Side by side they read as what they are: three equal drawers,
+       each label and its control within a thumb of each other. -->
+  <div class="doors">
   <div class="module m-read">
   <details class="collapsePanel">
   <summary class="sec secToggle">AI Co-Pilot <span class="tiny">· the read</span><span class="secChevron" aria-hidden="true">▸</span></summary>
@@ -1776,10 +1829,15 @@
 
   </div>
 
-  <!-- (r93) SETTINGS — one door for everything that is configured once and then never touched again.
-       These used to sit in the open on every screen. They are NOT decoration: the play-style dial and
-       the AI trust dial both change what you are told to bet, which is exactly why they now carry
-       their own explanation instead of floating unlabelled above the verdict. -->
+  <div class="module m-indicators">
+  <details class="collapsePanel">
+    <summary class="sec secToggle">Live Indicators <span class="tiny" id="indSummary">· the signals behind the %</span><span class="secChevron" aria-hidden="true">▸</span></summary>
+    <div class="card flat collapseCard">
+      <div id="indicators"><div class="empty">Loading indicators…</div></div>
+    </div>
+  </details>
+  </div>
+
   <div class="module m-settings" id="settingsMod">
   <details class="collapsePanel" id="settingsPanel">
   <summary class="sec secToggle">Settings <span class="tiny">· play style, AI, alerts</span><span class="secChevron" aria-hidden="true">▸</span></summary>
@@ -1833,17 +1891,10 @@
   </details>
 
   </div>
-  </div><!-- /.stackR -->
-
-  <div class="module m-indicators">
-  <details class="collapsePanel">
-    <summary class="sec secToggle">Live Indicators <span class="tiny" id="indSummary">· the signals behind the %</span><span class="secChevron" aria-hidden="true">▸</span></summary>
-    <div class="card flat collapseCard">
-      <div id="indicators"><div class="empty">Loading indicators…</div></div>
-    </div>
-  </details>
   </div>
-  </div><!-- /.layout -->
+
+  
+    </div><!-- /.layout -->
 
   <div id="infoSheet"><div class="infoCard" role="dialog" aria-modal="true" aria-labelledby="infoTitle"><h3 id="infoTitle">—</h3><p id="infoText">—</p><button class="closeBtn" id="infoClose">Got it</button></div></div>
   <div id="srAnnounce" class="srOnly" aria-live="polite" aria-atomic="true"></div>   <!-- throttled price announcements for screen readers -->
@@ -1860,10 +1911,11 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r101</span><span class="buildSep">·</span><span>2026-09-08</span>
+        <span class="buildVer">build r102</span><span class="buildSep">·</span><span>2026-09-11</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
+        <p><b>The bottom of the page stops wandering (r102).</b> Reported directly: <i>Track record, Full log, AI Co-Pilot, Live Indicators and Settings are all over the place, no clear hierarchy, too much space between the indicators and the chart.</i> All true, and measurable — those headings were starting at <b>three different distances</b> from the left edge (36px, 22px and 2px), because one of them sat inside its own padded box and the others didn't. They now share <b>one line down the page</b>. The page also reads as <b>three bands</b> instead of a patchwork: the call beside its chart, your record across the full width, then the three drawers side by side. Before, those drawers were full-width rows, which is why a chevron could sit a whole screen away from the label it belonged to; now each one is beside its own heading. And the drawers that live <i>inside</i> a section — Full log, Model &amp; Accuracy, Recent Rounds — are a step lighter and indented, so you can tell at a glance which is a section and which is a drawer within it. The gap under the chart is gone because the chart and the indicators are no longer forced onto the same row as the taller column beside them, and the chart itself got taller to use the space it was wasting. <b>Display only — no pick, price, alert or grade changed.</b></p>
         <p><b>The alerts are worth acting on again (r101).</b> Every Discord star alert had been arriving at about <b>1.1x</b> — nothing worth betting. Checked against the record, a 1.1x quote is a <b>90¢ favourite, the worst price in the whole archive</b>: it wins often but pays so little that one loss wipes out nine wins (−10.8¢ per dollar). Two causes, both fixed. The alert ceiling is now <b>locked at 88¢ in the code</b>, so no leftover setting can push it back into the losing zone. And the alert now fires <b>the moment the pick is committed, about 11 minutes before the close</b>, instead of 7 minutes out when the price has already run away — roughly <b>7 alerts a day</b>, priced around 1.25x. The message finally says what you'd make: <i>ETH OVER @ 80c · pays 1.25x · $20→$25.00 (+$5.00) · ~11 min left</i>. In the app, the bet slip swaps the useless "$1.00 out" for the real payout and adds the verdict in money (<i>+3.2¢ per $1</i>), and <b>Full log &amp; accuracy</b> gains <b>What each price actually returned</b> — your own bets grouped by the price you paid, so you can see for yourself which prices pay. The honest part: there is no setting that pays big <i>and</i> wins. Cheap contracts pay 1.4x and lose money. The lever for making more is bet size, not payout. <b>No change to how picks are made.</b></p>
         <p><b>The audit round (r100).</b> Six weeks untouched, so everything got a fresh look. <b>The 24/7 record was re-analysed from scratch — 21,412 rounds.</b> Plain result: the Kalshi crowd price is the only input that predicts anything; every technical signal and the learned model scored at a coin flip; the one edge after fees is buying a 78–82¢ favorite, and buying it a few minutes <i>into</i> the round instead of at the open was worth about 5¢ more per dollar. <b>That last point is the one change to live picks:</b> the tracker's cron now fires four minutes into each round instead of on the boundary — same picker, later look. <b>Security:</b> the Worker could be told to wipe the record, spend the AI budget or spam your alerts by anyone who knew its URL; destructive calls now need the access token (new field in Settings), every caller is rate-limited, and CORS is pinned to this site. <b>Bugs fixed:</b> Claude reads were failing silently on the default model (an API parameter it no longer accepts); a failed AI read was being frozen for the whole round; "I took this bet" never scored itself; the crowd was being re-fetched once a second; "both say OVER" could compare picks about different rounds; and the "already settled" card left the bet slip still saying Bet. <b>Display:</b> on desktop the AI read sits under the call and the indicators under the chart; the price can no longer truncate before the font loads; a flat round says <i>at the line</i>; a new call lands with one short settle motion.</p>
         <p><b>Flat theme — the glass comes off (r98).</b> The frosted-glass look is gone: no more see-through blurred cards, no drifting ambient glows, no coloured washes behind the page, no noise film, no shimmer sweeping the timer bar. Cards are now a <b>solid dark surface on a solid near-black ground</b>, separated by hairline borders — nothing behind them to show through, so none of the artefacts that glass kept producing (seams, banding, sliced glows) can ever come back. Colour got stricter too: <b>green and red are the only accents left</b>, and they only ever mean direction — green for over/go (the ⭐ star badge is green now instead of amber), red for under/loss. Skip states went neutral grey ("nothing to do" shouldn't glow orange), and the blue brand square became the app's one green. About 130 lines of dead glass CSS were deleted outright — it lives in git history if it's ever missed. <b>Display-only — no pick, grade or logged round changed.</b></p>

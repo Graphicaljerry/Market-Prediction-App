@@ -1,6 +1,6 @@
 ---
 type: part
-source: eth-tracker.html:2175-2470
+source: eth-tracker.html:2227-2522
 status: verified
 universe: live
 risk: picks
@@ -23,29 +23,29 @@ the model does not believe itself until the record says it should.
 
 | Signal | Line | Reads |
 |---|---|---|
-| `indOver` | 2175 | technical indicators |
-| `aiOver` | 2181 | the paid AI read |
-| `crowdOver` | 2255 | Kalshi crowd |
-| `obiOver` | 2266 | order-book imbalance |
-| `momOver` | 2278 | 1-minute momentum |
-| `barrierOver` | 2378 | the barrier/diffusion model |
+| `indOver` | 2227 | technical indicators |
+| `aiOver` | 2233 | the paid AI read |
+| `crowdOver` | 2307 | Kalshi crowd |
+| `obiOver` | 2318 | order-book imbalance |
+| `momOver` | 2330 | 1-minute momentum |
+| `barrierOver` | 2430 | the barrier/diffusion model |
 
 | Combination | Line | Does |
 |---|---|---|
-| `normCdf` | 2334 | normal CDF helper |
-| `sigmaRoundFallback` | 2340 | volatility fallback when candles are thin |
-| `rawCombinedOdds` | 2403 | weights the six |
-| `calibrate` | 2426 | bends the raw number toward measured reality |
-| `combinedOdds` | 2470 | **the number everything else consumes** |
+| `normCdf` | 2386 | normal CDF helper |
+| `sigmaRoundFallback` | 2392 | volatility fallback when candles are thin |
+| `rawCombinedOdds` | 2455 | weights the six |
+| `calibrate` | 2478 | bends the raw number toward measured reality |
+| `combinedOdds` | 2522 | **the number everything else consumes** |
 
 ## If you change this
 
 **Hits**
-- [pick-surface](pick-surface.md) — `renderPickCard:2901` and `renderHero:5753` render this
+- [pick-surface](pick-surface.md) — `renderPickCard:2953` and `renderHero:5805` render this
   number and nothing else. They derive no pick of their own.
 - [bet-slip](bet-slip.md) — `NEED` (break-even) is computed against it
-- [round-clock](round-clock.md) — `settleGrades:4155` scores the number that was live
-- **The calibration record itself.** `calibrate:2426` reads history, and history is written by
+- [round-clock](round-clock.md) — `settleGrades:4207` scores the number that was live
+- **The calibration record itself.** `calibrate:2478` reads history, and history is written by
   grading. Change the odds and today's history stops being comparable to yesterday's. This is
   the non-obvious one.
 
