@@ -9,12 +9,12 @@ called out explicitly in plain terms (`../../CLAUDE.md`). `log` changes only alt
 
 | Changing | Open, in order | Risk | Watch for |
 |---|---|---|---|
-| the odds, weights, or calibration | [probability-engine](../objects/probability-engine.md) → [pick-surface](../objects/pick-surface.md) → [round-clock](../objects/round-clock.md) | **picks** | `calibrate:2478` reads graded history. New odds make today incomparable to yesterday. |
-| price, candles, volatility, order book | [market-data](../objects/market-data.md) → [probability-engine](../objects/probability-engine.md) | **picks** | `sigmaRoundFallback:2392` is the thin-candle guard. |
-| the round boundary or grading | [round-clock](../objects/round-clock.md) → [auto-tracker](../objects/auto-tracker.md) → [probability-engine](../objects/probability-engine.md) | **picks** | **Two graders.** Client `settleGrades:4207` and worker `runCoinPick:1996` must agree. |
-| how the call looks | [pick-surface](../objects/pick-surface.md) → [bet-slip](../objects/bet-slip.md) | **picks** to display only | If you compute a probability here, it belongs in `combinedOdds:2522`. |
+| the odds, weights, or calibration | [probability-engine](../objects/probability-engine.md) → [pick-surface](../objects/pick-surface.md) → [round-clock](../objects/round-clock.md) | **picks** | `calibrate:2514` reads graded history. New odds make today incomparable to yesterday. |
+| price, candles, volatility, order book | [market-data](../objects/market-data.md) → [probability-engine](../objects/probability-engine.md) | **picks** | `sigmaRoundFallback:2428` is the thin-candle guard. |
+| the round boundary or grading | [round-clock](../objects/round-clock.md) → [auto-tracker](../objects/auto-tracker.md) → [probability-engine](../objects/probability-engine.md) | **picks** | **Two graders.** Client `settleGrades:4243` and worker `runCoinPick:2001` must agree. |
+| how the call looks | [pick-surface](../objects/pick-surface.md) → [bet-slip](../objects/bet-slip.md) | **picks** to display only | If you compute a probability here, it belongs in `combinedOdds:2558`. |
 | IN / OUT / NEED / RUNS | [bet-slip](../objects/bet-slip.md) | log | Dropping the n ≥ 20 gate on `RUNS` turns a measurement into a claim. |
-| the AI read, prompt, or budget | [ai-copilot](../objects/ai-copilot.md) → [worker](../objects/worker.md) | **picks** + money | `aiWorthIt:4821` is the only spend gate. |
+| the AI read, prompt, or budget | [ai-copilot](../objects/ai-copilot.md) → [worker](../objects/worker.md) | **picks** + money | `aiWorthIt:4857` is the only spend gate. |
 | crowd odds | [crowd-odds](../objects/crowd-odds.md) → [worker](../objects/worker.md) | **picks** | Stale-serve is deliberate; removing it makes the signal vanish intermittently. |
 | a Discord/ntfy ping, or the price band it fires on | [alerts](../objects/alerts.md) → [auto-tracker](../objects/auto-tracker.md) | **money** | `pingBand:1349` clamps to 70–88¢ on purpose. A ~1.1x quote is a 90¢ favourite — the worst band measured (−10.8¢/$1). Dashboard **Secrets** outrank the defaults. |
 | the 24/7 panel or cron | [auto-tracker](../objects/auto-tracker.md) → [worker](../objects/worker.md) | log | Cron trigger is in `wrangler.toml`, not in code. |

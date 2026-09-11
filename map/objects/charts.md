@@ -1,6 +1,6 @@
 ---
 type: part
-source: eth-tracker.html:3527-3832
+source: eth-tracker.html:3563-3868
 status: verified
 universe: live
 risk: log
@@ -11,10 +11,10 @@ verified_at: a8bd703 2026-09-08
 
 | Function | Line | Does |
 |---|---|---|
-| `loadTFCloses` | 3527 | closes for a timeframe |
-| `drawTFChart` | 3582 | the timeframe chart |
-| `drawMiniChart` | 3819 | the small one |
-| `drawLiveChart` | 3832 | the live one |
+| `loadTFCloses` | 3563 | closes for a timeframe |
+| `drawTFChart` | 3618 | the timeframe chart |
+| `drawMiniChart` | 3855 | the small one |
+| `drawLiveChart` | 3868 | the live one |
 
 ## If you change this
 

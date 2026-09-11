@@ -15,13 +15,27 @@ then tells you what to play for the **next round** right before the clock runs o
 
 **Changing the code?** Read **[`map/`](map/)** first — one card per part, with line numbers and
 what each change hits. It exists because this app is three big files (`eth-tracker.html` is
-6,299 lines) with no modules to navigate by.
+6,335 lines) with no modules to navigate by.
 
 ---
 
 ## What's new (latest)
 
 Recent work, newest first:
+
+- **r103 — a closed section now looks like something you can press.** Reported straight after r102:
+  *"the tabs when they are closed have that vertical stroke going up and it doesn't look intuitive
+  that it is a button."* Correct — closed, each one was a line of text with a 3px accent tick, which
+  is exactly what a **plain heading** wears, so there was no affordance at all. **Display-only.**
+  - **One rule, applied everywhere.** The accent bar now means *heading — it labels, you cannot press
+    it* (Track record, the chart title). A **bordered surface with a chevron** means *control — you can
+    open it* (the three doors and every drawer). Two different jobs stopped sharing one look.
+  - **The doors are pressable cards**: surface fill, hairline border, 14px radius, lifting to
+    `--surface-2` on hover and taking an accent-tinted edge while open, so you can see which one you
+    left open. The press scale was also softened from 0.955 to 0.988 — a flinch that size reads as a
+    glitch on a full-width card, however right it feels on a 26px chip.
+  - **The drawers reuse the chart's `Indicators` chip** — small, outlined, content-width — so the app
+    has one vocabulary for "small thing you can open" instead of two that looked nearly identical.
 
 - **r102 — one left edge, three bands, and the gap under the chart is gone.** Reported from use:
   *"Track record, Full log & Accuracy, AI Co-Pilot, Live Indicators and Settings are all over the
@@ -119,7 +133,7 @@ Recent work, newest first:
     never markup. Every line citation in `map/` was re-verified.
 
 - **A code map, so changing something stops meaning reading everything.** The app is three big
-  files with no modules — `eth-tracker.html` alone is 6,299 lines — so "change the probability
+  files with no modules — `eth-tracker.html` alone is 6,335 lines — so "change the probability
   engine" used to mean scrolling to find it. New **[`map/`](map/)** has one card per part
   (probability engine, market data, round clock, pick surface, bet slip, my bets, charts, AI
   co-pilot, crowd odds, auto-tracker, worker), each with **line numbers** into the source and an
@@ -1336,6 +1350,10 @@ A flat, near-black theme whose ground carries the current call:
     Model & Accuracy, Recent Rounds — drops the bar, loses a step of weight and colour and indents,
     so a section never looks like a drawer. Borderless cards align their **content** to that line;
     bordered cards align their **border** to it.
+  - **Heading vs. control (r103).** The **accent bar** marks a heading — it labels and cannot be
+    pressed. A **bordered surface with a chevron** marks a control you can open: a full-width card for
+    the three doors, the chart's small outlined chip for drawers inside a section. A toggle never wears
+    the bar, and a heading never wears a border. If you add a disclosure, give it the control dress.
   - **No column may end in a void.** A short verdict (a SKIP round draws no rail or cost row) used
     to leave a tall empty patch beside the chart, and an empty region reads as a bug rather than as
     breathing room — that was the r92 iPad complaint. r99 helps here by keeping the verdict slab the

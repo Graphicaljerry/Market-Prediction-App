@@ -19,13 +19,13 @@ verified_at: a8bd703 2026-09-08
 | AI read | `getAIRead:1020` | `pickProvider:607` → `readAnthropic:1053` / `readGemini:1101` / `readGroq:1120` → `normalize:959` |
 | Prompt | `buildPrompt:836` | market-anchored; physics + calibration + auto-tracker; returns numeric `probOver` |
 | Crowd | `getKalshiCrowd:653` | `fetchCrowd:692`, KV cached with stale-serve |
-| Cron | `scheduled` → `runCoinPick:1996` | grade + `freePick:1636` + KV, using `cbMicro:1211` / `cbObi:1557` |
+| Cron | `scheduled` → `runCoinPick:2001` | grade + `freePick:1641` + KV, using `cbMicro:1211` / `cbObi:1562` |
 | Abuse controls (r100) | `allowedOrigin`, `rateLimited`, `tokenOK` (top of the file) | CORS pin, per-IP limits, token gate on destructive/costly endpoints; `withCors` wraps every response |
 
 ## If you change this
 
 **Hits**
-- [ai-copilot](ai-copilot.md) — the app calls `callWorker:4845`; a response-shape change breaks
+- [ai-copilot](ai-copilot.md) — the app calls `callWorker:4881`; a response-shape change breaks
   it silently, since there is no shared type
 - [crowd-odds](crowd-odds.md) — same wire, different flag (`crowdOnly` / `noAI`)
 - [auto-tracker](auto-tracker.md) — the cron writes what the 24/7 panel reads
