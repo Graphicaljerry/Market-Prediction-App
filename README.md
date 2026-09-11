@@ -23,6 +23,18 @@ what each change hits. It exists because this app is three big files (`eth-track
 
 Recent work, newest first:
 
+- **The live site stopped updating for days, and it was never the code.** Reported as *"why is my
+  GitHub not updating? why is the site not updating to r103?"* Every push built fine and then failed
+  on one step: `Failed to CreateArtifact: Artifact storage quota has been hit`. GitHub Actions stores
+  the built site as an artifact and hands it to the deploy step; with the quota full there was
+  nowhere to put it, so **Pages kept serving an old build while `main` was already current**. The
+  tell is a green *Build site* with a red *Upload artifact* 7 seconds in — nothing in the app was
+  wrong. Fixed two ways: the artifact now **expires after 1 day** (`pages.yml`), and the repo is
+  **public**, which takes Actions storage and minutes out of the account quota for good. **Worth
+  knowing:** a silently stale site is a *deploy* symptom, not an app symptom — check the Actions tab
+  before reading code, and note that GitHub recalculates storage usage only every 6-12 hours, so
+  freeing space does not clear the block instantly.
+
 - **r103 — a closed section now looks like something you can press.** Reported straight after r102:
   *"the tabs when they are closed have that vertical stroke going up and it doesn't look intuitive
   that it is a button."* Correct — closed, each one was a line of text with a 3px accent tick, which
@@ -1422,6 +1434,14 @@ Server-side, in Worker **KV** (`CROWD_KV`):
 **App → GitHub Pages.** `.github/workflows/pages.yml` copies `eth-tracker.html` to
 `index.html` (plus `guide.html`, the icon, `sw.js` and `manifest.webmanifest`) and publishes on
 every push to `main` — and only `main`; the old extra trigger on an agent branch is gone (r100).
+- **If the site looks stale, read the Actions tab before reading the code.** The workflow builds the
+  site, uploads it as an Actions *artifact*, then deploys that artifact. When Actions storage is full
+  the build still passes and only **Upload artifact** fails, so `main` is current while the live site
+  serves an old build. The artifact is set to `retention-days: 1` so a run can't hoard space, and the
+  repo is public, so Actions storage and minutes no longer count against the account quota. GitHub
+  recalculates usage every 6-12 hours — deleting artifacts does not unblock a run immediately.
+- **Re-running the failed run is enough.** The artifact is rebuilt from the commit, so a stuck deploy
+  needs no new commit: open the failed run and press **Re-run jobs**.
 
 **Worker → Cloudflare (Git-connected).** The repo's root `wrangler.toml` points Cloudflare at
 `cloudflare-worker/worker.js`; **every push redeploys the Worker** (no manual `wrangler

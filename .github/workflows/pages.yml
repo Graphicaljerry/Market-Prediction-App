@@ -45,10 +45,12 @@ jobs:
         with:
           path: _site
           # This deploy died for days on "Failed to CreateArtifact: Artifact storage quota has been
-          # hit" (run #264, 2026-09-11). The build was fine; the upload had nowhere to go, so nothing
-          # was ever published and the live site sat on an old build. The quota is ACCOUNT-wide across
-          # private repos, so keep each run's footprint short-lived: Pages only needs the artifact
-          # long enough for the deploy step that immediately follows it.
+          # hit" (runs #264-#265, 2026-09-11). The build was green; the upload had nowhere to land, so
+          # nothing was ever published and the live site silently sat on an old build. That quota is
+          # ACCOUNT-wide across PRIVATE repos; the repo is public now, which takes Actions storage out
+          # of the quota entirely. Keep this anyway: Pages only needs the artifact long enough for the
+          # deploy step on the very next line, and a 1-day life means a future private fork can never
+          # wedge itself the same way.
           retention-days: 1
 
       - name: Deploy
