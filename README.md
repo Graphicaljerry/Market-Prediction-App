@@ -23,6 +23,22 @@ what each change hits. It exists because this app is three big files (`eth-track
 
 Recent work, newest first:
 
+- **r104 — "AI unavailable: HTTP 401" now says what to actually do.** Reported from the iPad. That
+  401 was not a broken key and not a provider outage: the r100 hardening made the Worker reject any
+  read from a device that hasn't been given the **access token**, and the token is saved in the
+  browser's own storage — so it is **per device**. The laptop worked, the iPad had never been told,
+  and the app answered with a status code no human can act on. **Display-only: no pick, price, alert
+  or grade logic changed.**
+  - **The error is a sentence now.** 401/403 says the device isn't authorized and where to paste the
+    token; 429 says rate-limited; 5xx says the provider failed and is probably temporary; a dead
+    Worker says check the URL. The status code is no longer the whole message.
+  - **The setup caption was also wrong.** It said the token was needed "for Clear all and fresh AI
+    reads" — in fact, once `ACCESS_TOKEN` is set, **every** read needs it on **every** device. It now
+    says so, and the field's placeholder reads *"paste it here, not in the URL above"* — pasting the
+    token into the Worker URL box is a mistake that has already happened once.
+  - **Worth knowing:** enter the token once per phone, tablet and browser. Clearing site data or
+    using a private tab wipes it, and the app will look "broken" again until it's re-entered.
+
 - **The live site stopped updating for days, and it was never the code.** Reported as *"why is my
   GitHub not updating? why is the site not updating to r103?"* Every push built fine and then failed
   on one step: `Failed to CreateArtifact: Artifact storage quota has been hit`. GitHub Actions stores

@@ -1896,8 +1896,8 @@
       <div class="aiSetupBody">
         <span class="fieldCap">Worker URL</span>
         <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
-        <span class="fieldCap">Access token <span class="capNote">— the Worker's ACCESS_TOKEN secret. Needed for Clear all and fresh AI reads; leave blank if you never set one.</span></span>
-        <input id="workerToken" class="settingsInput" type="password" placeholder="optional" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <span class="fieldCap">Access token <span class="capNote">— the Worker's ACCESS_TOKEN secret. If you set one, <b>every</b> AI read needs it, on <b>every</b> device: this is saved on this device only, so enter it once per phone, tablet and browser. Leave blank if the Worker has no ACCESS_TOKEN.</span></span>
+        <input id="workerToken" class="settingsInput" type="password" placeholder="paste it here, not in the URL above" autocomplete="off" autocapitalize="off" spellcheck="false" />
         <span class="fieldCap">Model <span class="capNote">— refreshed from Google, Groq and Anthropic themselves, so new models appear on their own.</span></span>
         <!-- (r94) These options are the OFFLINE FALLBACK only. loadModelCatalogue() replaces them with
              the live list the Worker pulls from each provider's own list-models endpoint, so this
@@ -1946,7 +1946,7 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r103</span><span class="buildSep">·</span><span>2026-09-11</span>
+        <span class="buildVer">build r104</span><span class="buildSep">·</span><span>2026-09-12</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
@@ -6142,13 +6142,28 @@
     el.classList.remove("hidden");   // collapsed by default inside the playbook — tap "AI summary" to read the full rationale
     syncPlaybook();
   }
+  // A bare "HTTP 401" tells a human nothing — and 401 is the one the r100 hardening made COMMON,
+  // because the Worker now rejects every read from a device that has not been given the access token.
+  // localStorage is per-device, so a phone or tablet you set up later looks broken until you paste it.
+  // Say what to do, not what the server said.
+  function aiErrorText(msg) {
+    var m = /HTTP (\d{3})/.exec(msg || ""), code = m ? Number(m[1]) : 0;
+    if (code === 401 || code === 403)
+      return "This device isn't authorized yet. Open AI Co-Pilot setup below and paste the Worker's access token, then Save. Each phone, tablet and browser needs it entered once.";
+    if (code === 429) return "Too many requests — the Worker is rate-limiting. Wait a minute and try again.";
+    if (code === 413) return "That read was too big to send. Reload the page and try again.";
+    if (code === 405) return "The Worker URL looks wrong. Check it in AI Co-Pilot setup below.";
+    if (code >= 500) return "The AI provider returned an error (" + code + "). Usually temporary — try again shortly, or switch models.";
+    if (code) return "The Worker replied " + code + ".";
+    return "Could not reach the Worker. Check the URL in AI Co-Pilot setup, and that you are online.";
+  }
   function renderAIError(msg) {
     var el = $("aiWhy"); if (!el) return;
     el.classList.remove("hidden"); el.setAttribute("open", "");   // surface errors expanded so they're not hidden in the dropdown
     var hint = $("aiSumHint"); if (hint) { hint.textContent = "error"; hint.className = "aiSumHint u"; }
     var body = el.querySelector(".aiWhyBody"); if (!body) return; body.innerHTML = "";
     var d = document.createElement("div"); d.className = "aiMuted"; d.style.color = "var(--red)";
-    d.textContent = "AI unavailable: " + msg; body.appendChild(d);
+    d.textContent = aiErrorText(msg); body.appendChild(d);
     syncPlaybook();
   }
   $("aiRun").addEventListener("click", function () {

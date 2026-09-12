@@ -392,8 +392,15 @@ until Discord revoked it. `worker.js` now ships with these guards built in:
   `?models=refresh`, `?testpush` and cache-bypassing (`fresh`) AI reads all refuse without
   `?token=<ACCESS_TOKEN>` — even when no token is configured (they answer 401 with a hint). **So set the
   Secret `ACCESS_TOKEN`** and paste the same value into the app's **Settings → AI Co-Pilot setup → Access
-  token** field; the app then sends it on every Worker call. Everything read-only (`?picks`, `?crowd`, the
-  normal AI read) still works without it, exactly as before.
+  token** field; the app then sends it on every Worker call.
+- **⚠️ Once `ACCESS_TOKEN` is set, EVERY AI read needs it — on EVERY device.** The AI read is a `POST`,
+  and `worker.js:460` rejects any `POST` without a matching token, not just the `fresh` ones. The GET
+  endpoints (`?picks`, `?crowd`, `?aimodel`) stay open; the AI read does not. The app keeps the token in
+  that browser's **local storage**, so it is **per device**: set it up on a laptop and the phone or tablet
+  will keep showing *"AI unavailable: HTTP 401"* until you paste the same token there too. Clearing site
+  data or using a private tab wipes it. r104 made the app say this in plain words instead of showing the
+  status code. (An earlier draft of this section claimed the normal AI read still worked without a token.
+  It does not — that sentence was wrong and cost an afternoon.)
 - **`?testpush=discord` no longer exists.** Use `?testpush=1&token=<ACCESS_TOKEN>` (or the exact ntfy topic, as before).
 - **Per-IP rate limits.** Every request is counted per client IP (120/min for reads, 30/min for the AI POST, 5 per
   10 min for anything destructive). Out of the box this is a small in-memory window per Worker isolate — free,
