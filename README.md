@@ -23,6 +23,24 @@ what each change hits. It exists because this app is three big files (`eth-track
 
 Recent work, newest first:
 
+- **Follow-up audit (Oct 2026): the edge is gone, and the late-lock gain did not replicate.** 31 days
+  and **1,934 bets** since the cron moved to `:04` (Sep 8 → Oct 8), all of them 78–82¢ crowd favourites
+  as designed. They won **81.0%** and needed **81.1%** to cover Kalshi's fee — **−0.2¢ per $1**, 95%
+  range −2.3% to +1.9%. **Analysis only: no code or setting changed.**
+  - **The 86% did not hold.** r100 measured late-locked 78–82¢ favourites at 86% on ~120 rounds; on
+    1,934 fresh ones it is 81%. The likely reason: before Sep 8 a pick could only lock late via the
+    mid-round retry, i.e. *after* the crowd had just moved into the band. Locking everything at `:04`
+    gets the unselected population, which wins at its price. The change did not hurt — it is level with
+    the open-lock rate — but it raised volume from ~7 to ~60 bets a day at no edge.
+  - **The crowd is now priced right at every level.** Since Sep 8 no favourite band from 60¢ to 91¢
+    shows an after-fee edge above +1pp; below 60¢ favourites lose 2–5¢ per dollar. The favourite-longshot
+    bias the strategy depends on has closed in this period.
+  - **Nothing on top of the price gate helps.** Blindly backing every 78–82¢ favourite: −0.1pp. The
+    tracker's chosen subset: −0.1pp. Coin and hour-of-day effects flip sign between the two halves of
+    the month. The crowd still forecasts better than the app (Brier 0.1886 vs 0.1915).
+  - **Across the whole archive the committed bets have never had an edge:** 0.0pp on 3,565 pre-gate
+    bets, −0.2pp on 1,934 since. At $20 a bet since Sep 8: −$108 on Kalshi, −$519 on Robinhood.
+
 - **r104 — "AI unavailable: HTTP 401" now says what to actually do.** Reported from the iPad. That
   401 was not a broken key and not a provider outage: the r100 hardening made the Worker reject any
   read from a device that hasn't been given the **access token**, and the token is saved in the
@@ -1048,6 +1066,12 @@ cron used to fire right on the boundary (`*/15`), so most picks locked with 12�
 looks changed. The lock time is now recorded on every round (`leftMin`) so the next audit can measure this
 directly instead of inferring it. (Cells are ~100 rounds each — directionally consistent across all four
 bands, but re-measure after a few weeks before trusting the exact cents.)
+
+> **Re-measured, Oct 2026 — did not replicate.** 1,934 bets locked at ~10.4 min left (Sep 8 → Oct 8)
+> won **81.0%** against an 81.1% break-even, not 86%. The original 10–12-minute cell was mostly picks
+> made by the mid-round *retry*, which only fired after the crowd had just moved into the band — a
+> selected group, not a timing effect. The `:04` cron is harmless and is left in place, but it is not
+> an edge. See the Oct 2026 entry in *What's new*.
 
 **4. Smaller things worth knowing.** The Coinbase proxy grade is wrong **31.7%** of the time when the close
 lands within 0.02% of the line (10.4% at 0.02–0.05%, 0.3% beyond 0.1%) — the r89 "too close to call" void
