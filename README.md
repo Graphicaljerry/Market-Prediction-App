@@ -23,6 +23,33 @@ what each change hits. It exists because this app is three big files (`eth-track
 
 Recent work, newest first:
 
+- **r105 — the phone gets its crowd price back, the red AI error is gone, and the call card is
+  shorter.** Reported from the iPhone: a red *"This device isn't authorized"* box under the call, plus
+  blocks touching each other.
+  - **The real problem was bigger than the error.** Since r100 the Worker refuses every `POST` from a
+    device without the access token, and the free crowd-price refresh is a `POST`, so a phone without
+    the token also lost the **Kalshi crowd price**, with no message at all. The audits found that price
+    is the only input that predicts anything, so the phone's live call had been running without it. The
+    app now falls back to the Worker's open `?crowd` read when it's refused. **This touches the live
+    pick on unauthorized devices: it restores the input those devices were always meant to have.**
+    Devices that have the token behave exactly as before.
+  - **The AI error moved to where you'd fix it.** No token means no AI read, which is setup, not news
+    about the round. The call card no longer shows a red box; a one-line note appears under the token
+    field in *Settings → AI Co-Pilot setup*. To get AI reads on the phone, paste the Worker's
+    `ACCESS_TOKEN` there once. The picks don't need it.
+  - **Spacing.** "Full log & accuracy" sat touching the record strip — a more specific `margin: 0` rule
+    was overriding its 12px gap. "Show the numbers behind this" got room under the action row. The AI
+    card lost a blank band with a stray hairline across its top (its divider rule checked the wrong
+    neighbour, so it never matched).
+  - **Simpler.** The price-vs-line rail lost its header, which repeated the price (already shown above)
+    and the line (already in the status line), so one card had shown the price twice and the line three
+    times. The last-rounds arrow strip is hidden: rounds don't repeat (48.7%), and the strip invited
+    "it's due to flip" thinking. Sit-out rounds no longer unfold the bet calculator, which had doubled
+    the card on ~88% of rounds; the slip row in the verdict still shows the price and the break-even.
+    **"Act now"** only appears on a real bet; it used to sit in green above *Sit this out*. The pending-bet
+    line no longer says "Logged" beside an unpressed button.
+  - **Display-only apart from the crowd fallback:** no pick logic, grade, alert or Worker code changed.
+
 - **Follow-up audit (Oct 2026): the edge is gone, and the late-lock gain did not replicate.** 31 days
   and **1,934 bets** since the cron moved to `:04` (Sep 8 → Oct 8), all of them 78–82¢ crowd favourites
   as designed. They won **81.0%** and needed **81.1%** to cover Kalshi's fee — **−0.2¢ per $1**, 95%

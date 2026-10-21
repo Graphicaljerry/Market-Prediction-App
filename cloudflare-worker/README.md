@@ -401,6 +401,11 @@ until Discord revoked it. `worker.js` now ships with these guards built in:
   data or using a private tab wipes it. r104 made the app say this in plain words instead of showing the
   status code. (An earlier draft of this section claimed the normal AI read still worked without a token.
   It does not — that sentence was wrong and cost an afternoon.)
+  **The crowd poll is a POST too, and that was the costly part (fixed r105, app-side).** The app's free
+  crowd-price refresh also went through the `POST`, so a device without the token lost the Kalshi crowd
+  price as well, and that failure was silent. The app now falls back to the open `GET ?crowd=COIN` read
+  when the `POST` is refused, so **the crowd price and the picks work on every device without the token**.
+  Only the AI read needs it. No Worker change or redeploy was needed.
 - **`?testpush=discord` no longer exists.** Use `?testpush=1&token=<ACCESS_TOKEN>` (or the exact ntfy topic, as before).
 - **Per-IP rate limits.** Every request is counted per client IP (120/min for reads, 30/min for the AI POST, 5 per
   10 min for anything destructive). Out of the box this is a small in-memory window per Worker isolate — free,

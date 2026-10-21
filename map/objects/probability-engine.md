@@ -4,7 +4,7 @@ source: eth-tracker.html:2263-2558
 status: verified
 universe: live
 risk: picks
-verified_at: a8bd703 2026-09-08
+verified_at: r105 2026-10-20
 ---
 
 # probability engine — six signals into one number
@@ -23,29 +23,29 @@ the model does not believe itself until the record says it should.
 
 | Signal | Line | Reads |
 |---|---|---|
-| `indOver` | 2263 | technical indicators |
-| `aiOver` | 2269 | the paid AI read |
-| `crowdOver` | 2343 | Kalshi crowd |
-| `obiOver` | 2354 | order-book imbalance |
-| `momOver` | 2366 | 1-minute momentum |
-| `barrierOver` | 2466 | the barrier/diffusion model |
+| `indOver` | 2279 | technical indicators |
+| `aiOver` | 2285 | the paid AI read |
+| `crowdOver` | 2359 | Kalshi crowd |
+| `obiOver` | 2370 | order-book imbalance |
+| `momOver` | 2382 | 1-minute momentum |
+| `barrierOver` | 2482 | the barrier/diffusion model |
 
 | Combination | Line | Does |
 |---|---|---|
-| `normCdf` | 2422 | normal CDF helper |
-| `sigmaRoundFallback` | 2428 | volatility fallback when candles are thin |
-| `rawCombinedOdds` | 2491 | weights the six |
-| `calibrate` | 2514 | bends the raw number toward measured reality |
-| `combinedOdds` | 2558 | **the number everything else consumes** |
+| `normCdf` | 2438 | normal CDF helper |
+| `sigmaRoundFallback` | 2444 | volatility fallback when candles are thin |
+| `rawCombinedOdds` | 2507 | weights the six |
+| `calibrate` | 2530 | bends the raw number toward measured reality |
+| `combinedOdds` | 2574 | **the number everything else consumes** |
 
 ## If you change this
 
 **Hits**
-- [pick-surface](pick-surface.md) — `renderPickCard:2989` and `renderHero:5841` render this
+- [pick-surface](pick-surface.md) — `renderPickCard:3005` and `renderHero:5883` render this
   number and nothing else. They derive no pick of their own.
 - [bet-slip](bet-slip.md) — `NEED` (break-even) is computed against it
-- [round-clock](round-clock.md) — `settleGrades:4243` scores the number that was live
-- **The calibration record itself.** `calibrate:2514` reads history, and history is written by
+- [round-clock](round-clock.md) — `settleGrades:4259` scores the number that was live
+- **The calibration record itself.** `calibrate:2530` reads history, and history is written by
   grading. Change the odds and today's history stops being comparable to yesterday's. This is
   the non-obvious one.
 

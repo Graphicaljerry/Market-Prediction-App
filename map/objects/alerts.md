@@ -4,7 +4,7 @@ source: cloudflare-worker/worker.js:1326-1560, eth-tracker.html:5640
 status: verified
 universe: live
 risk: money
-verified_at: r102 2026-09-11
+verified_at: r105 2026-10-20
 ---
 
 # alerts — the pings that move real money
@@ -27,7 +27,7 @@ Everything else in this file exists to keep alerts inside that window.
 | `scanLateLocks` | worker.js:1457 | the `8,23,38,53` second chance, for a price that drifts *into* band |
 | `notifyHotPicks` | worker.js:1400 | round-open + STRONG pings — OFF unless `PING_MODE=all` |
 | `pushDiscord` / `ntfyPush` | worker.js:1326 / :1442 | the two transports |
-| `renderBandReturns` | 5676 | the app's live version of the audit table, per price band |
+| `renderBandReturns` | 5719 | the app's live version of the audit table, per price band |
 
 ## The numbers that set the bounds
 

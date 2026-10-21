@@ -22,4 +22,4 @@ explicitly.
 | [auto-tracker](auto-tracker.md) | 5005–5287, worker.js:1927 | log | The 24/7 cron that grades itself. |
 | [worker](worker.md) | worker.js (all) | both | The Cloudflare proxy: AI, crowd, cron, KV. |
 | coin config | 1971–1986 | picks | `COINS` / `COIN_ICONS`. stub — read the source. |
-| history & calibration | 2724, 4726 | log | `snapshotFeat:2760`, `historySummary:4762`. stub. |
+| history & calibration | 2724, 4726 | log | `snapshotFeat:2776`, `historySummary:4778`. stub. |

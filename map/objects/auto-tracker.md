@@ -4,7 +4,7 @@ source: eth-tracker.html:5005-5287, cloudflare-worker/worker.js:1927
 status: verified
 universe: live
 risk: log
-verified_at: a8bd703 2026-09-08
+verified_at: r105 2026-10-20
 ---
 
 # auto-tracker — the 24/7 record
@@ -15,15 +15,15 @@ Runs whether or not a browser is open. That is the point: it is the app's honest
 |---|---|---|
 | `runCoinPick` | worker.js:1927 | the cron: grade, then `freePick:1641`, then write KV |
 | `cbMicro` / `cbObi` | worker.js:1210 / :1397 | the worker's own market reads |
-| `fetchAutoTracker` | 5005 | the app pulls the record |
-| `renderAutoTracker` | 5287 | the 24/7 panel |
+| `fetchAutoTracker` | 5048 | the app pulls the record |
+| `renderAutoTracker` | 5330 | the 24/7 panel |
 | `hm` / `hma` / `hms` / `rangeHM` | — | 12-hour clock formatting |
 
 ## If you change this
 
 **Hits**
 - [round-clock](round-clock.md) — **two graders must agree.** The cron grades server-side; the
-  client grades in `settleGrades:4243`. Change what a win means in one and the two records
+  client grades in `settleGrades:4259`. Change what a win means in one and the two records
   diverge with no error.
 - `wrangler.toml` — the cron trigger is declared there, not here
 

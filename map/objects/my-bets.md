@@ -4,7 +4,7 @@ source: eth-tracker.html:5577-5609
 status: verified
 universe: live
 risk: log
-verified_at: a8bd703 2026-09-08
+verified_at: r105 2026-10-20
 ---
 
 # my-bets — your own logged bets
@@ -13,9 +13,9 @@ Stored in `localStorage` under **`myBets.v1`**.
 
 | Function | Line | Does |
 |---|---|---|
-| `toggleMyBet` | 5577 | log or un-log a bet |
-| `resolveMyBets` | 5593 | settle against the round result |
-| `myRecordLine` | 5609 | the W/L form chips |
+| `toggleMyBet` | 5620 | log or un-log a bet |
+| `resolveMyBets` | 5636 | settle against the round result |
+| `myRecordLine` | 5652 | the W/L form chips |
 
 ## If you change this
 

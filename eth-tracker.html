@@ -817,7 +817,12 @@
   .playbook .gamePlan:not([hidden]) { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--separator); }
   .playbook .consensus:empty + .gamePlan:not([hidden]) { margin-top: 0; padding-top: 0; border-top: none; }
   /* AI summary, consolidated into the playbook as a tucked, collapsed item under the Game plan */
-  .playbook .aiWhy { margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--separator); }
+  /* (r105) Dividers only BETWEEN blocks that are showing. The old ":empty + .gamePlan" chain never
+     matched — .marketLead sits between those two in the markup — so with nothing above it the AI card
+     drew a blank band with a stray hairline across its top. */
+  .playbook .aiWhy { margin: 0; padding-top: 0; border-top: none; }
+  .playbook .consensus:not(:empty) ~ .aiWhy, .playbook .marketLead:not(:empty) ~ .aiWhy,
+  .playbook .gamePlan:not([hidden]) ~ .aiWhy { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--separator); }
   .playbook .aiWhy.hidden { display: none; }
   .playbook .aiWhy > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px;
     font-size: 11px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; color: var(--label-3); }
@@ -825,7 +830,10 @@
   .playbook .aiWhy .aiSumHint { text-transform: none; letter-spacing: 0; }
   .playbook .consensus:empty + .gamePlan[hidden] + .aiWhy { margin-top: 0; padding-top: 0; border-top: none; }
   /* recent 15-min market moves — the same up/down arrows Coinbase shows, from Coinbase candles */
-  .moveStrip { display: flex; align-items: center; gap: 4px; margin-top: 14px; flex-wrap: nowrap; overflow: hidden; }
+  /* (r105) Hidden. A row of the last rounds' up/down arrows invites "it's due to flip" thinking, and the
+     archive says rounds don't repeat or reverse: the next round matched the last one 48.7% of the time.
+     The node is kept (renderers still write it); it just isn't drawn. */
+  .moveStrip { display: none !important; }
   .moveStrip.open { flex-wrap: wrap; overflow: visible; }
   .moveStrip:empty { display: none; }
   .msMore { flex: none; margin-left: 3px; font-size: 12px; font-weight: 800; line-height: 1; color: var(--label-3); background: var(--surface-2); border: 1px solid var(--separator); border-radius: 999px; padding: 4px 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -843,6 +851,9 @@
   @media (prefers-reduced-motion: reduce) { .moveStrip .msDot.pending { animation: none; opacity: .6; } }
   /* collapsible secondary panels — keep the betting signal the focus, detail one tap away */
   details.collapsePanel { margin: 0; }
+  /* (r105) .recDetails asked for a 12px gap under the record strip, but this rule is more specific
+     (element + class beats class) and zeroed it, so "Full log & accuracy" sat touching the strip. */
+  details.collapsePanel.recDetails { margin-top: var(--sp-2); }
   /* (r102) TWO LEVELS, NOT ONE. "Full log & accuracy", "Model & Accuracy" and "Recent Rounds" sit
      INSIDE a section; they were wearing the same bold + accent bar as the four top-level headings, so
      nothing on screen said which was a section and which was a drawer within it. Sub-headings lose the
@@ -1045,7 +1056,10 @@
   .heroChips .cNeg { color: var(--red); border-color: rgba(255,92,110,.32); background: rgba(255,92,110,.09); }
   .heroChips .cStar { color: var(--green); border-color: rgba(48,209,88,.34); background: rgba(48,209,88,.1); }
   .heroMeter { margin-top: 15px; padding-top: 13px; border-top: 1px solid var(--hair); }
-  .hmHead { display: flex; justify-content: space-between; align-items: baseline; }
+  /* (r105) Hidden: it restated the live price (shown above at twice the size) and the line (already
+     in the "Beat $X" status line), so one card showed the price twice and the line three times. The
+     rail and its two end labels carry the picture on their own. */
+  .hmHead { display: none; }
   .hmHead span { display: block; font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase; color: var(--label-3); margin-bottom: 2px; }
   .hmHead .hmNow b { font-size: 21px; font-weight: 650; letter-spacing: -.01em; }
   .hmHead .hmLine { text-align: right; }
@@ -1071,7 +1085,7 @@
   #hero:not([hidden]) ~ #recoScope,
   #hero:not([hidden]) ~ #buyLine,
   #hero:not([hidden]) ~ #buyHint { display: none; }
-  .heroDetails { margin: 10px 0 2px; }
+  .heroDetails { margin: var(--sp-2) 0 2px; }
   .heroDetails > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--label-3); padding: 7px 0; position: relative; }
   .heroDetails > summary::-webkit-details-marker { display: none; }
   .heroDetails > summary::after { content: ""; position: absolute; inset: -6px; }
@@ -1461,6 +1475,7 @@
   .panelDivider span { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:var(--label-3); }
   .aiRow .v.o { color:var(--green); } .aiRow .v.u { color:var(--red); }
   .aiWhy { margin-top:10px; }
+  .tokenNote { display: block; margin: 6px 0 2px; color: var(--label-2); }
   .aiWhyText { font-size:13px; color:var(--label-2); line-height:1.55; margin-top:6px; }
   /* AI rationale collapsed into a dropdown (same chevron/treatment as the setup panel below) */
   .aiSummary[open] .aiWhyBody { padding-top:2px; }
@@ -1898,6 +1913,7 @@
         <input id="workerUrl" class="settingsInput" type="url" placeholder="https://your-worker.workers.dev" autocomplete="off" autocapitalize="off" spellcheck="false" />
         <span class="fieldCap">Access token <span class="capNote">— the Worker's ACCESS_TOKEN secret. If you set one, <b>every</b> AI read needs it, on <b>every</b> device: this is saved on this device only, so enter it once per phone, tablet and browser. Leave blank if the Worker has no ACCESS_TOKEN.</span></span>
         <input id="workerToken" class="settingsInput" type="password" placeholder="paste it here, not in the URL above" autocomplete="off" autocapitalize="off" spellcheck="false" />
+        <span class="capNote tokenNote" id="tokenNote" hidden></span>
         <span class="fieldCap">Model <span class="capNote">— refreshed from Google, Groq and Anthropic themselves, so new models appear on their own.</span></span>
         <!-- (r94) These options are the OFFLINE FALLBACK only. loadModelCatalogue() replaces them with
              the live list the Worker pulls from each provider's own list-models endpoint, so this
@@ -1946,7 +1962,7 @@
     </div>
     <details class="buildTag">
       <summary>
-        <span class="buildVer">build r104</span><span class="buildSep">·</span><span>2026-09-12</span>
+        <span class="buildVer">build r105</span><span class="buildSep">·</span><span>2026-10-20</span>
         <span class="buildToggle">what's new<svg class="buildChev" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
       </summary>
       <div class="buildNotes">
@@ -4878,9 +4894,33 @@
     callWorker(false, true);
   }
 
+  // (r105) THE CROWD PRICE MUST NOT DEPEND ON THE ACCESS TOKEN. Since r100 every POST to the Worker
+  // needs the per-device token — including the free crowd-only poll. A phone that had never been given
+  // the token therefore lost the Kalshi crowd price SILENTLY (the crowd path swallows its errors), and
+  // its live call ran on the inputs the audits found to be noise, without the one that predicts. The
+  // Worker's GET ?crowd=COIN read is open (it's public Kalshi data), so an unauthorized device now
+  // reads the crowd there instead. Same price, same strike; it lacks only the next-round market and
+  // the shared AI read, which an unauthorized device could not have had anyway.
+  function crowdViaGet(url, scope) {
+    var u; try { u = new URL(url); u.searchParams.set("crowd", state.coin); u = u.toString(); }
+    catch (e) { u = url + (url.indexOf("?") < 0 ? "?" : "&") + "crowd=" + encodeURIComponent(state.coin); }
+    var coin = state.coin;
+    fetch(u, { cache: "no-store" })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || coin !== state.coin) return;
+        var over = typeof d.overPct === "number" ? d.overPct : (d.kvCached && typeof d.kvCached.overPct === "number" ? d.kvCached.overPct : null);
+        if (over == null) return;
+        var m = d.rawMarket || {};
+        applyCrowd({ crowd: { overPct: over, source: "Kalshi", ticker: m.ticker || null, closeTime: m.close_time || null,
+          strike: typeof d.strike === "number" ? d.strike : null, stale: typeof d.overPct !== "number" } }, scope);
+      })
+      .catch(function () {});
+  }
   function callWorker(manual, crowdOnly, fresh) {
     var url = getWorkerUrl();
     if (!url) return;
+    if (crowdOnly && state._noToken && !getWorkerToken()) { crowdViaGet(url, scopeAt(Math.max(0, Math.floor((currentRoundEnd - new Date()) / 1000)))); return; }
     if (!aiDataReady()) { if (manual && !crowdOnly) renderAIError("Still loading market data — try again in a moment."); return; }
     // Cost discipline for AUTOMATIC paid reads (the manual button + crowd-only always run):
     if (!manual && !crowdOnly) {
@@ -4901,9 +4941,12 @@
     var btn = $("aiRun"); if (!crowdOnly) { state._aiFetching = true; if (btn) { btn.disabled = true; btn.textContent = "Analyzing…"; } }
     var scope = scopeAt(secondsLeft);
     fetch(withToken(url), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-      .then(function (r) { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })
+      .then(function (r) {
+        if ((r.status === 401 || r.status === 403) && !getWorkerToken()) state._noToken = true;
+        if (!r.ok) throw new Error("HTTP " + r.status); return r.json();
+      })
       .then(function (d) { if (crowdOnly) applyCrowd(d, scope); else renderAI(d, scope); })
-      .catch(function (e) { if (!crowdOnly) renderAIError(e.message); })
+      .catch(function (e) { if (crowdOnly) { if (state._noToken) crowdViaGet(url, scope); } else renderAIError(e.message); })
       .then(function () { if (!crowdOnly) { state._aiFetching = false; if (btn) { btn.disabled = false; btn.textContent = "Refresh AI Read"; } renderBlend(); } });
   }
   // Crowd-only response: refresh the market price + real strike without touching the AI read.
@@ -5609,7 +5652,7 @@
   function myRecordLine() {
     var a = resolveMyBets(), done = [], i;
     for (i = 0; i < a.length; i++) if (a[i].res) done.push(a[i]);
-    if (!done.length) return a.length ? "Logged — I'll score it once the round settles." : "";
+    if (!done.length) return a.length ? (a.length === 1 ? "1 logged bet, scored when its round settles." : a.length + " logged bets, scored as their rounds settle.") : "";
     var w = 0, off = 0, offW = 0;
     for (i = 0; i < done.length; i++) {
       if (done[i].res === "W") w++;
@@ -5729,10 +5772,10 @@
     // invisible on ~88% of rounds, and "what would this have cost me" is exactly the question worth
     // being able to ask on a round the app told you to pass.
     var skip = (dir === "SKIP");
-    if (skip) {
-      var c = activeCrowd();
-      if (c && typeof c.overPct === "number") mp = Math.max(c.overPct, 100 - c.overPct) / 100;
-    }
+    // (r105) Sit-out rounds no longer unfold the calculator. It doubled the call card on ~88% of
+    // rounds to price a bet the app is telling you not to make, and the slip row inside the verdict
+    // already states the crowd price and the win rate it would need.
+    if (skip) { box.hidden = true; return; }
     if (!(mp > 0 && mp < 1) || nextMode || rem == null || rem <= 20) { box.hidden = true; return; }
     box.hidden = false;
     var amt = getStake(), vk = getVenue(), v = VENUES[vk] || VENUES.kalshi;
@@ -5740,7 +5783,6 @@
     if (!m) { out.innerHTML = '<div class="stakeNote">Enter at least ' + money(mp) + ' — that\'s the price of one contract.</div>'; return; }
     var meas = measuredAtPrice(mp);
     var html = "";
-    if (skip) html += '<div class="stakeSkip">The app is <b>not</b> recommending this round. Here\'s what the crowd\'s favourite would cost you anyway:</div>';
     html += '<div class="stakeLine"><span>You buy</span><b>' + m.contracts + ' contracts at ' + Math.round(mp * 100) + '¢</b></div>';
     html += '<div class="stakeLine"><span>It costs you</span><b>' + money(m.cost) + '</b></div>';
     html += '<div class="stakeSub">' + money(m.contracts * mp) + ' for the contracts + ' + money(m.fee) + ' in fees' + (v.commission ? ' (incl. ' + v.label + ' commission)' : '') + '</div>';
@@ -5864,7 +5906,10 @@
     var rem = state.remaining;
     // The urgent window is 5:00 -> 2:00. It cannot run tighter than that: at BET_WINDOW (2:00) the app
     // switches to showing the NEXT round, so any "too late" state below that is unreachable by design.
-    var urgent = rem != null && !nextMode && rem <= 300;
+    // (r105) Only a real bet is urgent. "ACT NOW" in green above "Sit this OUT" told you to hurry and
+    // to pass in the same breath.
+    var realBet = (dir === "OVER" || dir === "UNDER") && s.tier !== "flip" && s.tier !== "lean";
+    var urgent = realBet && rem != null && !nextMode && rem <= 300;
     el.className = "hero" + (urgent ? " act" : "");
     $("heroKicker").textContent = urgent ? "Act now" : (nextMode ? "Next round" : "This round");
 
@@ -6149,7 +6194,7 @@
   function aiErrorText(msg) {
     var m = /HTTP (\d{3})/.exec(msg || ""), code = m ? Number(m[1]) : 0;
     if (code === 401 || code === 403)
-      return "This device isn't authorized yet. Open AI Co-Pilot setup below and paste the Worker's access token, then Save. Each phone, tablet and browser needs it entered once.";
+      return "This device doesn't have the access token yet, so AI reads are off here. Paste it above and press Save — once per phone, tablet and browser. The crowd price and the picks work without it.";
     if (code === 429) return "Too many requests — the Worker is rate-limiting. Wait a minute and try again.";
     if (code === 413) return "That read was too big to send. Reload the page and try again.";
     if (code === 405) return "The Worker URL looks wrong. Check it in AI Co-Pilot setup below.";
@@ -6159,6 +6204,15 @@
   }
   function renderAIError(msg) {
     var el = $("aiWhy"); if (!el) return;
+    // (r105) "This device isn't authorized" is setup, not news about the round, so it no longer takes
+    // over the call card in red. The AI summary just stays out of the way, and the instruction lives
+    // where you'd act on it: next to the token field in AI Co-Pilot setup.
+    var code = (/HTTP (\d{3})/.exec(msg || "") || [])[1];
+    if (code === "401" || code === "403") {
+      el.classList.add("hidden"); el.removeAttribute("open"); syncPlaybook();
+      var n = $("tokenNote"); if (n) { n.hidden = false; n.textContent = aiErrorText(msg); }
+      return;
+    }
     el.classList.remove("hidden"); el.setAttribute("open", "");   // surface errors expanded so they're not hidden in the dropdown
     var hint = $("aiSumHint"); if (hint) { hint.textContent = "error"; hint.className = "aiSumHint u"; }
     var body = el.querySelector(".aiWhyBody"); if (!body) return; body.innerHTML = "";
@@ -6170,6 +6224,7 @@
     try { localStorage.setItem(WORKER_KEY, $("workerUrl").value.trim()); localStorage.setItem(AI_MODEL_KEY, $("aiModel").value); var _tk = $("workerToken"); if (_tk) localStorage.setItem(WORKER_TOKEN_KEY, _tk.value.trim()); } catch (e) {}
     pushSharedModel($("aiModel").value);
     loadModelCatalogue(true);   // (r94) saving is also "check for new models now" — forces a re-fetch past the Worker's 6h cache
+    state._noToken = false; var _n = $("tokenNote"); if (_n) _n.hidden = true;
     callWorker(true);
   });
   $("aiModel").addEventListener("change", function () { var m = $("aiModel").value; try { localStorage.setItem(AI_MODEL_KEY, m); } catch (e) {} state.lastAI = null; state.lastProvider = null; pushSharedModel(m); renderAIBadge(); renderBlend(); if (getWorkerUrl()) refreshCrowd(true); });   // switching models clears the previous model's read so the label can't show the wrong AI; shares the choice + free-refreshes

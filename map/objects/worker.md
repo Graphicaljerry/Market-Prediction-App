@@ -4,7 +4,7 @@ source: cloudflare-worker/worker.js
 status: verified
 universe: live
 risk: both
-verified_at: a8bd703 2026-09-08
+verified_at: r105 2026-10-20
 ---
 
 # worker — the Cloudflare side
@@ -25,7 +25,7 @@ verified_at: a8bd703 2026-09-08
 ## If you change this
 
 **Hits**
-- [ai-copilot](ai-copilot.md) — the app calls `callWorker:4881`; a response-shape change breaks
+- [ai-copilot](ai-copilot.md) — the app calls `callWorker:4920`; a response-shape change breaks
   it silently, since there is no shared type
 - [crowd-odds](crowd-odds.md) — same wire, different flag (`crowdOnly` / `noAI`)
 - [auto-tracker](auto-tracker.md) — the cron writes what the 24/7 panel reads
